@@ -159,7 +159,7 @@ Input HandleInput(int argc, char** argv)
         PrintHelpMessage(argv[0]);
         return in;
     }
-    for (int i = 1; i < argc; ++i)
+    for (int i = 2; i < argc; ++i)
     {
         if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "-H") == 0)
         {
@@ -178,6 +178,13 @@ Input HandleInput(int argc, char** argv)
         {
             in.compile = true;
             in.compileCmd = "clang -O2 -static " OUTPUT_FILE;
+        }
+        else
+        {
+            printf("Unknown argument [%s]\n", argv[i]);
+            PrintHelpMessage(argv[0]);
+            in.endProgram = true;
+            return in;
         }
     }
 
