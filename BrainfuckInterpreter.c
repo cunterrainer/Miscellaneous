@@ -1,6 +1,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #define ARRAY_SIZE  30000
 #define VALID_CHARS "-+<>[],."
@@ -55,9 +56,11 @@ char* ReadFile(const char* path, size_t* codeSize)
 
 int main(int argc, char** argv)
 {
-    if (argc == 1)
+    if (argc == 1 || argc > 2 || strcmp(argv[1], "-h") == 0 || strcmp(argv[1], "-H") == 0)
     {
-        fprintf(stderr, "usage: %s [filepath]\n", argv[0]);
+        fputs("Brainfuck Interpreter\n", stdout);
+        printf("Usage: %s [filepath]\n", argv[0]);
+        fputs("       -h: print this help message\n", stdout);
         return 1;
     }
 
@@ -168,7 +171,6 @@ int main(int argc, char** argv)
         fprintf(stderr, "\nSyntax error: missing ']' for opening bracket('[') in position [%lld]\n", (uint64_t)openLoopIndex + 1);
 
 CLEANUP:
-    fflush(stdout);
     free(sourceCode);
     free(arr);
 }
