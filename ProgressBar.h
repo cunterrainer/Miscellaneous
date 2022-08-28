@@ -57,9 +57,7 @@ static void ProgressBarAdd(size_t blocks)
 static void ProgressBar(float current, float hundred)
 {
     const float percentDone = (current / hundred) * 100.f;
-    //#define PROGRESS_BAR_BLOCK_OFFSET (100.f / (float)PROGRESS_BAR_SIZE)
-    //const size_t newBlocksToAdd = (size_t)(percentDone / PROGRESS_BAR_BLOCK_OFFSET); // mine the result of both should be the same
-    const size_t newBlocksToAdd = (size_t)(percentDone * PROGRESS_BAR_SIZE / 100); // Jacob Sorber
+    const size_t newBlocksToAdd = (size_t)(percentDone * PROGRESS_BAR_SIZE / 100);
     ProgressBarAdd(newBlocksToAdd);
 
     printf("%s %lld%% (%.2f | %.2f)\r", ProgressBarGet()->bar, (size_t)percentDone, current, hundred);
