@@ -138,6 +138,7 @@ typedef struct
 
 void PrintHelpMessage(const char* process)
 {
+    fputs("Brainfuck Compiler\n", stdout);
     printf("Usage: %s [filepath] [options]\n", process);
     fputs("       -h: print this help message\n", stdout);
     fputs("       -f: generate the .c file when using the compile option\n", stdout);
@@ -171,12 +172,12 @@ Input HandleInput(int argc, char** argv)
         else if (strcmp(argv[i], "-c") == 0 || strcmp(argv[i], "-C") == 0)
         {
             in.compile = true;
-            in.compileCmd = "gcc -O2 " OUTPUT_FILE;
+            in.compileCmd = "gcc -O2 -static " OUTPUT_FILE;
         }
         else if (strcmp(argv[i], "-clang") == 0 || strcmp(argv[i], "-Clang") == 0)
         {
             in.compile = true;
-            in.compileCmd = "clang -O2 " OUTPUT_FILE;
+            in.compileCmd = "clang -O2 -static " OUTPUT_FILE;
         }
     }
 
@@ -203,6 +204,8 @@ int main(int argc, char** argv)
         fprintf(stderr, "Failed to open output file [%s]\n", OUTPUT_FILE);
         return 1;
     }
+    fputs("-- Starting to generate C code\n", stdout);
+
     if (code.hasInput || code.hasOutput)
         fprintf(fp, "#include <stdio.h>\n");
     fprintf(fp, "#include <stdint.h>\n#include <stdlib.h>\n\n");
@@ -304,8 +307,15 @@ int main(int argc, char** argv)
     fclose(fp);
     free(code.code);
 
-    if (in.compile == true)
-        system(in.compileCmd);
+    if (error == false)
+    {
+        fputs("-- Done\n", stdout);
+        if (in.compile == true)
+        {
+            printf("-- Compiling: %s\n", in.compileCmd);
+            system(in.compileCmd);
+        }
+    }
 
     if ((error || in.generateCFile == false) && remove(OUTPUT_FILE) != 0)
         fprintf(stderr, "Failed to delete file [%s] | Error: %s\n", OUTPUT_FILE, strerror(errno));
