@@ -127,13 +127,71 @@ size_t ChangeIndex(FILE* fp, char current, char isNot, size_t inRow, const char*
 }
 
 
+typedef struct
+{
+    bool compile;
+    bool generateCFile;
+    bool endProgram;
+    char* compileCmd;
+} Input;
+
+
+void PrintHelpMessage(const char* process)
+{
+    printf("Usage: %s [filepath] [options]\n", process);
+    fputs("       -h: print this help message\n", stdout);
+    fputs("       -f: generate the .c file when using the compile option\n", stdout);
+    fputs("       -c: compile the C code instead of generating a .c file (using gcc)\n", stdout);
+    fputs("       -clang: compile using clang\n", stdout);
+}
+
+
+Input HandleInput(int argc, char** argv)
+{
+    Input in;
+    in.compile = false;
+    in.generateCFile = false;
+    in.endProgram = true;
+    in.compileCmd = NULL;
+
+    if (argc == 1) {
+        PrintHelpMessage(argv[0]);
+        return in;
+    }
+    for (int i = 1; i < argc; ++i)
+    {
+        if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "-H") == 0)
+        {
+            PrintHelpMessage(argv[0]);
+            return in;
+        }
+
+        if (strcmp(argv[i], "-f") == 0 || strcmp(argv[i], "-F") == 0)
+            in.generateCFile = true;
+        else if (strcmp(argv[i], "-c") == 0 || strcmp(argv[i], "-C") == 0)
+        {
+            in.compile = true;
+            in.compileCmd = "gcc -O2 " OUTPUT_FILE;
+        }
+        else if (strcmp(argv[i], "-clang") == 0 || strcmp(argv[i], "-Clang") == 0)
+        {
+            in.compile = true;
+            in.compileCmd = "clang -O2 " OUTPUT_FILE;
+        }
+    }
+
+    if (in.compile == false)
+        in.generateCFile = true;
+    in.endProgram = false;
+    return in;
+}
+
+
 int main(int argc, char** argv)
 {
-    if (argc == 1)
-    {
-        fprintf(stderr, "Usage: %s [filepath]\n", argv[0]);
+    Input in = HandleInput(argc, argv);
+    if (in.endProgram == true)
         return 1;
-    }
 
     FileParse code = ReadFile(argv[1]);
     if (code.code == NULL)
@@ -245,6 +303,10 @@ int main(int argc, char** argv)
     fprintf(fp, "\n\tfree(arr);\n\treturn 0;\n}");
     fclose(fp);
     free(code.code);
-    if (error && remove(OUTPUT_FILE) != 0)
+
+    if (in.compile == true)
+        system(in.compileCmd);
+
+    if ((error || in.generateCFile == false) && remove(OUTPUT_FILE) != 0)
         fprintf(stderr, "Failed to delete file [%s] | Error: %s\n", OUTPUT_FILE, strerror(errno));
 }
