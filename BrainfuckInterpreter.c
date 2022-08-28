@@ -53,8 +53,14 @@ char* ReadFile(const char* path, size_t* codeSize)
 }
 
 
-int main()
+int main(int argc, char** argv)
 {
+    if (argc == 1)
+    {
+        fprintf(stderr, "Usage: %s [filepath]\n", argv[0]);
+        return 1;
+    }
+
     uint8_t* arr = calloc(ARRAY_SIZE, sizeof(uint8_t));
     if (arr == NULL)
     {
@@ -165,5 +171,4 @@ CLEANUP:
     fflush(stdout);
     free(sourceCode);
     free(arr);
-    fgetc(stdin);
 }
