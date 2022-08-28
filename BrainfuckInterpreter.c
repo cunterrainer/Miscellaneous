@@ -57,7 +57,7 @@ int main(int argc, char** argv)
 {
     if (argc == 1)
     {
-        fprintf(stderr, "Usage: %s [filepath]\n", argv[0]);
+        fprintf(stderr, "usage: %s [filepath]\n", argv[0]);
         return 1;
     }
 
@@ -69,7 +69,7 @@ int main(int argc, char** argv)
     }
 
     size_t codeSize = 0;
-    char* sourceCode = ReadFile("test.bf", &codeSize);
+    char* sourceCode = ReadFile(argv[1], &codeSize);
     if (sourceCode == NULL)
         goto CLEANUP;
 
