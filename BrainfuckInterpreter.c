@@ -19,7 +19,7 @@ char* ReadFile(const char* path, size_t* codeSize)
 {
     FILE* fp = fopen(path, "r");
     if (fp == NULL) {
-        fprintf(stderr, "\nFailed to open file [%s]\n", path);
+        fprintf(stderr, "Failed to open file [%s]\n", path);
         return NULL;
     }
 
@@ -55,16 +55,22 @@ char* ReadFile(const char* path, size_t* codeSize)
 
 int main()
 {
-    uint8_t* arr = calloc(ARRAY_SIZE, sizeof(char));
+    uint8_t* arr = calloc(ARRAY_SIZE, sizeof(uint8_t));
+    if (arr == NULL)
+    {
+        fprintf(stderr, "Failed to allocate memory: %lld bytes\n", (uint64_t)ARRAY_SIZE);
+        return 1;
+    }
+
     size_t codeSize = 0;
     char* sourceCode = ReadFile("test.bf", &codeSize);
-    printf("%s\n%s\n", sourceCode, &sourceCode[100]);
-    char buff[2]; // 2 because of '\n'
-    if (sourceCode == NULL) goto CLEANUP;
+    if (sourceCode == NULL)
+        goto CLEANUP;
 
     uint16_t currentCell = 0;
     size_t openLoopIndex = codeSize;
     size_t nestedLevel = 0;
+    char inputBuff[2]; // 2 because of '\n'
 
     for (size_t i = 0; i < codeSize; ++i)
     {
@@ -140,15 +146,15 @@ int main()
             openLoopIndex = codeSize;
             break;
         case ',':
-            fgets(buff, sizeof(buff), stdin);
-            arr[currentCell] = buff[0] == '\n' ? 0 : buff[0];
+            fgets(inputBuff, sizeof(inputBuff), stdin);
+            arr[currentCell] = inputBuff[0] == '\n' ? 0 : inputBuff[0];
             fseek(stdin, 0, SEEK_END);
             break;
         case '.':
             fputc((int)arr[currentCell], stdout);
             break;
         default:
-            fprintf(stderr, "\nForbidden char found [%c, %d]\n", sourceCode[i], (int)sourceCode[i]);
+            fprintf(stderr, "\nNon valid char found [%c, %d]\n", sourceCode[i], (int)sourceCode[i]);
             break;
         }
     }
