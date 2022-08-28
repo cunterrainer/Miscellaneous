@@ -213,7 +213,7 @@ int main(int argc, char** argv)
         fprintf(fp, "uint16_t DecrementIndex(size_t index, size_t toSub)\n{\n\tint64_t tmp = index - toSub;\n\tif (tmp < 0)\n\t{\n\t\ttoSub -= index;\n\t\treturn ARRAY_SIZE - 1 - toSub;\n\t\t}\n\treturn tmp;\n}\n\n");
     if(code.hasInput)
         fprintf(fp, "uint8_t GetUserInput()\n{\n\tchar buff[2];\n\tfgets(buff, sizeof(buff), stdin);\n\tfseek(stdin, 0, SEEK_END);\n\treturn buff[0] == '\\n' ? 0 : buff[0];\n}\n\n");
-    fprintf(fp, "int main()\n{\n\tuint8_t* arr = calloc(ARRAY_SIZE, sizeof(uint8_t));\n\tuint16_t index = 0;\n\n");
+    fprintf(fp, "int main()\n{\n\tuint8_t* arr = calloc(ARRAY_SIZE, sizeof(uint8_t));\n\tif (arr == NULL)\n\t{\n\t\tfprintf(stderr, \"Failed to allocate memory: %%lld bytes\", (uint64_t)ARRAY_SIZE);\n\t\treturn 1;\n\t}\n\tuint16_t index = 0;\n\n");
     
 
     size_t incrementValueInRow = 0;
