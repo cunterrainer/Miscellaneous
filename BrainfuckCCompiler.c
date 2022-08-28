@@ -235,7 +235,11 @@ int main(int argc, char** argv)
 
     const FileParse code = ReadFile(argv[1]);
     if (code.code == NULL)
+    {
+        if(in.compileCmd != NULL)
+            free(in.compileCmd);
         return 1;
+    }
 
     FILE* fp = fopen(OUTPUT_FILE, "w");
     if (fp == NULL)
