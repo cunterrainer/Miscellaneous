@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <errno.h>
 #include <string.h>
+#include <time.h>
 
 #define ARRAY_SIZE  30000
 #define VALID_CHARS "-+<>[],."
@@ -132,6 +133,8 @@ typedef struct
     bool compile;
     bool generateCFile;
     bool endProgram;
+    bool useOptimizations;
+    bool linkStatic;
     char* compileCmd;
 } Input;
 
@@ -142,6 +145,8 @@ void PrintHelpMessage(const char* process)
     printf("Usage: %s [filepath] [options]\n", process);
     fputs("       -h: print this help message\n", stdout);
     fputs("       -f: generate the .c file when using the compile option\n", stdout);
+    fputs("       -s: link statically with libc\n", stdout);
+    fputs("       -o: compile C code with optimizations\n", stdout);
     fputs("       -c: compile the C code instead of generating a .c file (using gcc)\n", stdout);
     fputs("       -clang: compile using clang\n", stdout);
 }
@@ -153,6 +158,8 @@ Input HandleInput(int argc, char** argv)
     in.compile = false;
     in.generateCFile = false;
     in.endProgram = true;
+    in.useOptimizations = false;
+    in.linkStatic = false;
     in.compileCmd = NULL;
 
     if (argc == 1) {
@@ -172,24 +179,48 @@ Input HandleInput(int argc, char** argv)
         else if (strcmp(argv[i], "-c") == 0 || strcmp(argv[i], "-C") == 0)
         {
             in.compile = true;
-            in.compileCmd = "gcc -O2 -static " OUTPUT_FILE;
+            in.compileCmd = "gcc " OUTPUT_FILE " ";
         }
         else if (strcmp(argv[i], "-clang") == 0 || strcmp(argv[i], "-Clang") == 0)
         {
             in.compile = true;
-            in.compileCmd = "clang -O2 -static " OUTPUT_FILE;
+            in.compileCmd = "clang " OUTPUT_FILE " ";
         }
+        else if (strcmp(argv[i], "-o") == 0 || strcmp(argv[i], "-O") == 0)
+            in.useOptimizations = true;
+        else if (strcmp(argv[i], "-s") == 0 || strcmp(argv[i], "-S") == 0)
+            in.linkStatic = true;
         else
         {
             printf("Unknown argument [%s]\n", argv[i]);
             PrintHelpMessage(argv[0]);
-            in.endProgram = true;
             return in;
         }
     }
 
     if (in.compile == false)
         in.generateCFile = true;
+    else
+    {
+        size_t lenCmd = strlen(in.compileCmd);
+        size_t sizeTotal = lenCmd + 4 + 8 + 1;
+        char* buff = calloc(sizeTotal, sizeof(char));
+        if (buff == NULL)
+        {
+            fprintf(stderr, "Failed to alloca memory for compile command: %lld bytes\n", (uint64_t)sizeTotal);
+            return in;
+        }
+        memcpy(buff, in.compileCmd, lenCmd);
+
+        if (in.useOptimizations)
+        {
+            strcpy(buff + lenCmd, "-O2 ");
+            lenCmd += 4;
+        }
+        if (in.linkStatic)
+            strcpy(buff + lenCmd, "-static ");
+        in.compileCmd = buff;
+    }
     in.endProgram = false;
     return in;
 }
@@ -197,11 +228,12 @@ Input HandleInput(int argc, char** argv)
 
 int main(int argc, char** argv)
 {
-    Input in = HandleInput(argc, argv);
+    const clock_t startTime = clock();
+    const Input in = HandleInput(argc, argv);
     if (in.endProgram == true)
         return 1;
 
-    FileParse code = ReadFile(argv[1]);
+    const FileParse code = ReadFile(argv[1]);
     if (code.code == NULL)
         return 1;
 
@@ -321,9 +353,16 @@ int main(int argc, char** argv)
         {
             printf("-- Compiling: %s\n", in.compileCmd);
             system(in.compileCmd);
+            fputs("-- Done\n", stdout);
         }
     }
+    if(in.compileCmd != NULL)
+        free(in.compileCmd);
 
     if ((error || in.generateCFile == false) && remove(OUTPUT_FILE) != 0)
         fprintf(stderr, "Failed to delete file [%s] | Error: %s\n", OUTPUT_FILE, strerror(errno));
+
+    const clock_t endTime = clock();
+    const double timeSpent = (double)(endTime - startTime) / CLOCKS_PER_SEC;
+    printf("Execution time: %.2lf sec(s)\n", timeSpent);
 }
