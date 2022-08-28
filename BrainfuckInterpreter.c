@@ -141,7 +141,7 @@ int main()
             break;
         case ',':
             fgets(buff, sizeof(buff), stdin);
-            arr[currentCell] = buff[0];
+            arr[currentCell] = buff[0] == '\n' ? 0 : buff[0];
             fseek(stdin, 0, SEEK_END);
             break;
         case '.':
@@ -151,7 +151,6 @@ int main()
             fprintf(stderr, "\nForbidden char found [%c, %d]\n", sourceCode[i], (int)sourceCode[i]);
             break;
         }
-        //printf("%d\n", i);
     }
     if(openLoopIndex != codeSize)
         fprintf(stderr, "\nSyntax error: missing ']' for opening bracket('[') in position [%lld]\n", (uint64_t)openLoopIndex + 1);
