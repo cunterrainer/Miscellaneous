@@ -4,19 +4,18 @@
 #include <string.h>
 
 #define ARRAY_SIZE  30000
-#define VALID_CHARS "-+<>[],."
 
 uint8_t CharIsValid(char lookFor)
 {
-    // 9 is the size of VALID_CHARS
+    static const char* validChars = "-+<>[],.";
     for (size_t i = 0; i < 9; ++i)
-        if (VALID_CHARS[i] == lookFor)
+        if (validChars[i] == lookFor)
             return 1;
     return 0;
 }
 
 
-char* ReadFile(const char* path, size_t* codeSize)
+char* ReadFile(const char* path)
 {
     FILE* fp = fopen(path, "r");
     if (fp == NULL) 
@@ -29,24 +28,22 @@ char* ReadFile(const char* path, size_t* codeSize)
     const size_t fileSize = ftell(fp);
     rewind(fp);
 
-    char* sourceCode = malloc((fileSize + 1) * sizeof(char));
-    char* pSourceCode = sourceCode;
-    if (pSourceCode == NULL)
+    char* sourceCode = malloc((fileSize + 2) * sizeof(char));
+    if (sourceCode == NULL)
     {
-        fprintf(stderr, "Failed to allocate memory for the source code: %lld bytes\n", (uint64_t)*codeSize);
+        fprintf(stderr, "Failed to allocate memory for the source code: %lld bytes\n", (uint64_t)(fileSize + 2));
         fclose(fp);
         return NULL;
     }
-    pSourceCode[fileSize] = 0;
+    sourceCode[0] = 0;
+    sourceCode[fileSize] = 0;
 
     char c;
+    char* pSourceCode = sourceCode + 1;
     while ((c = (char)fgetc(fp)) != EOF)
     {
         if (CharIsValid(c))
-        {
-            ++*codeSize;
             *pSourceCode++ = c;
-        }
     }
 
     fclose(fp);
@@ -67,6 +64,87 @@ char HandleInput(int argc, char** argv)
 }
 
 
+char* AdvanceToEnd(char* sCode)
+{
+    int32_t openings = 1;
+    for (; openings && *sCode; sCode++)
+    {
+        openings += *sCode == '[';
+        openings -= *sCode == ']';
+    }
+    if (openings > 0)
+    {
+        fputs("\nSyntax error: missing ']' for opening bracket('[')\n", stderr);
+        return NULL;
+    }
+    return sCode;
+}
+
+
+char* ResetToBegin(char* sCode)
+{
+    sCode -= 2;
+    int32_t closings = 1;
+    for (; closings && *sCode; sCode--)
+    {
+        closings += *sCode == ']';
+        closings -= *sCode == '[';
+    }
+    if (closings > 0)
+    {
+        fputs("\nSyntax error: missing '[' for closing bracket(']')\n", stderr);
+        return NULL;
+    }
+    return sCode + 2;
+}
+
+
+void InterpretCode(char* sCode, uint8_t* arr)
+{
+    size_t index = 0; // using an index instead of pointer since it turned out to be fast
+
+    while (*sCode)
+    {
+        switch (*sCode++)
+        {
+        case '+':
+            ++arr[index];
+            break;
+        case '-':
+            --arr[index];
+            break;
+        case '<':
+            --index;
+            break;
+        case '>':
+            ++index;
+            break;
+        case ',':
+            arr[index] = (uint8_t)getchar();
+            fflush(stdout);
+            break;
+        case '.':
+            putchar(arr[index]);
+            break;
+        case '[':
+            if (arr[index] == 0)
+            {
+                sCode = AdvanceToEnd(sCode);
+                if (sCode == NULL) return;
+            }
+            break;
+        case ']':
+            if (arr[index] != 0)
+            {
+                sCode = ResetToBegin(sCode);
+                if (sCode == NULL) return;
+            }
+            break;
+        }
+    }
+}
+
+
 int main(int argc, char** argv)
 {
     if (!HandleInput(argc, argv))
@@ -78,105 +156,16 @@ int main(int argc, char** argv)
         fprintf(stderr, "Failed to allocate memory for the internal array: %lld bytes\n", (uint64_t)ARRAY_SIZE);
         return 1;
     }
-    uint8_t* arr = allocArray;
 
-    size_t codeSize = 0;
-    char* sourceCode = ReadFile(argv[1], &codeSize);
+    char* sourceCode = ReadFile(argv[1]);
     if (sourceCode == NULL)
-        goto CLEANUP;
-
-    size_t openLoopIndex = codeSize;
-    size_t nestedLevel = 0;
-
-    for (size_t i = 0; i < codeSize; ++i)
     {
-        switch (sourceCode[i])
-        {
-        case '+':
-            ++*arr;
-            break;
-        case '-':
-            --*arr;
-            break;
-        case '<':
-            --arr;
-            break;
-        case '>':
-            ++arr;
-            break;
-        case '[':
-            ++nestedLevel;
-            openLoopIndex = i;
-            if (*arr == 0) // move to end of loop
-            {
-                size_t numOfOpenings = 0;
-                for (size_t k = i + 1; k < codeSize; ++k)
-                {
-                    if (sourceCode[k] == '[')
-                        ++numOfOpenings;
-                    else if (sourceCode[k] == ']')
-                    {
-                        if(numOfOpenings == 0)
-                        {
-                            i = k;
-                            openLoopIndex = codeSize;
-                            break;
-                        }
-                        numOfOpenings = numOfOpenings == 0 ? 0 : numOfOpenings - 1;
-                    }
-                    else if (k == codeSize - 1)
-                    {
-                        fprintf(stderr, "\nSyntax error: missing ']' for opening bracket('[') in position [%lld]\n", (uint64_t)i+1);
-                        i = codeSize;
-                    }
-                }
-            }
-            break;
-        case ']':
-            if (openLoopIndex == codeSize && nestedLevel == 0)
-            {
-                fprintf(stderr, "\nSyntax error: missing '[' for closing bracket(']') in position [%lld]\n", (uint64_t)i+1);
-                i = codeSize;
-                break;
-            }
-            else if (openLoopIndex == codeSize)
-            {
-                size_t numOfClosings = 0;
-                for (int32_t k = i-1; k >= 0; --k)
-                {
-                    if (sourceCode[k] == ']')
-                        ++numOfClosings;
-                    else if (sourceCode[k] == '[')
-                    {
-                        if (numOfClosings == 0)
-                        {
-                            openLoopIndex = k;
-                            break;
-                        }
-                        numOfClosings = numOfClosings == 0 ? 0 : numOfClosings - 1;
-                    }
-                }
-            }
-            --nestedLevel;
-            i = openLoopIndex - 1;
-            openLoopIndex = codeSize;
-            break;
-        case ',':
-            *arr = getchar();
-            fflush(stdout);
-            break;
-        case '.':
-            putchar(*arr);
-            break;
-        default:
-            fprintf(stderr, "\nNon valid char found [%c, %d]\n", sourceCode[i], (int)sourceCode[i]);
-            break;
-        }
+        free(allocArray);
+        return 1;
     }
-    if(openLoopIndex != codeSize)
-        fprintf(stderr, "\nSyntax error: missing ']' for opening bracket('[') in position [%lld]\n", (uint64_t)openLoopIndex + 1);
 
-CLEANUP:
+    InterpretCode(sourceCode + 1, allocArray);
+
     free(sourceCode);
     free(allocArray);
 }
