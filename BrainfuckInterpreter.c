@@ -19,38 +19,38 @@ uint8_t CharIsValid(char lookFor)
 char* ReadFile(const char* path, size_t* codeSize)
 {
     FILE* fp = fopen(path, "r");
-    if (fp == NULL) {
+    if (fp == NULL) 
+    {
         fprintf(stderr, "Failed to open file [%s]\n", path);
         return NULL;
     }
 
-    char c;
-    size_t numOfchars = 0;
-    while ((c = (char)fgetc(fp)) != EOF)
+    fseek(fp, 0L, SEEK_END);
+    const size_t fileSize = ftell(fp);
+    rewind(fp);
+
+    char* sourceCode = malloc((fileSize + 1) * sizeof(char));
+    char* pSourceCode = sourceCode;
+    if (pSourceCode == NULL)
     {
-        if (CharIsValid(c) == 1)
-            ++numOfchars;
-    }
-    if (numOfchars == 0)
+        fprintf(stderr, "Failed to allocate memory for the source code: %lld bytes\n", (uint64_t)*codeSize);
+        fclose(fp);
         return NULL;
+    }
+    pSourceCode[fileSize] = 0;
 
-    size_t index = 0;
-    char* result = malloc((numOfchars + 1) * sizeof(char));
-    result[numOfchars] = 0;
-
-    fseek(fp, 0, SEEK_SET);
+    char c;
     while ((c = (char)fgetc(fp)) != EOF)
     {
-        if (CharIsValid(c) == 1)
+        if (CharIsValid(c))
         {
-            result[index] = c;
-            ++index;
+            ++*codeSize;
+            *pSourceCode++ = c;
         }
     }
 
     fclose(fp);
-    *codeSize = numOfchars;
-    return result;
+    return sourceCode;
 }
 
 
@@ -67,7 +67,7 @@ int main(int argc, char** argv)
     uint8_t* allocArray = calloc(ARRAY_SIZE, sizeof(uint8_t));
     if (allocArray == NULL)
     {
-        fprintf(stderr, "Failed to allocate memory: %lld bytes\n", (uint64_t)ARRAY_SIZE);
+        fprintf(stderr, "Failed to allocate memory for the internal array: %lld bytes\n", (uint64_t)ARRAY_SIZE);
         return 1;
     }
     uint8_t* arr = allocArray;
