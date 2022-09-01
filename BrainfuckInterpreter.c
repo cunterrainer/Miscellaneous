@@ -54,15 +54,23 @@ char* ReadFile(const char* path, size_t* codeSize)
 }
 
 
-int main(int argc, char** argv)
+char HandleInput(int argc, char** argv)
 {
     if (argc == 1 || argc > 2 || strcmp(argv[1], "-h") == 0 || strcmp(argv[1], "-H") == 0)
     {
-        fputs("Brainfuck Interpreter\n", stdout);
+        puts("Brainfuck Interpreter");
         printf("Usage: %s [filepath]\n", argv[0]);
-        fputs("       -h: print this help message\n", stdout);
-        return 1;
+        puts("       -h: print this help message\n");
+        return 0;
     }
+    return 1;
+}
+
+
+int main(int argc, char** argv)
+{
+    if (!HandleInput(argc, argv))
+        return 1;
 
     uint8_t* allocArray = calloc(ARRAY_SIZE, sizeof(uint8_t));
     if (allocArray == NULL)
