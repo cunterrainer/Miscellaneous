@@ -8,7 +8,7 @@
 uint8_t CharIsValid(char lookFor)
 {
     static const char* validChars = "-+<>[],.";
-    for (size_t i = 0; i < 9; ++i)
+    for (size_t i = 0; i < 8; ++i)
         if (validChars[i] == lookFor)
             return 1;
     return 0;
