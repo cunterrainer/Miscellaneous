@@ -75,43 +75,6 @@ FileParse ReadFile(const char* path)
 }
 
 
-void PrintIndentation(FILE* fp, size_t level)
-{
-    for (size_t i = 0; i < level; ++i)
-        fputc('\t', fp);
-}
-
-
-size_t ChangeValueAtIndex(FILE* fp, char current, char isNot, size_t inRow, size_t indentLevel)
-{
-    if (current != isNot)
-    {
-        if (inRow > 0)
-        {
-            PrintIndentation(fp, indentLevel);
-            fprintf(fp, "\tarr[index] %c= %lld;\n", isNot, (uint64_t)inRow);
-        }
-        return 0;
-    }
-    return inRow;
-}
-
-
-size_t ChangeIndex(FILE* fp, char current, char isNot, size_t inRow, char operator, size_t indentLevel)
-{
-    if (current != isNot)
-    {
-        if (inRow > 0)
-        {
-            PrintIndentation(fp, indentLevel);
-            fprintf(fp, "\tindex %c= %lld;\n", operator, (uint64_t)inRow);
-        }
-        return 0;
-    }
-    return inRow;
-}
-
-
 typedef enum
 {
     OptLevel_None, OptLevel_O0, OptLevel_O1, OptLevel_O2, OptLevel_O3, OptLevel_Os, OptLevel_Of, OptLevel_Og
@@ -279,6 +242,34 @@ Input HandleInput(int argc, char** argv)
 }
 
 
+
+void PrintIndentation(FILE* fp, size_t level)
+{
+    for (size_t i = 0; i < level; ++i)
+        fputc('\t', fp);
+}
+
+
+size_t ChangeIndexOrValue(FILE* fp, char current, char isNot, size_t inRow, size_t indentLevel, bool changeValue)
+{
+    if (current == isNot)
+        return inRow;
+
+    if (inRow > 0)
+    {
+        PrintIndentation(fp, indentLevel);
+        if (changeValue)
+            fprintf(fp, "arr[index] %c= %lld;\n", isNot, (uint64_t)inRow);
+        else
+        {
+            char operator = isNot == '>' ? '+' : '-';
+            fprintf(fp, "index %c= %lld;\n", operator, (uint64_t)inRow);
+        }
+    }
+    return 0;
+}
+
+
 int CleanUp( char* compileCmd, char* sourceCode, FILE* fp, int returnCode)
 {
     if (compileCmd != NULL)
@@ -288,6 +279,87 @@ int CleanUp( char* compileCmd, char* sourceCode, FILE* fp, int returnCode)
     if (fp != NULL)
         fclose(fp);
     return returnCode;
+}
+
+
+bool CompileCode(FileParse code, FILE* fp)
+{
+    if (code.hasIO)
+        fputs("#include <stdio.h>\n", fp);
+    fputs("#include <stdint.h>\n#include <stdlib.h>\n\n", fp);
+    fprintf(fp, "#define ARRAY_SIZE %d\n\n", ARRAY_SIZE);
+    fputs("int main()\n{\n\tuint8_t* arr = calloc(ARRAY_SIZE, sizeof(uint8_t));\n\tif (arr == NULL)\n\t{\n\t\tfprintf(stderr, \"Failed to allocate memory: %lld bytes\", (uint64_t)ARRAY_SIZE);\n\t\treturn 1;\n\t}\n\tuint16_t index = 0;\n\n", fp);
+
+
+    size_t incrementValueInRow = 0;
+    size_t decrementValueInRow = 0;
+    size_t incrementIndexInRow = 0;
+    size_t decrementIndexInRow = 0;
+    size_t currentIndentation = 1;
+
+    while (*code.sCode)
+    {
+        const char currentChar = *code.sCode++;
+        incrementValueInRow = ChangeIndexOrValue(fp, currentChar, '+', incrementValueInRow, currentIndentation, true);
+        decrementValueInRow = ChangeIndexOrValue(fp, currentChar, '-', decrementValueInRow, currentIndentation, true);
+        incrementIndexInRow = ChangeIndexOrValue(fp, currentChar, '>', incrementIndexInRow, currentIndentation, false);
+        decrementIndexInRow = ChangeIndexOrValue(fp, currentChar, '<', decrementIndexInRow, currentIndentation, false);
+
+        switch (currentChar)
+        {
+        case '+':
+            ++incrementValueInRow;
+            break;
+        case '-':
+            ++decrementValueInRow;
+            break;
+        case '>':
+            ++incrementIndexInRow;
+            break;
+        case '<':
+            ++decrementIndexInRow;
+            break;
+        case ',':
+            PrintIndentation(fp, currentIndentation);
+            fputs("arr[index] = getchar(); fflush(stdout);\n", fp);
+            break;
+        case '.':
+            PrintIndentation(fp, currentIndentation);
+            fputs("putchar(arr[index]);\n", fp);
+            break;
+        case '[':
+            fputc('\n', fp);
+            PrintIndentation(fp, currentIndentation);
+            fputs("while (arr[index])\n", fp);
+            PrintIndentation(fp, currentIndentation);
+            fputs("{\n", fp);
+            ++currentIndentation;
+            break;
+        case ']':
+            if (currentIndentation == 1)
+            {
+                fputs("Syntax error: missing '[' for closing bracket (']')", stderr);
+                return false;
+            }
+
+            --currentIndentation;
+            PrintIndentation(fp, currentIndentation);
+            fputs("}\n\n", fp);
+            break;
+        }
+    }
+    if (currentIndentation - 1 > 0)
+    {
+        fputs("\nSyntax error: missing ']' for opening bracket('[')\n", stderr);
+        return false;
+    }
+
+    ChangeIndexOrValue(fp, ' ', '+', incrementValueInRow, currentIndentation, true);
+    ChangeIndexOrValue(fp, ' ', '-', decrementValueInRow, currentIndentation, true);
+    ChangeIndexOrValue(fp, ' ', '>', incrementIndexInRow, currentIndentation, false);
+    ChangeIndexOrValue(fp, ' ', '<', decrementIndexInRow, currentIndentation, false);
+    fputs("\n\tfree(arr);\n\treturn 0;\n}", fp);
+    return true;
 }
 
 
@@ -309,103 +381,12 @@ int main(int argc, char** argv)
         fprintf(stderr, "Failed to open output file [%s]\n", OUTPUT_FILE);
         return CleanUp(in.compileCmd, code.sCode, NULL, 1);
     }
+
     puts("-- Starting to generate C code");
-
-    if (code.hasIO)
-        fputs("#include <stdio.h>\n", fp);
-    fputs("#include <stdint.h>\n#include <stdlib.h>\n\n", fp);
-    fprintf(fp, "#define ARRAY_SIZE %d\n\n", ARRAY_SIZE);
-    fputs("int main()\n{\n\tuint8_t* arr = calloc(ARRAY_SIZE, sizeof(uint8_t));\n\tif (arr == NULL)\n\t{\n\t\tfprintf(stderr, \"Failed to allocate memory: %lld bytes\", (uint64_t)ARRAY_SIZE);\n\t\treturn 1;\n\t}\n\tuint16_t index = 0;\n\n", fp);
-    
-
-    size_t incrementValueInRow = 0;
-    size_t decrementValueInRow = 0;
-    size_t incrementIndexInRow = 0;
-    size_t decrementIndexInRow = 0;
-    size_t currentIndentation  = 0;
-    size_t openLoops = 0;
-    size_t lastOpenBrackedPos = 0;
-    bool error = false;
-
-    for (size_t i = 0; i < code.size; ++i)
-    {
-        const char currentChar = code.sCode[i];
-        incrementValueInRow = ChangeValueAtIndex(fp, currentChar, '+', incrementValueInRow, currentIndentation);
-        decrementValueInRow = ChangeValueAtIndex(fp, currentChar, '-', decrementValueInRow, currentIndentation);
-        
-        incrementIndexInRow = ChangeIndex(fp, currentChar, '>', incrementIndexInRow, '+', currentIndentation);
-        decrementIndexInRow = ChangeIndex(fp, currentChar, '<', decrementIndexInRow, '-', currentIndentation);
-
-
-        switch (currentChar)
-        {
-        case '+':
-            ++incrementValueInRow;
-            break;
-        case '-':
-            ++decrementValueInRow;
-            break;
-        case '>':
-            ++incrementIndexInRow;
-            break;
-        case '<':
-            ++decrementIndexInRow;
-            break;
-        case ',':
-            PrintIndentation(fp, currentIndentation);
-            fputs("\tarr[index] = getchar(); fflush(stdout);\n", fp);
-            break;
-        case '.':
-            PrintIndentation(fp, currentIndentation);
-            fputs("\tputchar(arr[index]);\n", fp);
-            break;
-        case '[':
-            lastOpenBrackedPos = i + 1;
-            fputc('\n', fp);
-            PrintIndentation(fp, currentIndentation);
-            fputs("\twhile (arr[index])\n", fp);
-            PrintIndentation(fp, currentIndentation);
-            fputs("\t{\n", fp);
-            ++currentIndentation;
-            ++openLoops;
-            break;
-        case ']':
-            if (openLoops == 0)
-            {
-                fprintf(stderr, "Syntax error: missing '[' for closing bracket (']') in position %llu\n", (uint64_t)i+1);
-                goto CLEANUP_ERROR;
-            }
-
-            PrintIndentation(fp, currentIndentation);
-            fputs("}\n\n", fp);
-            --currentIndentation;
-            --openLoops;
-            break;
-        default:
-            fprintf(stderr, "\nNon valid char found [%c, %d]\n", currentChar, (int)currentChar);
-            break;
-        }
-    }
-    if (openLoops > 0)
-    {
-        fprintf(stderr, "\nSyntax error: missing ']' for opening bracket('[') in position %llu\n", (uint64_t)lastOpenBrackedPos);
-        goto CLEANUP_ERROR;
-    }
-
-    ChangeValueAtIndex(fp, ' ', '+', incrementValueInRow, currentIndentation);
-    ChangeValueAtIndex(fp, ' ', '-', decrementValueInRow, currentIndentation);
-    ChangeIndex(fp, ' ', '>', incrementIndexInRow, '+', currentIndentation);
-    ChangeIndex(fp, ' ', '<', decrementIndexInRow, '-', currentIndentation);
-
-    goto CLEANUP;
-    CLEANUP_ERROR:
-    error = true;
-
-    CLEANUP:
-    fputs("\n\tfree(arr);\n\treturn 0;\n}", fp);
+    char successful = CompileCode(code, fp);
     fclose(fp);
 
-    if (error == false)
+    if (successful)
     {
         puts("-- Done");
         if (in.compile == true)
@@ -417,7 +398,7 @@ int main(int argc, char** argv)
     }
     CleanUp(in.compileCmd, code.sCode, NULL, 0);
 
-    if ((error || in.generateCFile == false) && remove(OUTPUT_FILE) != 0)
+    if ((!successful || in.generateCFile == false) && remove(OUTPUT_FILE) != 0)
         fprintf(stderr, "Failed to delete file [%s] | Error: %s\n", OUTPUT_FILE, strerror(errno));
 
     const clock_t endTime = clock();
