@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #define ARRAY_SIZE  30000
 #define VALID_CHARS "-+<>[],."
@@ -64,19 +65,19 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    uint8_t* arr = calloc(ARRAY_SIZE, sizeof(uint8_t));
-    if (arr == NULL)
+    uint8_t* allocArray = calloc(ARRAY_SIZE, sizeof(uint8_t));
+    if (allocArray == NULL)
     {
         fprintf(stderr, "Failed to allocate memory: %lld bytes\n", (uint64_t)ARRAY_SIZE);
         return 1;
     }
+    uint8_t* arr = allocArray;
 
     size_t codeSize = 0;
     char* sourceCode = ReadFile(argv[1], &codeSize);
     if (sourceCode == NULL)
         goto CLEANUP;
 
-    uint16_t currentCell = 0;
     size_t openLoopIndex = codeSize;
     size_t nestedLevel = 0;
 
@@ -85,21 +86,21 @@ int main(int argc, char** argv)
         switch (sourceCode[i])
         {
         case '+':
-            ++arr[currentCell];
+            ++*arr;
             break;
         case '-':
-            --arr[currentCell];
+            --*arr;
             break;
         case '<':
-            currentCell = currentCell == 0 ? ARRAY_SIZE - 1 : currentCell - 1;
+            --arr;
             break;
         case '>':
-            currentCell = currentCell == ARRAY_SIZE - 1 ? 0 : currentCell + 1;
+            ++arr;
             break;
         case '[':
             ++nestedLevel;
             openLoopIndex = i;
-            if (arr[currentCell] == 0) // move to end of loop
+            if (*arr == 0) // move to end of loop
             {
                 size_t numOfOpenings = 0;
                 for (size_t k = i + 1; k < codeSize; ++k)
@@ -154,11 +155,11 @@ int main(int argc, char** argv)
             openLoopIndex = codeSize;
             break;
         case ',':
-            arr[currentCell] = getchar();
+            *arr = getchar();
             fflush(stdout);
             break;
         case '.':
-            putchar(arr[currentCell]);
+            putchar(*arr);
             break;
         default:
             fprintf(stderr, "\nNon valid char found [%c, %d]\n", sourceCode[i], (int)sourceCode[i]);
@@ -170,5 +171,6 @@ int main(int argc, char** argv)
 
 CLEANUP:
     free(sourceCode);
-    free(arr);
+    free(allocArray);
+
 }
