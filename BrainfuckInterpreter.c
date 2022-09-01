@@ -79,7 +79,6 @@ int main(int argc, char** argv)
     uint16_t currentCell = 0;
     size_t openLoopIndex = codeSize;
     size_t nestedLevel = 0;
-    char inputBuff[2]; // 2 because of '\n'
 
     for (size_t i = 0; i < codeSize; ++i)
     {
@@ -155,12 +154,11 @@ int main(int argc, char** argv)
             openLoopIndex = codeSize;
             break;
         case ',':
-            fgets(inputBuff, sizeof(inputBuff), stdin);
-            arr[currentCell] = inputBuff[0] == '\n' ? 0 : inputBuff[0];
-            fseek(stdin, 0, SEEK_END);
+            arr[currentCell] = getchar();
+            fflush(stdout);
             break;
         case '.':
-            fputc((int)arr[currentCell], stdout);
+            putchar(arr[currentCell]);
             break;
         default:
             fprintf(stderr, "\nNon valid char found [%c, %d]\n", sourceCode[i], (int)sourceCode[i]);
