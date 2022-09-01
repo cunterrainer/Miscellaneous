@@ -257,8 +257,6 @@ int main(int argc, char** argv)
         fprintf(fp, "uint16_t IncrementIndex(size_t index, size_t toAdd)\n{\n\tsize_t tmp = index + toAdd;\n\tif (tmp >= ARRAY_SIZE)\n\t{\n\t\ttmp = ARRAY_SIZE - 1 - index;\n\t\ttoAdd -= tmp;\n\t\treturn toAdd;\n\t}\n\treturn tmp;\n}\n\n");
     if(code.hasDecrement)
         fprintf(fp, "uint16_t DecrementIndex(size_t index, size_t toSub)\n{\n\tint64_t tmp = index - toSub;\n\tif (tmp < 0)\n\t{\n\t\ttoSub -= index;\n\t\treturn ARRAY_SIZE - 1 - toSub;\n\t\t}\n\treturn tmp;\n}\n\n");
-    if(code.hasInput)
-        fprintf(fp, "uint8_t GetUserInput()\n{\n\tchar buff[2];\n\tfgets(buff, sizeof(buff), stdin);\n\tfseek(stdin, 0, SEEK_END);\n\treturn buff[0] == '\\n' ? 0 : buff[0];\n}\n\n");
     fprintf(fp, "int main()\n{\n\tuint8_t* arr = calloc(ARRAY_SIZE, sizeof(uint8_t));\n\tif (arr == NULL)\n\t{\n\t\tfprintf(stderr, \"Failed to allocate memory: %%lld bytes\", (uint64_t)ARRAY_SIZE);\n\t\treturn 1;\n\t}\n\tuint16_t index = 0;\n\n");
     
 
@@ -297,7 +295,7 @@ int main(int argc, char** argv)
             break;
         case ',':
             PrintIndentation(fp, currentIndentation);
-            fprintf(fp, "\tarr[index] = GetUserInput();\n");
+            fprintf(fp, "\tarr[index] = getchar(); fflush(stdout);\n");
             break;
         case '.':
             PrintIndentation(fp, currentIndentation);
