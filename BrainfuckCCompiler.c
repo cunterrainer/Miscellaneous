@@ -128,13 +128,18 @@ size_t ChangeIndex(FILE* fp, char current, char isNot, size_t inRow, const char*
 }
 
 
+typedef enum
+{
+    OptLevel_None, OptLevel_O0, OptLevel_O1, OptLevel_O2, OptLevel_O3, OptLevel_Os, OptLevel_Of, OptLevel_Og
+} OptLevel;
+
 typedef struct
 {
     bool compile;
     bool generateCFile;
     bool endProgram;
-    bool useOptimizations;
     bool linkStatic;
+    OptLevel optLevel;
     char* compileCmd;
 } Input;
 
@@ -146,9 +151,16 @@ void PrintHelpMessage(const char* process)
     puts("       -h: print this help message");
     puts("       -f: generate the .c file when using the compile option");
     puts("       -s: link statically with libc");
-    puts("       -o: compile C code with optimizations");
     puts("       -c: compile the C code instead of generating a .c file (using gcc)");
-    puts("       -clang: compile using clang");
+    puts("       -clang: compile using clang\n");
+    puts("       Optimization options (Will be passed to the C compiler):");
+    puts("       -O0");
+    puts("       -O1");
+    puts("       -O2");
+    puts("       -O3");
+    puts("       -Of (corresponds to -Ofast)");
+    puts("       -Os");
+    puts("       -Og");
 }
 
 
@@ -158,7 +170,7 @@ Input HandleInput(int argc, char** argv)
     in.compile = false;
     in.generateCFile = false;
     in.endProgram = true;
-    in.useOptimizations = false;
+    in.optLevel = OptLevel_None;
     in.linkStatic = false;
     in.compileCmd = NULL;
 
@@ -186,8 +198,20 @@ Input HandleInput(int argc, char** argv)
             in.compile = true;
             in.compileCmd = "clang " OUTPUT_FILE " ";
         }
-        else if (strcmp(argv[i], "-o") == 0 || strcmp(argv[i], "-O") == 0)
-            in.useOptimizations = true;
+        else if (strcmp(argv[i], "-o0") == 0 || strcmp(argv[i], "-O0") == 0)
+            in.optLevel = OptLevel_O0;
+        else if (strcmp(argv[i], "-o1") == 0 || strcmp(argv[i], "-O1") == 0)
+            in.optLevel = OptLevel_O1;
+        else if (strcmp(argv[i], "-o2") == 0 || strcmp(argv[i], "-O2") == 0)
+            in.optLevel = OptLevel_O2;
+        else if (strcmp(argv[i], "-o3") == 0 || strcmp(argv[i], "-O3") == 0)
+            in.optLevel = OptLevel_O3;
+        else if (strcmp(argv[i], "-os") == 0 || strcmp(argv[i], "-Os") == 0)
+            in.optLevel = OptLevel_Os;
+        else if (strcmp(argv[i], "-of") == 0 || strcmp(argv[i], "-Of") == 0)
+            in.optLevel = OptLevel_Of;
+        else if (strcmp(argv[i], "-og") == 0 || strcmp(argv[i], "-Og") == 0)
+            in.optLevel = OptLevel_Og;
         else if (strcmp(argv[i], "-s") == 0 || strcmp(argv[i], "-S") == 0)
             in.linkStatic = true;
         else
@@ -203,7 +227,7 @@ Input HandleInput(int argc, char** argv)
     else
     {
         size_t lenCmd = strlen(in.compileCmd);
-        size_t sizeTotal = lenCmd + 4 + 8 + 1;
+        size_t sizeTotal = lenCmd + 7 + 8 + 1;
         char* buff = calloc(sizeTotal, sizeof(char));
         if (buff == NULL)
         {
@@ -212,11 +236,34 @@ Input HandleInput(int argc, char** argv)
         }
         memcpy(buff, in.compileCmd, lenCmd);
 
-        if (in.useOptimizations)
+
+        switch (in.optLevel)
         {
-            strcpy(buff + lenCmd, "-O2 ");
-            lenCmd += 4;
+        case OptLevel_O0:
+            strcpy(buff + lenCmd, "-O0 "); lenCmd += 4;
+            break;
+        case OptLevel_O1:
+            strcpy(buff + lenCmd, "-O1 "); lenCmd += 4;
+            break;
+        case OptLevel_O2:
+            strcpy(buff + lenCmd, "-O2 "); lenCmd += 4;
+            break;
+        case OptLevel_O3:
+            strcpy(buff + lenCmd, "-O3 "); lenCmd += 4;
+            break;
+        case OptLevel_Os:
+            strcpy(buff + lenCmd, "-Os "); lenCmd += 4;
+            break;
+        case OptLevel_Of:
+            strcpy(buff + lenCmd, "-Ofast "); lenCmd += 7;
+            break;
+        case OptLevel_Og:
+            strcpy(buff + lenCmd, "-Og "); lenCmd += 4;
+            break;
+        case OptLevel_None:
+            break;
         }
+
         if (in.linkStatic)
             strcpy(buff + lenCmd, "-static ");
         in.compileCmd = buff;
@@ -257,7 +304,7 @@ int main(int argc, char** argv)
         fputs("uint16_t IncrementIndex(size_t index, size_t toAdd)\n{\n\tsize_t tmp = index + toAdd;\n\tif (tmp >= ARRAY_SIZE)\n\t{\n\t\ttmp = ARRAY_SIZE - 1 - index;\n\t\ttoAdd -= tmp;\n\t\treturn toAdd;\n\t}\n\treturn tmp;\n}\n\n", fp);
     if(code.hasDecrement)
         fputs("uint16_t DecrementIndex(size_t index, size_t toSub)\n{\n\tint64_t tmp = index - toSub;\n\tif (tmp < 0)\n\t{\n\t\ttoSub -= index;\n\t\treturn ARRAY_SIZE - 1 - toSub;\n\t\t}\n\treturn tmp;\n}\n\n", fp);
-    fputs("int main()\n{\n\tuint8_t* arr = calloc(ARRAY_SIZE, sizeof(uint8_t));\n\tif (arr == NULL)\n\t{\n\t\tfprintf(stderr, \"Failed to allocate memory: %%lld bytes\", (uint64_t)ARRAY_SIZE);\n\t\treturn 1;\n\t}\n\tuint16_t index = 0;\n\n", fp);
+    fputs("int main()\n{\n\tuint8_t* arr = calloc(ARRAY_SIZE, sizeof(uint8_t));\n\tif (arr == NULL)\n\t{\n\t\tfprintf(stderr, \"Failed to allocate memory: %lld bytes\", (uint64_t)ARRAY_SIZE);\n\t\treturn 1;\n\t}\n\tuint16_t index = 0;\n\n", fp);
     
 
     size_t incrementValueInRow = 0;
