@@ -2,7 +2,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
 
 #define ARRAY_SIZE  30000
 #define VALID_CHARS "-+<>[],."
@@ -172,5 +171,4 @@ int main(int argc, char** argv)
 CLEANUP:
     free(sourceCode);
     free(allocArray);
-
 }
