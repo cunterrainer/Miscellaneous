@@ -7,14 +7,13 @@
 #include <time.h>
 
 #define ARRAY_SIZE  30000
-#define VALID_CHARS "-+<>[],."
 #define OUTPUT_FILE "out.c"
 
 bool CharIsValid(char lookFor)
 {
-    // 9 is the size of VALID_CHARS
-    for (size_t i = 0; i < 9; ++i)
-        if (VALID_CHARS[i] == lookFor)
+    static const char* validChars = "-+<>[]"; // . & , removed since they are alreay being checked for
+    for (size_t i = 0; i < 6; ++i)
+        if (validChars[i] == lookFor)
             return true;
     return false;
 }
@@ -22,20 +21,18 @@ bool CharIsValid(char lookFor)
 
 typedef struct
 {
-    char* code;
+    char* sCode;
     size_t size;
-    bool hasInput;
-    bool hasOutput;
+    bool hasIO;
 } FileParse;
 
 
 FileParse ReadFile(const char* path)
 {
     FileParse file;
-    file.code = NULL;
+    file.sCode = NULL;
     file.size = 0;
-    file.hasInput = false;
-    file.hasOutput = false;
+    file.hasIO = false;
 
     FILE* fp = fopen(path, "r");
     if (fp == NULL) {
@@ -43,41 +40,37 @@ FileParse ReadFile(const char* path)
         return file;
     }
 
-    char c;
-    size_t numOfchars = 0;
-    while ((c = (char)getc(fp)) != EOF)
+    fseek(fp, 0L, SEEK_END);
+    const size_t fileSize = ftell(fp);
+    rewind(fp);
+
+    file.sCode = malloc((fileSize + 1) * sizeof(char));
+    if (file.sCode == NULL)
     {
-        if (CharIsValid(c) == true)
-        {
-            if (c == '.')
-                file.hasOutput = true;
-            else if (c == ',')
-                file.hasInput = true;
-            ++numOfchars;
-        }
-    }
-    if (numOfchars == 0)
-    {
+        fprintf(stderr, "Failed to allocate memory for the source code: %lld bytes\n", (uint64_t)(fileSize + 1));
         fclose(fp);
         return file;
     }
+    file.sCode[fileSize] = 0;
 
-    size_t index = 0;
-    file.code = malloc((numOfchars + 1) * sizeof(char));
-    file.code[numOfchars] = 0;
-
-    fseek(fp, 0, SEEK_SET);
+    char c;
+    char* pSourceCode = file.sCode;
     while ((c = (char)fgetc(fp)) != EOF)
     {
-        if (CharIsValid(c) == true)
+        if (c == '.' || c == ',')
         {
-            file.code[index] = c;
-            ++index;
+            ++file.size;
+            file.hasIO = true;
+            *pSourceCode++ = c;
+        }
+        else if (CharIsValid(c))
+        {
+            ++file.size;
+            *pSourceCode++ = c;
         }
     }
 
     fclose(fp);
-    file.size = numOfchars;
     return file;
 }
 
@@ -87,7 +80,6 @@ void PrintIndentation(FILE* fp, size_t level)
     for (size_t i = 0; i < level; ++i)
         fputc('\t', fp);
 }
-
 
 
 size_t ChangeValueAtIndex(FILE* fp, char current, char isNot, size_t inRow, size_t indentLevel)
@@ -125,6 +117,7 @@ typedef enum
     OptLevel_None, OptLevel_O0, OptLevel_O1, OptLevel_O2, OptLevel_O3, OptLevel_Os, OptLevel_Of, OptLevel_Og
 } OptLevel;
 
+
 typedef struct
 {
     bool compile;
@@ -156,7 +149,13 @@ void PrintHelpMessage(const char* process)
 }
 
 
-Input HandleInput(int argc, char** argv)
+bool ArgvCmp(const char* isThisStr, const char* str1, const char* str2)
+{
+    return strcmp(isThisStr, str1) == 0 || strcmp(isThisStr, str2) == 0;
+}
+
+
+Input HandleClArguments(int argc, char** argv)
 {
     Input in;
     in.compile = false;
@@ -170,41 +169,42 @@ Input HandleInput(int argc, char** argv)
         PrintHelpMessage(argv[0]);
         return in;
     }
+
     for (int i = 2; i < argc; ++i)
     {
-        if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "-H") == 0)
+        if (ArgvCmp(argv[i], "-h", "-H"))
         {
             PrintHelpMessage(argv[0]);
             return in;
         }
 
-        if (strcmp(argv[i], "-f") == 0 || strcmp(argv[i], "-F") == 0)
+        if (ArgvCmp(argv[i], "-f", "-F"))
             in.generateCFile = true;
-        else if (strcmp(argv[i], "-c") == 0 || strcmp(argv[i], "-C") == 0)
+        else if (ArgvCmp(argv[i], "-c", "-C"))
         {
             in.compile = true;
             in.compileCmd = "gcc " OUTPUT_FILE " ";
         }
-        else if (strcmp(argv[i], "-clang") == 0 || strcmp(argv[i], "-Clang") == 0)
+        else if (ArgvCmp(argv[i], "-clang", "-Clang"))
         {
             in.compile = true;
             in.compileCmd = "clang " OUTPUT_FILE " ";
         }
-        else if (strcmp(argv[i], "-o0") == 0 || strcmp(argv[i], "-O0") == 0)
+        else if (ArgvCmp(argv[i], "-o0", "-O0"))
             in.optLevel = OptLevel_O0;
-        else if (strcmp(argv[i], "-o1") == 0 || strcmp(argv[i], "-O1") == 0)
+        else if (ArgvCmp(argv[i], "-o1", "-O1"))
             in.optLevel = OptLevel_O1;
-        else if (strcmp(argv[i], "-o2") == 0 || strcmp(argv[i], "-O2") == 0)
+        else if (ArgvCmp(argv[i], "-o2", "-O2"))
             in.optLevel = OptLevel_O2;
-        else if (strcmp(argv[i], "-o3") == 0 || strcmp(argv[i], "-O3") == 0)
+        else if (ArgvCmp(argv[i], "-o3", "-O3"))
             in.optLevel = OptLevel_O3;
-        else if (strcmp(argv[i], "-os") == 0 || strcmp(argv[i], "-Os") == 0)
+        else if (ArgvCmp(argv[i], "-os", "-Os"))
             in.optLevel = OptLevel_Os;
-        else if (strcmp(argv[i], "-of") == 0 || strcmp(argv[i], "-Of") == 0)
+        else if (ArgvCmp(argv[i], "-of", "-Of"))
             in.optLevel = OptLevel_Of;
-        else if (strcmp(argv[i], "-og") == 0 || strcmp(argv[i], "-Og") == 0)
+        else if (ArgvCmp(argv[i], "-og", "-Og"))
             in.optLevel = OptLevel_Og;
-        else if (strcmp(argv[i], "-s") == 0 || strcmp(argv[i], "-S") == 0)
+        else if (ArgvCmp(argv[i], "-s", "-S"))
             in.linkStatic = true;
         else
         {
@@ -213,82 +213,105 @@ Input HandleInput(int argc, char** argv)
             return in;
         }
     }
+    in.endProgram = false;
+    return in;
+}
 
+
+Input CreateCompileCommand(Input in)
+{
+    size_t lenCmd = strlen(in.compileCmd);
+    const size_t sizeTotal = lenCmd + 7 + 8 + 1;
+    // 7 = size of optimization flag, 8 = -static flag, 1 = 0 termination character
+
+    char* buff = calloc(sizeTotal, sizeof(char));
+    if (buff == NULL)
+    {
+        fprintf(stderr, "Failed to allocate memory for compile command: %lld bytes\n", (uint64_t)sizeTotal);
+        in.endProgram = true;
+        return in;
+    }
+    memcpy(buff, in.compileCmd, lenCmd);
+
+
+    switch (in.optLevel)
+    {
+    case OptLevel_O0:
+        strcpy(buff + lenCmd, "-O0 "); lenCmd += 4;
+        break;
+    case OptLevel_O1:
+        strcpy(buff + lenCmd, "-O1 "); lenCmd += 4;
+        break;
+    case OptLevel_O2:
+        strcpy(buff + lenCmd, "-O2 "); lenCmd += 4;
+        break;
+    case OptLevel_O3:
+        strcpy(buff + lenCmd, "-O3 "); lenCmd += 4;
+        break;
+    case OptLevel_Os:
+        strcpy(buff + lenCmd, "-Os "); lenCmd += 4;
+        break;
+    case OptLevel_Of:
+        strcpy(buff + lenCmd, "-Ofast "); lenCmd += 7;
+        break;
+    case OptLevel_Og:
+        strcpy(buff + lenCmd, "-Og "); lenCmd += 4;
+        break;
+    case OptLevel_None:
+        break;
+    }
+
+    if (in.linkStatic)
+        strcpy(buff + lenCmd, "-static ");
+    in.compileCmd = buff;
+    return in;
+}
+
+
+Input HandleInput(int argc, char** argv)
+{
+    Input in = HandleClArguments(argc, argv);
     if (in.compile == false)
         in.generateCFile = true;
     else
-    {
-        size_t lenCmd = strlen(in.compileCmd);
-        size_t sizeTotal = lenCmd + 7 + 8 + 1;
-        char* buff = calloc(sizeTotal, sizeof(char));
-        if (buff == NULL)
-        {
-            fprintf(stderr, "Failed to allocate memory for compile command: %lld bytes\n", (uint64_t)sizeTotal);
-            return in;
-        }
-        memcpy(buff, in.compileCmd, lenCmd);
-
-
-        switch (in.optLevel)
-        {
-        case OptLevel_O0:
-            strcpy(buff + lenCmd, "-O0 "); lenCmd += 4;
-            break;
-        case OptLevel_O1:
-            strcpy(buff + lenCmd, "-O1 "); lenCmd += 4;
-            break;
-        case OptLevel_O2:
-            strcpy(buff + lenCmd, "-O2 "); lenCmd += 4;
-            break;
-        case OptLevel_O3:
-            strcpy(buff + lenCmd, "-O3 "); lenCmd += 4;
-            break;
-        case OptLevel_Os:
-            strcpy(buff + lenCmd, "-Os "); lenCmd += 4;
-            break;
-        case OptLevel_Of:
-            strcpy(buff + lenCmd, "-Ofast "); lenCmd += 7;
-            break;
-        case OptLevel_Og:
-            strcpy(buff + lenCmd, "-Og "); lenCmd += 4;
-            break;
-        case OptLevel_None:
-            break;
-        }
-
-        if (in.linkStatic)
-            strcpy(buff + lenCmd, "-static ");
-        in.compileCmd = buff;
-    }
-    in.endProgram = false;
+        in = CreateCompileCommand(in);
     return in;
+}
+
+
+int CleanUp( char* compileCmd, char* sourceCode, FILE* fp, int returnCode)
+{
+    if (compileCmd != NULL)
+        free(compileCmd);
+    if (sourceCode != NULL)
+        free(sourceCode);
+    if (fp != NULL)
+        fclose(fp);
+    return returnCode;
 }
 
 
 int main(int argc, char** argv)
 {
     const clock_t startTime = clock();
+
     const Input in = HandleInput(argc, argv);
     if (in.endProgram == true)
-        return 1;
+        return CleanUp(in.compileCmd, NULL, NULL, 1);
 
     const FileParse code = ReadFile(argv[1]);
-    if (code.code == NULL)
-    {
-        if(in.compileCmd != NULL)
-            free(in.compileCmd);
-        return 1;
-    }
+    if (code.sCode == NULL)
+        return CleanUp(in.compileCmd, NULL, NULL, 1);
 
     FILE* fp = fopen(OUTPUT_FILE, "w");
     if (fp == NULL)
     {
         fprintf(stderr, "Failed to open output file [%s]\n", OUTPUT_FILE);
-        return 1;
+        return CleanUp(in.compileCmd, code.sCode, NULL, 1);
     }
     puts("-- Starting to generate C code");
 
-    if (code.hasInput || code.hasOutput)
+    if (code.hasIO)
         fputs("#include <stdio.h>\n", fp);
     fputs("#include <stdint.h>\n#include <stdlib.h>\n\n", fp);
     fprintf(fp, "#define ARRAY_SIZE %d\n\n", ARRAY_SIZE);
@@ -306,7 +329,7 @@ int main(int argc, char** argv)
 
     for (size_t i = 0; i < code.size; ++i)
     {
-        const char currentChar = code.code[i];
+        const char currentChar = code.sCode[i];
         incrementValueInRow = ChangeValueAtIndex(fp, currentChar, '+', incrementValueInRow, currentIndentation);
         decrementValueInRow = ChangeValueAtIndex(fp, currentChar, '-', decrementValueInRow, currentIndentation);
         
@@ -381,7 +404,6 @@ int main(int argc, char** argv)
     CLEANUP:
     fputs("\n\tfree(arr);\n\treturn 0;\n}", fp);
     fclose(fp);
-    free(code.code);
 
     if (error == false)
     {
@@ -393,8 +415,7 @@ int main(int argc, char** argv)
             puts("-- Done");
         }
     }
-    if(in.compileCmd != NULL)
-        free(in.compileCmd);
+    CleanUp(in.compileCmd, code.sCode, NULL, 0);
 
     if ((error || in.generateCFile == false) && remove(OUTPUT_FILE) != 0)
         fprintf(stderr, "Failed to delete file [%s] | Error: %s\n", OUTPUT_FILE, strerror(errno));
