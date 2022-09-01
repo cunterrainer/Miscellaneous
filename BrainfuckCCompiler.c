@@ -26,8 +26,6 @@ typedef struct
     size_t size;
     bool hasInput;
     bool hasOutput;
-    bool hasIncrement;
-    bool hasDecrement;
 } FileParse;
 
 
@@ -38,8 +36,6 @@ FileParse ReadFile(const char* path)
     file.size = 0;
     file.hasInput = false;
     file.hasOutput = false;
-    file.hasIncrement = false;
-    file.hasDecrement = false;
 
     FILE* fp = fopen(path, "r");
     if (fp == NULL) {
@@ -49,7 +45,7 @@ FileParse ReadFile(const char* path)
 
     char c;
     size_t numOfchars = 0;
-    while ((c = (char)fgetc(fp)) != EOF)
+    while ((c = (char)getc(fp)) != EOF)
     {
         if (CharIsValid(c) == true)
         {
@@ -57,10 +53,6 @@ FileParse ReadFile(const char* path)
                 file.hasOutput = true;
             else if (c == ',')
                 file.hasInput = true;
-            else if (c == '+')
-                file.hasIncrement = true;
-            else if (c == '-')
-                file.hasDecrement = true;
             ++numOfchars;
         }
     }
@@ -113,14 +105,14 @@ size_t ChangeValueAtIndex(FILE* fp, char current, char isNot, size_t inRow, size
 }
 
 
-size_t ChangeIndex(FILE* fp, char current, char isNot, size_t inRow, const char* function, size_t indentLevel)
+size_t ChangeIndex(FILE* fp, char current, char isNot, size_t inRow, char operator, size_t indentLevel)
 {
     if (current != isNot)
     {
         if (inRow > 0)
         {
             PrintIndentation(fp, indentLevel);
-            fprintf(fp, "\tindex = %s(index, %lld);\n", function, (uint64_t)inRow);
+            fprintf(fp, "\tindex %c= %lld;\n", operator, (uint64_t)inRow);
         }
         return 0;
     }
@@ -300,10 +292,6 @@ int main(int argc, char** argv)
         fputs("#include <stdio.h>\n", fp);
     fputs("#include <stdint.h>\n#include <stdlib.h>\n\n", fp);
     fprintf(fp, "#define ARRAY_SIZE %d\n\n", ARRAY_SIZE);
-    if(code.hasIncrement)
-        fputs("uint16_t IncrementIndex(size_t index, size_t toAdd)\n{\n\tsize_t tmp = index + toAdd;\n\tif (tmp >= ARRAY_SIZE)\n\t{\n\t\ttmp = ARRAY_SIZE - 1 - index;\n\t\ttoAdd -= tmp;\n\t\treturn toAdd;\n\t}\n\treturn tmp;\n}\n\n", fp);
-    if(code.hasDecrement)
-        fputs("uint16_t DecrementIndex(size_t index, size_t toSub)\n{\n\tint64_t tmp = index - toSub;\n\tif (tmp < 0)\n\t{\n\t\ttoSub -= index;\n\t\treturn ARRAY_SIZE - 1 - toSub;\n\t\t}\n\treturn tmp;\n}\n\n", fp);
     fputs("int main()\n{\n\tuint8_t* arr = calloc(ARRAY_SIZE, sizeof(uint8_t));\n\tif (arr == NULL)\n\t{\n\t\tfprintf(stderr, \"Failed to allocate memory: %lld bytes\", (uint64_t)ARRAY_SIZE);\n\t\treturn 1;\n\t}\n\tuint16_t index = 0;\n\n", fp);
     
 
@@ -321,9 +309,9 @@ int main(int argc, char** argv)
         const char currentChar = code.code[i];
         incrementValueInRow = ChangeValueAtIndex(fp, currentChar, '+', incrementValueInRow, currentIndentation);
         decrementValueInRow = ChangeValueAtIndex(fp, currentChar, '-', decrementValueInRow, currentIndentation);
-
-        incrementIndexInRow = ChangeIndex(fp, currentChar, '>', incrementIndexInRow, "IncrementIndex", currentIndentation);
-        decrementIndexInRow = ChangeIndex(fp, currentChar, '<', decrementIndexInRow, "DecrementIndex", currentIndentation);
+        
+        incrementIndexInRow = ChangeIndex(fp, currentChar, '>', incrementIndexInRow, '+', currentIndentation);
+        decrementIndexInRow = ChangeIndex(fp, currentChar, '<', decrementIndexInRow, '-', currentIndentation);
 
 
         switch (currentChar)
@@ -383,8 +371,8 @@ int main(int argc, char** argv)
 
     ChangeValueAtIndex(fp, ' ', '+', incrementValueInRow, currentIndentation);
     ChangeValueAtIndex(fp, ' ', '-', decrementValueInRow, currentIndentation);
-    ChangeIndex(fp, ' ', '>', incrementIndexInRow, "IncrementIndex", currentIndentation);
-    ChangeIndex(fp, ' ', '<', decrementIndexInRow, "DecrementIndex", currentIndentation);
+    ChangeIndex(fp, ' ', '>', incrementIndexInRow, '+', currentIndentation);
+    ChangeIndex(fp, ' ', '<', decrementIndexInRow, '-', currentIndentation);
 
     goto CLEANUP;
     CLEANUP_ERROR:
