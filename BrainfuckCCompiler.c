@@ -340,7 +340,7 @@ int main(int argc, char** argv)
             lastOpenBrackedPos = i + 1;
             fputc('\n', fp);
             PrintIndentation(fp, currentIndentation);
-            fputs("\twhile (arr[index] != 0)\n", fp);
+            fputs("\twhile (arr[index])\n", fp);
             PrintIndentation(fp, currentIndentation);
             fputs("\t{\n", fp);
             ++currentIndentation;
