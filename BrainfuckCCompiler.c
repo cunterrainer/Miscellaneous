@@ -141,14 +141,14 @@ typedef struct
 
 void PrintHelpMessage(const char* process)
 {
-    fputs("Brainfuck Compiler\n", stdout);
+    puts("Brainfuck Compiler");
     printf("Usage: %s [filepath] [options]\n", process);
-    fputs("       -h: print this help message\n", stdout);
-    fputs("       -f: generate the .c file when using the compile option\n", stdout);
-    fputs("       -s: link statically with libc\n", stdout);
-    fputs("       -o: compile C code with optimizations\n", stdout);
-    fputs("       -c: compile the C code instead of generating a .c file (using gcc)\n", stdout);
-    fputs("       -clang: compile using clang\n", stdout);
+    puts("       -h: print this help message");
+    puts("       -f: generate the .c file when using the compile option");
+    puts("       -s: link statically with libc");
+    puts("       -o: compile C code with optimizations");
+    puts("       -c: compile the C code instead of generating a .c file (using gcc)");
+    puts("       -clang: compile using clang");
 }
 
 
@@ -207,7 +207,7 @@ Input HandleInput(int argc, char** argv)
         char* buff = calloc(sizeTotal, sizeof(char));
         if (buff == NULL)
         {
-            fprintf(stderr, "Failed to alloca memory for compile command: %lld bytes\n", (uint64_t)sizeTotal);
+            fprintf(stderr, "Failed to allocate memory for compile command: %lld bytes\n", (uint64_t)sizeTotal);
             return in;
         }
         memcpy(buff, in.compileCmd, lenCmd);
@@ -247,17 +247,17 @@ int main(int argc, char** argv)
         fprintf(stderr, "Failed to open output file [%s]\n", OUTPUT_FILE);
         return 1;
     }
-    fputs("-- Starting to generate C code\n", stdout);
+    puts("-- Starting to generate C code");
 
     if (code.hasInput || code.hasOutput)
-        fprintf(fp, "#include <stdio.h>\n");
-    fprintf(fp, "#include <stdint.h>\n#include <stdlib.h>\n\n");
+        fputs("#include <stdio.h>\n", fp);
+    fputs("#include <stdint.h>\n#include <stdlib.h>\n\n", fp);
     fprintf(fp, "#define ARRAY_SIZE %d\n\n", ARRAY_SIZE);
     if(code.hasIncrement)
-        fprintf(fp, "uint16_t IncrementIndex(size_t index, size_t toAdd)\n{\n\tsize_t tmp = index + toAdd;\n\tif (tmp >= ARRAY_SIZE)\n\t{\n\t\ttmp = ARRAY_SIZE - 1 - index;\n\t\ttoAdd -= tmp;\n\t\treturn toAdd;\n\t}\n\treturn tmp;\n}\n\n");
+        fputs("uint16_t IncrementIndex(size_t index, size_t toAdd)\n{\n\tsize_t tmp = index + toAdd;\n\tif (tmp >= ARRAY_SIZE)\n\t{\n\t\ttmp = ARRAY_SIZE - 1 - index;\n\t\ttoAdd -= tmp;\n\t\treturn toAdd;\n\t}\n\treturn tmp;\n}\n\n", fp);
     if(code.hasDecrement)
-        fprintf(fp, "uint16_t DecrementIndex(size_t index, size_t toSub)\n{\n\tint64_t tmp = index - toSub;\n\tif (tmp < 0)\n\t{\n\t\ttoSub -= index;\n\t\treturn ARRAY_SIZE - 1 - toSub;\n\t\t}\n\treturn tmp;\n}\n\n");
-    fprintf(fp, "int main()\n{\n\tuint8_t* arr = calloc(ARRAY_SIZE, sizeof(uint8_t));\n\tif (arr == NULL)\n\t{\n\t\tfprintf(stderr, \"Failed to allocate memory: %%lld bytes\", (uint64_t)ARRAY_SIZE);\n\t\treturn 1;\n\t}\n\tuint16_t index = 0;\n\n");
+        fputs("uint16_t DecrementIndex(size_t index, size_t toSub)\n{\n\tint64_t tmp = index - toSub;\n\tif (tmp < 0)\n\t{\n\t\ttoSub -= index;\n\t\treturn ARRAY_SIZE - 1 - toSub;\n\t\t}\n\treturn tmp;\n}\n\n", fp);
+    fputs("int main()\n{\n\tuint8_t* arr = calloc(ARRAY_SIZE, sizeof(uint8_t));\n\tif (arr == NULL)\n\t{\n\t\tfprintf(stderr, \"Failed to allocate memory: %%lld bytes\", (uint64_t)ARRAY_SIZE);\n\t\treturn 1;\n\t}\n\tuint16_t index = 0;\n\n", fp);
     
 
     size_t incrementValueInRow = 0;
@@ -295,19 +295,19 @@ int main(int argc, char** argv)
             break;
         case ',':
             PrintIndentation(fp, currentIndentation);
-            fprintf(fp, "\tarr[index] = getchar(); fflush(stdout);\n");
+            fputs("\tarr[index] = getchar(); fflush(stdout);\n", fp);
             break;
         case '.':
             PrintIndentation(fp, currentIndentation);
-            fprintf(fp, "\tfputc((int)arr[index], stdout);\n");
+            fputs("\tputchar(arr[index]);\n", fp);
             break;
         case '[':
             lastOpenBrackedPos = i + 1;
             fputc('\n', fp);
             PrintIndentation(fp, currentIndentation);
-            fprintf(fp, "\twhile (arr[index] != 0)\n");
+            fputs("\twhile (arr[index] != 0)\n", fp);
             PrintIndentation(fp, currentIndentation);
-            fprintf(fp, "\t{\n");
+            fputs("\t{\n", fp);
             ++currentIndentation;
             ++openLoops;
             break;
@@ -319,7 +319,7 @@ int main(int argc, char** argv)
             }
 
             PrintIndentation(fp, currentIndentation);
-            fprintf(fp, "}\n\n");
+            fputs("}\n\n", fp);
             --currentIndentation;
             --openLoops;
             break;
@@ -344,18 +344,18 @@ int main(int argc, char** argv)
     error = true;
 
     CLEANUP:
-    fprintf(fp, "\n\tfree(arr);\n\treturn 0;\n}");
+    fputs("\n\tfree(arr);\n\treturn 0;\n}", fp);
     fclose(fp);
     free(code.code);
 
     if (error == false)
     {
-        fputs("-- Done\n", stdout);
+        puts("-- Done");
         if (in.compile == true)
         {
             printf("-- Compiling: %s\n", in.compileCmd);
             system(in.compileCmd);
-            fputs("-- Done\n", stdout);
+            puts("-- Done");
         }
     }
     if(in.compileCmd != NULL)
