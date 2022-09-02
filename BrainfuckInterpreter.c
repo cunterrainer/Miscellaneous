@@ -66,7 +66,7 @@ char HandleInput(int argc, char** argv)
 
 char* AdvanceToEnd(char* sCode)
 {
-    int32_t openings = 1;
+    size_t openings = 1;
     for (; openings && *sCode; sCode++)
     {
         openings += *sCode == '[';
@@ -84,7 +84,7 @@ char* AdvanceToEnd(char* sCode)
 char* ResetToBegin(char* sCode)
 {
     sCode -= 2;
-    int32_t closings = 1;
+    size_t closings = 1;
     for (; closings && *sCode; sCode--)
     {
         closings += *sCode == ']';
@@ -101,7 +101,7 @@ char* ResetToBegin(char* sCode)
 
 void InterpretCode(char* sCode, uint8_t* arr)
 {
-    size_t index = 0; // using an index instead of pointer since it turned out to be fast
+    uint16_t index = 0; // using an index instead of pointer since it turned out to be faster
 
     while (*sCode)
     {
