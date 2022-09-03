@@ -12,15 +12,17 @@
 #include "ProgressBar.h"
 
 #define FOLDER "files/"
-#define NUM_DOTS  1000000 // ~1MB (1000000)
+#define NUM_DOTS  10000000 // ~1MB (1000000)
+#define ADD_DONE_BUFF 50
 
 
 void CreateFolder(const std::filesystem::path& path)
 {
     if (!std::filesystem::is_directory(path) || !std::filesystem::exists(path))
     {
+        printf("-- Creating folder '%s'", path.u8string().c_str());
         std::filesystem::create_directory(path);
-        printf("-- Created folder '%s'\n", path.u8string().c_str());
+        puts(" | Done");
     }
 }
 
@@ -29,8 +31,9 @@ void DeleteFolder(const std::filesystem::path& path)
 {
     if(std::filesystem::is_directory(path))
     {
+        printf("-- Removing folder '%s'", path.u8string().c_str());
         std::filesystem::remove_all(path);
-        printf("-- Removed folder '%s'\n", path.u8string().c_str());
+        puts(" | Done");
     }
 }
 
@@ -49,7 +52,7 @@ uint64_t GetFreeDiskSpace()
     }
 
     constexpr float gbDenominator = 1024.f*1024.f*1024.f;
-    printf("-- Total space               = %llu bytes | %.2f GB\n", lpTotalNumberOfBytes, lpTotalNumberOfBytes / gbDenominator);
+    printf("\n-- Total space               = %llu bytes | %.2f GB\n", lpTotalNumberOfBytes, lpTotalNumberOfBytes / gbDenominator);
     printf("-- Available space to caller = %llu bytes | %.2f GB\n", lpFreeBytesAvailableToCaller, lpFreeBytesAvailableToCaller / gbDenominator);
     printf("-- Free space on drive       = %llu bytes | %.2f GB\n", lpTotalNumberOfFreeBytes, lpTotalNumberOfFreeBytes / gbDenominator);
     return lpTotalNumberOfFreeBytes;
@@ -66,7 +69,7 @@ char* CreateContent()
 }
 
 
-uint64_t UpdateProgressBar(uint8_t toAdd)
+uint64_t UpdateProgressBar(uint16_t toAdd)
 {
     static uint64_t filesDone = 0;
     static std::mutex mtx;
@@ -76,13 +79,24 @@ uint64_t UpdateProgressBar(uint8_t toAdd)
 }
 
 
+unsigned int FinishedThreads(uint8_t toAdd)
+{
+    static unsigned int finished = 0;
+    static std::mutex mtx;
+    std::scoped_lock<std::mutex> lock(mtx);
+    finished += toAdd;
+    return finished;
+}
+
+
 void WriteFiles(uint64_t filesToCreate, const char* content, unsigned int folderNum)
 {
     const std::string folderPath(FOLDER + std::to_string(folderNum) + '/');
     std::string filePath;
     filePath.reserve(31);
 
-    for(uint64_t i = 0; i < filesToCreate; ++i)
+    uint64_t i = 0;
+    for(; i < filesToCreate; ++i)
     {
         filePath = folderPath;
         filePath += std::to_string(i) + ".txt";
@@ -90,17 +104,20 @@ void WriteFiles(uint64_t filesToCreate, const char* content, unsigned int folder
         FILE* fp = fopen(filePath.c_str(), "w");
         if(fp == NULL) {
             printf("\nThread<%u>: Failed to create file %llu (File pointer was NULL)\n", folderNum, i);
-            return;
+            break;
         }
 
         if(fprintf(fp, content) < 0)
         {
             printf("\nThread<%u>: Failed to write content into file Error: %s\n", folderNum, strerror(errno));
-            return;
+            break;
         }
         fclose(fp);
-        UpdateProgressBar(1);
+        if((i + 1) % ADD_DONE_BUFF == 0)
+            UpdateProgressBar(ADD_DONE_BUFF);
     }
+    UpdateProgressBar(i % ADD_DONE_BUFF);
+    FinishedThreads(1);
 }
 
 
@@ -126,12 +143,14 @@ void CreateAndWrite(const char* content, unsigned int numOfThreads, uint64_t fil
         remainingFiles = 0;
     }
 
-    while(filesDone < filesToCreate)
+    while(filesDone < filesToCreate && FinishedThreads(0) < numOfThreads)
     {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
         filesDone = UpdateProgressBar(0);
         ProgressBar(filesDone, filesToCreate);
     }
+    if(filesDone < filesToCreate)
+        ProgressBar(UpdateProgressBar(0), filesToCreate);
 
     for(std::thread& t : threads)
         t.join();
@@ -156,11 +175,12 @@ int main(int argc, char** argv)
         if(argv2 == "-k" || argv2 == "-K")
         {
             keepFolder = true;
-            puts("-- Keep folder after iterations\n");
+            puts("-- Keep folder after iterations");
         }
     }
-    const std::chrono::time_point startTime = std::chrono::high_resolution_clock::now();
+    DeleteFolder(FOLDER);
 
+    const std::chrono::time_point startTime = std::chrono::high_resolution_clock::now();
     uint64_t freeDiskSpace = GetFreeDiskSpace();
     if(freeDiskSpace == 0)
     {
@@ -171,7 +191,7 @@ int main(int argc, char** argv)
 
     const unsigned int numOfThreads = std::thread::hardware_concurrency();
     const unsigned int threadsToSpawn = numOfThreads - 1;
-    const uint64_t filesToCreate  = freeDiskSpace / (NUM_DOTS * sizeof(char));
+    const uint64_t filesToCreate  = 300;//freeDiskSpace / (NUM_DOTS * sizeof(char));
     const uint64_t filesPerThread = filesToCreate / threadsToSpawn;
     const uint8_t  remainingFiles = filesToCreate % threadsToSpawn;
     printf("\n-- Threads: %u\n-- Threads to spawn: %u\n-- Files to create: %llu\n-- Files per thread: %llu\n-- Remaining: %d\n\n", numOfThreads, threadsToSpawn, filesToCreate, filesPerThread, remainingFiles);
