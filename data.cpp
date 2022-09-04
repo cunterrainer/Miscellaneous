@@ -200,6 +200,7 @@ int main(int argc, char** argv)
     {
         DeleteFolder(FOLDER);
         CreateFolder(FOLDER);
+        printf("-- Iteration %d of %d\n", i, iterations);
         CreateAndWrite(content, threadsToSpawn, filesToCreate, filesPerThread, remainingFiles);
     }
     if(!keepFolder)
