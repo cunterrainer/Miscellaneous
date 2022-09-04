@@ -206,6 +206,11 @@ int main(int argc, char** argv)
         DeleteFolder(FOLDER);
 
     delete[] content;
-    printf("Execution time: %.2lf sec(s)\n", std::chrono::duration<double, std::ratio<1>>(std::chrono::high_resolution_clock::now() - startTime).count());
+
+    const std::chrono::time_point endTime = std::chrono::high_resolution_clock::now();
+    const double timeHou = std::chrono::duration<double, std::ratio<3600>>(endTime - startTime).count();
+    const double timeMin = std::chrono::duration<double, std::ratio<60>>(endTime - startTime).count();
+    const double timeSec = std::chrono::duration<double, std::ratio<1>>(endTime - startTime).count();
+    printf("Execution time: %.2f hours | %.2f min | %.2lf sec\n", timeHou, timeMin, timeSec);
     return 0;
 }
