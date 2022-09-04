@@ -12,7 +12,7 @@
 #include "ProgressBar.h"
 
 #define FOLDER "files/"
-#define NUM_DOTS  10000000 // ~1MB (1000000)
+#define NUM_DOTS  1000000 // ~1MB (1000000)
 #define ADD_DONE_BUFF 50
 
 
@@ -145,7 +145,7 @@ void CreateAndWrite(const char* content, unsigned int numOfThreads, uint64_t fil
 
     while(filesDone < filesToCreate && FinishedThreads(0) < numOfThreads)
     {
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        std::this_thread::sleep_for(std::chrono::milliseconds(400));
         filesDone = UpdateProgressBar(0);
         ProgressBar(filesDone, filesToCreate);
     }
