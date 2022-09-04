@@ -191,7 +191,7 @@ int main(int argc, char** argv)
 
     const unsigned int numOfThreads = std::thread::hardware_concurrency();
     const unsigned int threadsToSpawn = numOfThreads - 1;
-    const uint64_t filesToCreate  = 300;//freeDiskSpace / (NUM_DOTS * sizeof(char));
+    const uint64_t filesToCreate  = freeDiskSpace / (NUM_DOTS * sizeof(char));
     const uint64_t filesPerThread = filesToCreate / threadsToSpawn;
     const uint8_t  remainingFiles = filesToCreate % threadsToSpawn;
     printf("\n-- Threads: %u\n-- Threads to spawn: %u\n-- Files to create: %llu\n-- Files per thread: %llu\n-- Remaining: %d\n\n", numOfThreads, threadsToSpawn, filesToCreate, filesPerThread, remainingFiles);
