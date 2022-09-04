@@ -107,7 +107,7 @@ void WriteFiles(uint64_t filesToCreate, const char* content, unsigned int folder
             break;
         }
 
-        if(fprintf(fp, content) < 0)
+        if(fputs(content, fp) < 0)
         {
             printf("\nThread<%u>: Failed to write content into file Error: %s\n", folderNum, strerror(errno));
             break;
