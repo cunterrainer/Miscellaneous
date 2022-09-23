@@ -53,91 +53,72 @@ public:
     STRING_INLINE string_const_iterator() noexcept : m_Ptr() {}
     STRING_INLINE string_const_iterator(pointer ptr) noexcept : m_Ptr(ptr) {}
 
-    STRING_NODISCARD STRING_INLINE reference operator*() const noexcept { return *m_Ptr; }
+    STRING_NODISCARD STRING_INLINE reference operator*()  const noexcept { return *m_Ptr; }
+    STRING_NODISCARD STRING_INLINE pointer   operator->() const noexcept { return std::pointer_traits<pointer>::pointer_to(**this); }
 
-    STRING_NODISCARD STRING_INLINE pointer operator->() const noexcept {
-        return std::pointer_traits<pointer>::pointer_to(**this);
-    }
-
-    STRING_INLINE string_const_iterator& operator++() noexcept {
+    STRING_INLINE string_const_iterator& operator++() noexcept 
+    {
         ++m_Ptr;
         return *this;
     }
 
-    STRING_INLINE string_const_iterator operator++(int) noexcept {
+    STRING_INLINE string_const_iterator operator++(int) noexcept 
+    {
         string_const_iterator tmp = *this;
         ++*this;
         return tmp;
     }
 
-    STRING_INLINE string_const_iterator& operator--() noexcept {
+    STRING_INLINE string_const_iterator& operator--() noexcept 
+    {
         --m_Ptr;
         return *this;
     }
 
-    STRING_INLINE string_const_iterator operator--(int) noexcept {
+    STRING_INLINE string_const_iterator operator--(int) noexcept 
+    {
         string_const_iterator tmp = *this;
         --*this;
         return tmp;
     }
 
-    STRING_INLINE string_const_iterator& operator+=(const difference_type off) noexcept {
+    STRING_INLINE string_const_iterator& operator+=(const difference_type off) noexcept 
+    {
         m_Ptr += off;
         return *this;
     }
 
-    STRING_NODISCARD STRING_INLINE string_const_iterator operator+(const difference_type off) const noexcept {
+    STRING_NODISCARD STRING_INLINE string_const_iterator operator+(const difference_type off) const noexcept
+    {
         string_const_iterator tmp = *this;
         tmp += off;
         return tmp;
     }
 
-    STRING_INLINE string_const_iterator& operator-=(const difference_type off) noexcept {
+    STRING_INLINE string_const_iterator& operator-=(const difference_type off) noexcept
+    {
         return *this += -off;
     }
 
-    STRING_NODISCARD STRING_INLINE string_const_iterator operator-(const difference_type off) const noexcept {
+    STRING_NODISCARD STRING_INLINE string_const_iterator operator-(const difference_type off) const noexcept 
+    {
         string_const_iterator tmp = *this;
         tmp -= off;
         return tmp;
     }
 
-    STRING_NODISCARD STRING_INLINE difference_type operator-(const string_const_iterator& right) const noexcept {
-        return m_Ptr - right.m_Ptr;
-    }
-
-    STRING_NODISCARD STRING_INLINE reference operator[](const difference_type off) const noexcept {
-        return *(*this + off);
-    }
-
-    STRING_NODISCARD STRING_INLINE bool operator==(const string_const_iterator& right) const noexcept {
-        return m_Ptr == right.m_Ptr;
-    }
-
-    STRING_NODISCARD bool operator!=(const string_const_iterator& right) const noexcept {
-        return !(*this == right);
-    }
-
-    STRING_NODISCARD bool operator<(const string_const_iterator& right) const noexcept {
-        return m_Ptr < right.m_Ptr;
-    }
-
-    STRING_NODISCARD bool operator>(const string_const_iterator& right) const noexcept {
-        return right < *this;
-    }
-
-    STRING_NODISCARD bool operator<=(const string_const_iterator& right) const noexcept {
-        return !(right < *this);
-    }
-
-    STRING_NODISCARD bool operator>=(const string_const_iterator& right) const noexcept {
-        return !(*this < right);
-    }
+    STRING_NODISCARD STRING_INLINE difference_type operator- (const string_const_iterator& right) const noexcept { return m_Ptr - right.m_Ptr;  }
+    STRING_NODISCARD STRING_INLINE reference       operator[](const difference_type off)          const noexcept { return *(*this + off);       }
+    STRING_NODISCARD STRING_INLINE bool            operator==(const string_const_iterator& right) const noexcept { return m_Ptr == right.m_Ptr; }
+    STRING_NODISCARD bool operator!=(const string_const_iterator& right) const noexcept { return !(*this == right);   }
+    STRING_NODISCARD bool operator< (const string_const_iterator& right) const noexcept { return m_Ptr < right.m_Ptr; }
+    STRING_NODISCARD bool operator> (const string_const_iterator& right) const noexcept { return right < *this;       }
+    STRING_NODISCARD bool operator<=(const string_const_iterator& right) const noexcept { return !(right < *this);    }
+    STRING_NODISCARD bool operator>=(const string_const_iterator& right) const noexcept { return !(*this < right);    }
 };
 
 template <class types>
-STRING_NODISCARD STRING_INLINE string_const_iterator<types> operator+(
-    typename string_const_iterator<types>::difference_type off, string_const_iterator<types> next) noexcept 
+STRING_NODISCARD STRING_INLINE string_const_iterator<types> operator+(typename string_const_iterator<types>::difference_type off, string_const_iterator<types> next) noexcept 
 {
     next += off;
     return next;
@@ -158,61 +139,65 @@ public:
 
     using mybase::mybase; // using constructors
 
-    STRING_NODISCARD STRING_INLINE reference operator*() const noexcept {
-        return const_cast<reference>(mybase::operator*());
-    }
+    STRING_NODISCARD STRING_INLINE reference operator*()  const noexcept { return const_cast<reference>(mybase::operator*());       }
+    STRING_NODISCARD STRING_INLINE pointer   operator->() const noexcept { return std::pointer_traits<pointer>::pointer_to(**this); }
 
-    STRING_NODISCARD STRING_INLINE pointer operator->() const noexcept {
-        return std::pointer_traits<pointer>::pointer_to(**this);
-    }
-
-    STRING_INLINE string_iterator& operator++() noexcept {
+    STRING_INLINE string_iterator& operator++() noexcept 
+    {
         mybase::operator++();
         return *this;
     }
 
-    STRING_INLINE string_iterator operator++(int) noexcept {
+    STRING_INLINE string_iterator operator++(int) noexcept 
+    {
         string_iterator tmp = *this;
         mybase::operator++();
         return tmp;
     }
 
-    STRING_INLINE string_iterator& operator--() noexcept {
+    STRING_INLINE string_iterator& operator--() noexcept 
+    {
         mybase::operator--();
         return *this;
     }
 
-    STRING_INLINE string_iterator operator--(int) noexcept {
+    STRING_INLINE string_iterator operator--(int) noexcept 
+    {
         string_iterator tmp = *this;
         mybase::operator--();
         return tmp;
     }
 
-    STRING_INLINE string_iterator& operator+=(const difference_type off) noexcept {
+    STRING_INLINE string_iterator& operator+=(const difference_type off) noexcept 
+    {
         mybase::operator += (off);
         return *this;
     }
 
-    STRING_NODISCARD STRING_INLINE string_iterator operator+(const difference_type off) const noexcept {
+    STRING_NODISCARD STRING_INLINE string_iterator operator+(const difference_type off) const noexcept 
+    {
         string_iterator tmp = *this;
         tmp += off;
         return tmp;
     }
 
-    STRING_INLINE string_iterator& operator-=(const difference_type off) noexcept {
+    STRING_INLINE string_iterator& operator-=(const difference_type off) noexcept
+    {
         mybase::operator -= (off);
         return *this;
     }
 
     using mybase::operator-;
 
-    STRING_NODISCARD STRING_INLINE string_iterator operator-(const difference_type off) const noexcept {
+    STRING_NODISCARD STRING_INLINE string_iterator operator-(const difference_type off) const noexcept 
+    {
         string_iterator tmp = *this;
         tmp -= off;
         return tmp;
     }
 
-    STRING_NODISCARD STRING_INLINE reference operator[](const difference_type off) const noexcept {
+    STRING_NODISCARD STRING_INLINE reference operator[](const difference_type off) const noexcept
+    {
         return const_cast<reference>(mybase::operator[](off));
     }
 };
