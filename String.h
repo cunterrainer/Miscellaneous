@@ -447,57 +447,20 @@ public:
 
 
     // iterators -- done -- C++17
-    STRING_NODISCARD STRING_INLINE iterator begin() noexcept {
-        return iterator(m_Str);
-    }
+    STRING_NODISCARD STRING_INLINE iterator       begin() noexcept       { return iterator(m_Str);                                              }
+    STRING_NODISCARD STRING_INLINE const_iterator begin() const noexcept { return const_iterator(m_Str);                                        }
+    STRING_NODISCARD STRING_INLINE iterator       end()   noexcept       { return iterator(m_Str + static_cast<difference_type>(m_Size));       }
+    STRING_NODISCARD STRING_INLINE const_iterator end()   const noexcept { return const_iterator(m_Str + static_cast<difference_type>(m_Size)); }
 
-    STRING_NODISCARD STRING_INLINE const_iterator begin() const noexcept {
-        return const_iterator(m_Str);
-    }
+    STRING_NODISCARD STRING_INLINE reverse_iterator       rbegin()  noexcept       { return reverse_iterator(end());         }
+    STRING_NODISCARD STRING_INLINE const_reverse_iterator rbegin()  const noexcept { return const_reverse_iterator(end());   }
+    STRING_NODISCARD STRING_INLINE reverse_iterator       rend()    noexcept       { return reverse_iterator(begin());       }
+    STRING_NODISCARD STRING_INLINE const_reverse_iterator rend()    const noexcept { return const_reverse_iterator(begin()); }
 
-    STRING_NODISCARD STRING_INLINE iterator end() noexcept {
-        return iterator(m_Str + static_cast<difference_type>(m_Size));
-    }
-
-    STRING_NODISCARD STRING_INLINE const_iterator end() const noexcept {
-        return const_iterator(m_Str + static_cast<difference_type>(m_Size));
-    }
-
-
-    // iterators : reverse
-    STRING_NODISCARD STRING_INLINE reverse_iterator rbegin() noexcept {
-        return reverse_iterator(end());
-    }
-
-    STRING_NODISCARD STRING_INLINE const_reverse_iterator rbegin() const noexcept {
-        return const_reverse_iterator(end());
-    }
-
-    STRING_NODISCARD STRING_INLINE reverse_iterator rend() noexcept {
-        return reverse_iterator(begin());
-    }
-
-    STRING_NODISCARD STRING_INLINE const_reverse_iterator rend() const noexcept {
-        return const_reverse_iterator(begin());
-    }
-
-
-    // iterators : const
-    STRING_NODISCARD STRING_INLINE const_iterator cbegin() const noexcept {
-        return begin();
-    }
-
-    STRING_NODISCARD STRING_INLINE const_iterator cend() const noexcept {
-        return end();
-    }
-
-    STRING_NODISCARD STRING_INLINE const_reverse_iterator crbegin() const noexcept {
-        return rbegin();
-    }
-
-    STRING_NODISCARD STRING_INLINE const_reverse_iterator crend() const noexcept {
-        return rend();
-    }
+    STRING_NODISCARD STRING_INLINE const_iterator         cbegin()  const noexcept { return begin();  }
+    STRING_NODISCARD STRING_INLINE const_iterator         cend()    const noexcept { return end();    }
+    STRING_NODISCARD STRING_INLINE const_reverse_iterator crbegin() const noexcept { return rbegin(); }
+    STRING_NODISCARD STRING_INLINE const_reverse_iterator crend()   const noexcept { return rend();   }
 
 
 
