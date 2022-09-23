@@ -7,6 +7,7 @@
 #include <type_traits>
 #include <stdexcept>
 #include <iterator>
+#include <utility>
 #include <memory>
 
 #define STRING_INLINE inline
@@ -351,27 +352,20 @@ private:
     }
 
 
-    STRING_INLINE void AssignFromBasicString(const basic_string& other)
+    STRING_INLINE basic_string& Assign(const_pointer str, size_type strlen)
     {
-        ReallocIfNeeded(other.capacity(), false);
-        std::memcpy(m_Str, other.c_str(), other.size());
-        m_Size = other.size();
-    }
-
-
-    STRING_INLINE void Assign(const_pointer str, size_type strlen)
-    {
-        if (strlen == npos) return;
+        if (strlen == npos) return *this;
 
         ReallocIfNeeded(strlen, false);
         std::memcpy(m_Str, str, strlen);
         std::memset(&m_Str[strlen], 0, m_Capacity - strlen);
         m_Size = strlen;
+        return *this;
     }
 
 
     template <class StrType>
-    STRING_INLINE void Assign(const StrType& str)
+    STRING_INLINE basic_string& Assign(const StrType& str)
     {
         constexpr bool is_same_basic_string  = std::is_same_v<StrType, basic_string>;
         constexpr bool is_same_const_pointer = std::is_same_v<StrType, const_pointer>;
@@ -381,18 +375,35 @@ private:
             Assign(str.c_str(), str.size());
         else if constexpr (is_same_const_pointer)
             Assign(str, STR_LN(str));
+        return *this;
+    }
+
+
+    STRING_INLINE void MoveFromBasicString(basic_string&& other, bool move_allocator = true) noexcept
+    {
+        if (move_allocator)
+            m_Alloc = other.get_allocator();
+
+        m_Str      = other.m_Str;
+        m_Size     = other.m_Size;
+        m_Capacity = other.m_Capacity;
+
+        other.m_Str = nullptr;
+        other.m_Size = 0;
+        other.m_Capacity = 0;
     }
 public:
     // Member functions
     // constructors -- done -- C++17
-    basic_string() noexcept(noexcept(Alloc())) : basic_string(alloc()) {}
+    basic_string() noexcept(noexcept(Alloc())) : basic_string(Alloc()) {}
     explicit basic_string(const Alloc& alloc) noexcept : m_Alloc(alloc) {}
     basic_string(size_type count, value_type ch, const Alloc& alloc = Alloc()) : m_Alloc(alloc) { insert(0, count, ch); }
 
     basic_string(const basic_string& other, size_type pos, const Alloc& alloc = Alloc()) : basic_string(other, pos, npos, alloc) {}
     basic_string(const basic_string& other, size_type pos, size_type count, const Alloc& alloc = Alloc()) : m_Alloc(alloc)
     {
-        const size_type strlen = count == npos || count > other.size() ? other.size() : count;
+        if (pos > other.size()) THROW_OUT_OF_RANGE;
+        const size_type strlen = count == npos || count + pos > other.size() ? other.size() - pos : count;
         Assign(&other.c_str()[pos], strlen);
     }
 
@@ -403,10 +414,10 @@ public:
     basic_string(InputIt first, InputIt last, const Alloc& alloc = Alloc()) : m_Alloc(alloc) { AssignFromInterator(first, last); }
 
     basic_string(const basic_string& other) : basic_string(other, other.get_allocator()) {}
-    basic_string(const basic_string& other, const Alloc& alloc) : m_Alloc(alloc) { AssignFromBasicString(other); }
+    basic_string(const basic_string& other, const Alloc& alloc) : m_Alloc(alloc) { Assign(other); }
 
     basic_string(basic_string&& other) noexcept : basic_string(other, other.get_allocator()) {}
-    basic_string(basic_string&& other, const Alloc& alloc) : m_Alloc(alloc), m_Str(other.m_Str), m_Size(other.m_Size), m_Capacity(other.m_Capacity) {}
+    basic_string(basic_string&& other, const Alloc& alloc) : m_Alloc(alloc) { MoveFromBasicString(other, false); }
 
     basic_string(std::initializer_list<value_type> ilist, const Alloc& alloc = Alloc()) : basic_string(ilist.begin(), ilist.end(), alloc) {}
 
@@ -414,11 +425,28 @@ public:
     explicit basic_string(const StringViewLike& t, const Alloc& alloc = Alloc()) : basic_string(t.data(), t.size(), alloc) {}
 
     template <class StringViewLike, std::enable_if_t<std::is_convertible_v<const StringViewLike&, std::basic_string_view<Elem, Traits>>, bool> = true>
-    basic_string(const StringViewLike& t, size_type pos, size_type n, const Alloc& alloc = Alloc()) : basic_string(t.substr(pos, n), alloc) {}
+    basic_string(const StringViewLike& t, size_type pos, size_type n, const Alloc& alloc = Alloc()) : basic_string(t.substr(pos, n), alloc) { if (pos > t.size()) THROW_OUT_OF_RANGE; }
 
 
-    STRING_INLINE basic_string& assign(const_pointer str)       { Assign(str); return *this; }
-    STRING_INLINE basic_string& assign(const basic_string& str) { Assign(str); return *this; }
+    // assignment operators
+    basic_string& operator=(const basic_string& str) { return Assign(str); }
+    basic_string& operator=(basic_string&& str) noexcept
+    {
+        if constexpr (alloc_traits::propagate_on_container_move_assignment::value)
+            MoveFromBasicString(std::forward<basic_string>(str));
+        else if constexpr (!alloc_traits::propagate_on_container_move_assignment::value)
+            Assign(str);
+        return *this;
+    }
+
+    basic_string& operator=(const_pointer s)
+    {
+        return Assign(s);
+    }
+
+
+    STRING_INLINE basic_string& assign(const_pointer str)       { return Assign(str); }
+    STRING_INLINE basic_string& assign(const basic_string& str) { return Assign(str); }
     STRING_INLINE ~basic_string() noexcept { Deallocate(); }
     STRING_INLINE allocator_type get_allocator() const { return m_Alloc; }
 
@@ -442,7 +470,7 @@ public:
     STRING_NODISCARD STRING_INLINE bool      empty()    const noexcept { return m_Size == 0;     }
     STRING_NODISCARD STRING_INLINE size_type size()     const noexcept { return m_Size;          }
     STRING_NODISCARD STRING_INLINE size_type length()   const noexcept { return m_Size;          }
-    STRING_NODISCARD constexpr     size_type max_size() const noexcept { return npos - 1;        }
+    STRING_NODISCARD constexpr     size_type max_size() const noexcept { return npos ;        }
     STRING_NODISCARD STRING_INLINE size_type capacity() const noexcept { return m_Capacity;      }
                      STRING_INLINE void shrink_to_fit()                { Realloc(m_Size, false); }
     STRING_INLINE void reserve(size_type new_cap = 0)
