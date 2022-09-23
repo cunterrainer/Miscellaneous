@@ -5,14 +5,20 @@
 #include <cstring>
 #include <string_view>
 #include <type_traits>
+#include <stdexcept>
 #include <iterator>
 #include <memory>
 
 #define STRING_INLINE inline
 #define STRING_NODISCARD [[nodiscard]]
-#define THROW_OUT_OF_RANGE throw std::out_of_range("basic_string subscription out of range");
-#define CHECK_POS_LESS_EQ(pos) if (pos > m_Size)  THROW_OUT_OF_RANGE
+
+#define THROW_OUT_OF_RANGE throw std::out_of_range("basic_string subscription out of range")
+#define THROW_LENGTH_ERROR throw std::length_error("Exceeded basic_string length limit")
+
+#define CHECK_POS_LESS_EQ(pos) if (pos > m_Size)             THROW_OUT_OF_RANGE
 #define CHECK_IN_BOUNDS(pos)   if (pos >= m_Size || empty()) THROW_OUT_OF_RANGE
+#define CHECK_LENGTH_LIMIT(s)  if (s > max_size())           THROW_LENGTH_ERROR
+
 #define STR_LN(str) strnlen(str, npos)
 
 
@@ -380,25 +386,27 @@ public:
     STRING_INLINE reference       operator[](size_type pos)       { return at(pos); }
     STRING_INLINE const_reference operator[](size_type pos) const { return at(pos); }
     STRING_INLINE reference       front()                         { return at(0); }
-    STRING_INLINE const_reference front()     const               { return at(0); }
+    STRING_INLINE const_reference front() const                   { return at(0); }
     STRING_INLINE reference       back()                          { return at(size() - 1); }
-    STRING_INLINE const_reference back()      const               { return at(size() - 1); }
-    STRING_INLINE pointer         data()      noexcept            { return m_Str; }
-    STRING_INLINE const_pointer   data()      const noexcept      { return m_Str; }
-    STRING_INLINE const_pointer   c_str()     const noexcept      { return m_Str; }
+    STRING_INLINE const_reference back()  const                   { return at(size() - 1); }
+    STRING_INLINE pointer         data()  noexcept                { return m_Str; }
+    STRING_INLINE const_pointer   data()  const noexcept          { return m_Str; }
+    STRING_INLINE const_pointer   c_str() const noexcept          { return m_Str; }
     STRING_INLINE operator std::basic_string_view<elem, traits>() const noexcept { return { m_Str, m_Size }; }
 
 
-    // capacity -- done
-    STRING_INLINE bool      empty()    const noexcept { return m_Size == 0;     }
-    STRING_INLINE size_type size()     const noexcept { return m_Size;          }
-    STRING_INLINE size_type length()   const noexcept { return m_Size;          }
-    constexpr     size_type max_size() const noexcept { return npos - 1;        }
-    STRING_INLINE size_type capacity() const noexcept { return m_Capacity;      }
-    STRING_INLINE void      shrink_to_fit()           { Realloc(m_Size, false); }
-    STRING_INLINE void      reserve(size_type new_cap)
+    // capacity -- done -- C++17
+    STRING_NODISCARD STRING_INLINE bool      empty()    const noexcept { return m_Size == 0;     }
+    STRING_NODISCARD STRING_INLINE size_type size()     const noexcept { return m_Size;          }
+    STRING_NODISCARD STRING_INLINE size_type length()   const noexcept { return m_Size;          }
+    STRING_NODISCARD constexpr     size_type max_size() const noexcept { return npos - 1;        }
+    STRING_NODISCARD STRING_INLINE size_type capacity() const noexcept { return m_Capacity;      }
+                     STRING_INLINE void shrink_to_fit()                { Realloc(m_Size, false); }
+    STRING_INLINE void reserve(size_type new_cap = 0)
     {
-        if (new_cap <= m_Size) 
+        CHECK_LENGTH_LIMIT(new_cap);
+        if (new_cap == m_Capacity) return;
+        if (new_cap <= m_Size)
             shrink_to_fit();
         Realloc(new_cap, false);
     }
@@ -477,3 +485,10 @@ public:
 
 
 using string = basic_string<char>;
+
+/*
+    Member types -- done -- C++17
+    element access -- done -- C++17
+    iterators -- done -- C++17
+    capacity -- done -- C++17
+*/
