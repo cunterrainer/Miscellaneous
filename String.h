@@ -10,7 +10,9 @@
 
 #define STRING_INLINE inline
 #define STRING_NODISCARD [[nodiscard]]
-#define CHECK_POS_LESS_EQ(pos) if (pos > m_Size) throw std::out_of_range("basic_string subscription out of range");
+#define THROW_OUT_OF_RANGE throw std::out_of_range("basic_string subscription out of range");
+#define CHECK_POS_LESS_EQ(pos) if (pos > m_Size)  THROW_OUT_OF_RANGE
+#define CHECK_IN_BOUNDS(pos)   if (pos >= m_Size || empty()) THROW_OUT_OF_RANGE
 #define STR_LN(str) strnlen(str, npos)
 
 
@@ -210,15 +212,15 @@ STRING_NODISCARD STRING_INLINE string_iterator<types> operator+(typename string_
 }
 
 
-template <class Ty, class traits = std::char_traits<Ty>, class alloc = std::allocator<Ty>>
+template <class elem, class traits = std::char_traits<elem>, class alloc = std::allocator<elem>>
 class basic_string
 {
 private:
     using alloc_traits = std::allocator_traits<alloc>;
 
-    using scary_val = string_val<string_iter_types<Ty, typename alloc_traits::size_type,
+    using scary_val = string_val<string_iter_types<elem, typename alloc_traits::size_type,
         typename alloc_traits::difference_type, typename alloc_traits::pointer,
-        typename alloc_traits::const_pointer, Ty&, const Ty&>>;
+        typename alloc_traits::const_pointer, elem&, const elem&>>;
 public:
     using traits_type     = traits;
     using allocator_type  = alloc;
@@ -227,7 +229,7 @@ public:
     using pointer         = typename alloc_traits::pointer;
     using const_pointer   = typename alloc_traits::const_pointer;
 
-    using value_type      = Ty;
+    using value_type      = elem;
     using reference       = value_type&;
     using const_reference = const value_type&;
 
@@ -372,18 +374,19 @@ public:
     STRING_INLINE allocator_type get_allocator() const { return m_Alloc; }
 
 
-    // element access -- done
-    STRING_INLINE reference       at(size_type pos)               { CheckPos(pos); return m_Str[pos]; }
-    STRING_INLINE const_reference at(size_type pos) const         { CheckPos(pos); return m_Str[pos]; }
+    // element access -- done -- C++17
+    STRING_INLINE reference       at(size_type pos)               { CHECK_IN_BOUNDS(pos); return m_Str[pos]; }
+    STRING_INLINE const_reference at(size_type pos) const         { CHECK_IN_BOUNDS(pos); return m_Str[pos]; }
     STRING_INLINE reference       operator[](size_type pos)       { return at(pos); }
     STRING_INLINE const_reference operator[](size_type pos) const { return at(pos); }
     STRING_INLINE reference       front()                         { return at(0); }
     STRING_INLINE const_reference front()     const               { return at(0); }
     STRING_INLINE reference       back()                          { return at(size() - 1); }
     STRING_INLINE const_reference back()      const               { return at(size() - 1); }
+    STRING_INLINE pointer         data()      noexcept            { return m_Str; }
     STRING_INLINE const_pointer   data()      const noexcept      { return m_Str; }
     STRING_INLINE const_pointer   c_str()     const noexcept      { return m_Str; }
-    STRING_INLINE operator std::string_view() const noexcept      { return { m_Str, m_Size }; }
+    STRING_INLINE operator std::basic_string_view<elem, traits>() const noexcept { return { m_Str, m_Size }; }
 
 
     // capacity -- done
@@ -443,7 +446,7 @@ public:
     STRING_INLINE basic_string& append(const basic_string& str) { Append(str.c_str()); return *this; }
 
 
-    // iterators -- done
+    // iterators -- done -- C++17
     STRING_NODISCARD STRING_INLINE iterator begin() noexcept {
         return iterator(m_Str);
     }
