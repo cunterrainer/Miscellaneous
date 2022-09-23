@@ -284,10 +284,10 @@ private:
     }
 
 
-    STRING_INLINE void ReallocIfNeeded(size_type strlen)
+    STRING_INLINE void ReallocIfNeeded(size_type strlen, bool multiply_capacity = true)
     {
         if (strlen > m_Capacity)
-            Realloc(strlen);
+            Realloc(strlen, multiply_capacity);
     }
 
 
@@ -334,11 +334,36 @@ private:
     }
 
 
+    template <class InputIt>
+    STRING_INLINE void AssignFromInterator(InputIt first, InputIt last)
+    {
+        const std::iterator_traits<InputIt>::difference_type dist = std::distance(first, last);
+        ReallocIfNeeded(dist, false);
+
+        m_Size = dist;
+        size_type i = 0;
+        while (first != last)
+        {
+            m_Str[i] = *first;
+            ++first;
+            ++i;
+        }
+    }
+
+
+    STRING_INLINE void AssignFromBasicString(const basic_string& other)
+    {
+        ReallocIfNeeded(other.capacity(), false);
+        std::memcpy(m_Str, other.c_str(), other.size());
+        m_Size = other.size();
+    }
+
+
     STRING_INLINE void Assign(const_pointer str, size_type strlen)
     {
         if (strlen == npos) return;
 
-        ReallocIfNeeded(strlen);
+        ReallocIfNeeded(strlen, false);
         std::memcpy(m_Str, str, strlen);
         std::memset(&m_Str[strlen], 0, m_Capacity - strlen);
         m_Size = strlen;
@@ -359,13 +384,10 @@ private:
     }
 public:
     // Member functions
+    // constructors -- done -- C++17
     basic_string() noexcept(noexcept(Alloc())) : basic_string(alloc()) {}
     explicit basic_string(const Alloc& alloc) noexcept : m_Alloc(alloc) {}
-
-    basic_string(size_type count, value_type ch, const Alloc& alloc = Alloc()) : m_Alloc(alloc)
-    {
-        insert(0, count, ch);
-    }
+    basic_string(size_type count, value_type ch, const Alloc& alloc = Alloc()) : m_Alloc(alloc) { insert(0, count, ch); }
 
     basic_string(const basic_string& other, size_type pos, const Alloc& alloc = Alloc()) : basic_string(other, pos, npos, alloc) {}
     basic_string(const basic_string& other, size_type pos, size_type count, const Alloc& alloc = Alloc()) : m_Alloc(alloc)
@@ -374,52 +396,22 @@ public:
         Assign(&other.c_str()[pos], strlen);
     }
 
-    basic_string(const_pointer s, size_type count, const Alloc& alloc = Alloc()) : m_Alloc(alloc)
-    {
-        Assign(s, count);
-    }
-
-
-    basic_string(const_pointer s, const Alloc& alloc = Alloc()) : m_Alloc(alloc)
-    {
-        Assign(s);
-    }
-
+    basic_string(const_pointer s, size_type count, const Alloc& alloc = Alloc()) : m_Alloc(alloc) { Assign(s, count); }
+    basic_string(const_pointer s, const Alloc& alloc = Alloc()) : m_Alloc(alloc) { Assign(s); }
 
     template <class InputIt>
-    basic_string(InputIt first, InputIt last, const Alloc& alloc = Alloc()) : m_Alloc(alloc)
-    {
-        const std::iterator_traits<InputIt>::difference_type dist = std::distance(first, last);
-        Realloc(dist);
-        m_Size = dist;
-        size_type i = 0;
-        while (first != last)
-        {
-            m_Str[i] = *first;
-            ++first;
-            ++i;
-        }
-    }
-
+    basic_string(InputIt first, InputIt last, const Alloc& alloc = Alloc()) : m_Alloc(alloc) { AssignFromInterator(first, last); }
 
     basic_string(const basic_string& other) : basic_string(other, other.get_allocator()) {}
-    basic_string(const basic_string& other, const Alloc& alloc) : m_Alloc(alloc)
-    {
-        Realloc(other.capacity(), false);
-        std::memcpy(m_Str, other.c_str(), other.size());
-        m_Size = other.size();
-    }
-
+    basic_string(const basic_string& other, const Alloc& alloc) : m_Alloc(alloc) { AssignFromBasicString(other); }
 
     basic_string(basic_string&& other) noexcept : basic_string(other, other.get_allocator()) {}
     basic_string(basic_string&& other, const Alloc& alloc) : m_Alloc(alloc), m_Str(other.m_Str), m_Size(other.m_Size), m_Capacity(other.m_Capacity) {}
-
 
     basic_string(std::initializer_list<value_type> ilist, const Alloc& alloc = Alloc()) : basic_string(ilist.begin(), ilist.end(), alloc) {}
 
     template <class StringViewLike, std::enable_if_t<std::is_convertible_v<const StringViewLike&, std::basic_string_view<Elem, Traits>>, bool> = true>
     explicit basic_string(const StringViewLike& t, const Alloc& alloc = Alloc()) : basic_string(t.data(), t.size(), alloc) {}
-
 
     template <class StringViewLike, std::enable_if_t<std::is_convertible_v<const StringViewLike&, std::basic_string_view<Elem, Traits>>, bool> = true>
     basic_string(const StringViewLike& t, size_type pos, size_type n, const Alloc& alloc = Alloc()) : basic_string(t.substr(pos, n), alloc) {}
