@@ -5,25 +5,252 @@
 #include <cstring>
 #include <string_view>
 #include <type_traits>
+#include <iterator>
+#include <memory>
 
 #define STRING_INLINE inline
-#define CHECK_POS_LESS_EQ(pos) assert(pos <= m_Size && "String subscription out of range")
+#define STRING_NODISCARD [[nodiscard]]
+#define CHECK_POS_LESS_EQ(pos) if (pos > m_Size) throw std::out_of_range("basic_string subscription out of range");
 #define STR_LN(str) strnlen(str, npos)
 
 
-template <class Ty, class alloc = std::allocator<Ty>>
-class basic_string
+template <class _value_type, class _size_type, class _difference_type, class _pointer,
+          class _const_pointer, class _reference, class _const_reference>
+struct string_iter_types {
+    using value_type      = _value_type;
+    using size_type       = _size_type;
+    using difference_type = _difference_type;
+    using pointer         = _pointer;
+    using const_pointer   = _const_pointer;
+};
+
+
+template <class val_types>
+struct string_val
+{
+    using value_type      = typename val_types::value_type;
+    using size_type       = typename val_types::size_type;
+    using difference_type = typename val_types::difference_type;
+    using pointer         = typename val_types::pointer;
+    using const_pointer   = typename val_types::const_pointer;
+    using reference       = value_type&;
+    using const_reference = const value_type&;
+};
+
+
+template <class types>
+class string_const_iterator
 {
 public:
-    using allocator_type = alloc;
-    using alloc_traits   = std::allocator_traits<alloc>;
-    using size_type      = typename alloc_traits::size_type;
-    using pointer        = typename alloc_traits::pointer;
-    using const_pointer  = typename alloc_traits::const_pointer;
+    using iterator_category = std::random_access_iterator_tag;
+    using value_type        = typename types::value_type;
+    using difference_type   = typename types::difference_type;
+    using pointer           = typename types::const_pointer;
+    using reference         = const value_type&;
+
+    pointer m_Ptr;
+public:
+    STRING_INLINE string_const_iterator() noexcept : m_Ptr() {}
+    STRING_INLINE string_const_iterator(pointer ptr) noexcept : m_Ptr(ptr) {}
+
+    STRING_NODISCARD STRING_INLINE reference operator*() const noexcept { return *m_Ptr; }
+
+    STRING_NODISCARD STRING_INLINE pointer operator->() const noexcept {
+        return std::pointer_traits<pointer>::pointer_to(**this);
+    }
+
+    STRING_INLINE string_const_iterator& operator++() noexcept {
+        ++m_Ptr;
+        return *this;
+    }
+
+    STRING_INLINE string_const_iterator operator++(int) noexcept {
+        string_const_iterator tmp = *this;
+        ++*this;
+        return tmp;
+    }
+
+    STRING_INLINE string_const_iterator& operator--() noexcept {
+        --m_Ptr;
+        return *this;
+    }
+
+    STRING_INLINE string_const_iterator operator--(int) noexcept {
+        string_const_iterator tmp = *this;
+        --*this;
+        return tmp;
+    }
+
+    STRING_INLINE string_const_iterator& operator+=(const difference_type off) noexcept {
+        m_Ptr += off;
+        return *this;
+    }
+
+    STRING_NODISCARD STRING_INLINE string_const_iterator operator+(const difference_type off) const noexcept {
+        string_const_iterator tmp = *this;
+        tmp += off;
+        return tmp;
+    }
+
+    STRING_INLINE string_const_iterator& operator-=(const difference_type off) noexcept {
+        return *this += -off;
+    }
+
+    STRING_NODISCARD STRING_INLINE string_const_iterator operator-(const difference_type off) const noexcept {
+        string_const_iterator tmp = *this;
+        tmp -= off;
+        return tmp;
+    }
+
+    STRING_NODISCARD STRING_INLINE difference_type operator-(const string_const_iterator& right) const noexcept {
+        return m_Ptr - right.m_Ptr;
+    }
+
+    STRING_NODISCARD STRING_INLINE reference operator[](const difference_type off) const noexcept {
+        return *(*this + off);
+    }
+
+    STRING_NODISCARD STRING_INLINE bool operator==(const string_const_iterator& right) const noexcept {
+        return m_Ptr == right.m_Ptr;
+    }
+
+    STRING_NODISCARD bool operator!=(const string_const_iterator& right) const noexcept {
+        return !(*this == right);
+    }
+
+    STRING_NODISCARD bool operator<(const string_const_iterator& right) const noexcept {
+        return m_Ptr < right.m_Ptr;
+    }
+
+    STRING_NODISCARD bool operator>(const string_const_iterator& right) const noexcept {
+        return right < *this;
+    }
+
+    STRING_NODISCARD bool operator<=(const string_const_iterator& right) const noexcept {
+        return !(right < *this);
+    }
+
+    STRING_NODISCARD bool operator>=(const string_const_iterator& right) const noexcept {
+        return !(*this < right);
+    }
+};
+
+template <class types>
+STRING_NODISCARD STRING_INLINE string_const_iterator<types> operator+(
+    typename string_const_iterator<types>::difference_type off, string_const_iterator<types> next) noexcept 
+{
+    next += off;
+    return next;
+}
+
+
+template <class types>
+class string_iterator : public string_const_iterator<types>
+{
+public:
+    using mybase = string_const_iterator<types>;
+
+    using iterator_category = std::random_access_iterator_tag;
+    using value_type        = typename mybase::value_type;
+    using difference_type   = typename mybase::difference_type;
+    using pointer           = typename mybase::pointer;
+    using reference         = value_type&;
+
+    using mybase::mybase; // using constructors
+
+    STRING_NODISCARD STRING_INLINE reference operator*() const noexcept {
+        return const_cast<reference>(mybase::operator*());
+    }
+
+    STRING_NODISCARD STRING_INLINE pointer operator->() const noexcept {
+        return std::pointer_traits<pointer>::pointer_to(**this);
+    }
+
+    STRING_INLINE string_iterator& operator++() noexcept {
+        mybase::operator++();
+        return *this;
+    }
+
+    STRING_INLINE string_iterator operator++(int) noexcept {
+        string_iterator tmp = *this;
+        mybase::operator++();
+        return tmp;
+    }
+
+    STRING_INLINE string_iterator& operator--() noexcept {
+        mybase::operator--();
+        return *this;
+    }
+
+    STRING_INLINE string_iterator operator--(int) noexcept {
+        string_iterator tmp = *this;
+        mybase::operator--();
+        return tmp;
+    }
+
+    STRING_INLINE string_iterator& operator+=(const difference_type off) noexcept {
+        mybase::operator += (off);
+        return *this;
+    }
+
+    STRING_NODISCARD STRING_INLINE string_iterator operator+(const difference_type off) const noexcept {
+        string_iterator tmp = *this;
+        tmp += off;
+        return tmp;
+    }
+
+    STRING_INLINE string_iterator& operator-=(const difference_type off) noexcept {
+        mybase::operator -= (off);
+        return *this;
+    }
+
+    using mybase::operator-;
+
+    STRING_NODISCARD STRING_INLINE string_iterator operator-(const difference_type off) const noexcept {
+        string_iterator tmp = *this;
+        tmp -= off;
+        return tmp;
+    }
+
+    STRING_NODISCARD STRING_INLINE reference operator[](const difference_type off) const noexcept {
+        return const_cast<reference>(mybase::operator[](off));
+    }
+};
+
+template <class types>
+STRING_NODISCARD STRING_INLINE string_iterator<types> operator+(typename string_iterator<types>::difference_type off, string_iterator<types> next) noexcept
+{
+    next += off;
+    return next;
+}
+
+
+template <class Ty, class traits = std::char_traits<Ty>, class alloc = std::allocator<Ty>>
+class basic_string
+{
+private:
+    using alloc_traits = std::allocator_traits<alloc>;
+
+    using scary_val = string_val<string_iter_types<Ty, typename alloc_traits::size_type,
+        typename alloc_traits::difference_type, typename alloc_traits::pointer,
+        typename alloc_traits::const_pointer, Ty&, const Ty&>>;
+public:
+    using traits_type     = traits;
+    using allocator_type  = alloc;
+    using size_type       = typename alloc_traits::size_type;
+    using difference_type = typename alloc_traits::difference_type;
+    using pointer         = typename alloc_traits::pointer;
+    using const_pointer   = typename alloc_traits::const_pointer;
 
     using value_type      = Ty;
     using reference       = value_type&;
     using const_reference = const value_type&;
+
+    using iterator        = string_iterator<scary_val>;
+    using const_iterator  = string_const_iterator<scary_val>;
+
+    using reverse_iterator       = std::reverse_iterator<iterator>;
+    using const_reverse_iterator = std::reverse_iterator<const_iterator>;
 
     static constexpr size_type npos = std::numeric_limits<size_type>::max();
 private:
@@ -145,6 +372,15 @@ public:
         Append(str);
     }
 
+
+    STRING_INLINE basic_string(const basic_string& str)
+    {
+        Realloc(str.capacity(), false);
+        std::memcpy(m_Str, str.c_str(), str.size());
+        m_Size = str.size();
+    }
+
+
     STRING_INLINE basic_string& assign(const_pointer str)       { Assign(str); return *this; }
     STRING_INLINE basic_string& assign(const basic_string& str) { Assign(str); return *this; }
     STRING_INLINE ~basic_string() noexcept { Deallocate(); }
@@ -199,19 +435,19 @@ public:
     // not fully implemented
     STRING_INLINE basic_string& erase(size_type index = 0, size_type count = npos)
     {
-        if (count == npos)
+        if (count == 0)
+            return *this;
+        if (count == npos || (index + count) > m_Size)
         {
             clear();
             return *this;
         }
+        CHECK_POS_LESS_EQ(index);
 
-        CHECK_POS_LESS_EQ(count);
         std::memset (&m_Str[index], 0, count);
         std::memmove(&m_Str[index], &m_Str[index + count], m_Size - index - count);
         m_Size -= count;
-
-        if(count != 0)
-            std::memset (&m_Str[m_Size], 0, m_Capacity - m_Size);
+        std::memset (&m_Str[m_Size], 0, m_Capacity - m_Size);
         return *this;
     }
 
@@ -220,6 +456,61 @@ public:
     STRING_INLINE basic_string& append(value_type str)          { Append(str);         return *this; }
     STRING_INLINE basic_string& append(const_pointer str)       { Append(str);         return *this; }
     STRING_INLINE basic_string& append(const basic_string& str) { Append(str.c_str()); return *this; }
+
+
+    // iterators -- done
+    STRING_NODISCARD STRING_INLINE iterator begin() noexcept {
+        return iterator(m_Str);
+    }
+
+    STRING_NODISCARD STRING_INLINE const_iterator begin() const noexcept {
+        return const_iterator(m_Str);
+    }
+
+    STRING_NODISCARD STRING_INLINE iterator end() noexcept {
+        return iterator(m_Str + static_cast<difference_type>(m_Size));
+    }
+
+    STRING_NODISCARD STRING_INLINE const_iterator end() const noexcept {
+        return const_iterator(m_Str + static_cast<difference_type>(m_Size));
+    }
+
+
+    // iterators : reverse
+    STRING_NODISCARD STRING_INLINE reverse_iterator rbegin() noexcept {
+        return reverse_iterator(end());
+    }
+
+    STRING_NODISCARD STRING_INLINE const_reverse_iterator rbegin() const noexcept {
+        return const_reverse_iterator(end());
+    }
+
+    STRING_NODISCARD STRING_INLINE reverse_iterator rend() noexcept {
+        return reverse_iterator(begin());
+    }
+
+    STRING_NODISCARD STRING_INLINE const_reverse_iterator rend() const noexcept {
+        return const_reverse_iterator(begin());
+    }
+
+
+    // iterators : const
+    STRING_NODISCARD STRING_INLINE const_iterator cbegin() const noexcept {
+        return begin();
+    }
+
+    STRING_NODISCARD STRING_INLINE const_iterator cend() const noexcept {
+        return end();
+    }
+
+    STRING_NODISCARD STRING_INLINE const_reverse_iterator crbegin() const noexcept {
+        return rbegin();
+    }
+
+    STRING_NODISCARD STRING_INLINE const_reverse_iterator crend() const noexcept {
+        return rend();
+    }
+
 
 
     // Non-member functions
@@ -234,4 +525,4 @@ public:
 };
 
 
-using String = basic_string<char>;
+using string = basic_string<char>;
