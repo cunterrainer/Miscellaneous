@@ -359,15 +359,21 @@ private:
 
     STRING_INLINE basic_string& Assign(const_pointer str, size_type strlen)
     {
-        if (strlen == npos) return *this;
-
         ReallocIfNeeded(strlen, false);
         std::memcpy(m_Str, str, strlen);
         std::memset(&m_Str[strlen], 0, m_Capacity - strlen);
         m_Size = strlen;
         return *this;
     }
-    STRING_INLINE basic_string& Assign(value_type ch, size_type n) { return Assign(&ch, n);                  }
+
+    STRING_INLINE basic_string& AssignWithRangeCheck(const_pointer data, size_type size, size_type pos, size_type count)
+    {
+        if (pos > size) THROW_OUT_OF_RANGE;
+        if (pos + count > size || count == npos) count = size - pos;
+        return Assign(&data[pos], count);
+    }
+
+    STRING_INLINE basic_string& Assign(value_type ch, size_type n) { clear(); return insert(0, n, ch);       }
     STRING_INLINE basic_string& Assign(const basic_string& str)    { return Assign(str.c_str(), str.size()); }
     STRING_INLINE basic_string& Assign(const_pointer str)          { return Assign(str, STR_LN(str));        }
                                                                    
@@ -386,7 +392,7 @@ private:
         other.m_Capacity = 0;
     }
 public:
-    // Member functions
+    // Member functions -- done -- C++17
     // constructors -- done -- C++17
     basic_string() noexcept(noexcept(Alloc())) : basic_string(Alloc()) {}
     explicit basic_string(const Alloc& alloc) noexcept : m_Alloc(alloc) {}
@@ -435,11 +441,27 @@ public:
     basic_string& operator=(value_type ch)   { return Assign(ch, 1); }
     basic_string& operator=(std::initializer_list<value_type> ilist) { return AssignFromIterator(ilist.begin(), ilist.end()); }
     template<class StringViewLike, is_string_view_ish<StringViewLike> = 0>
-    basic_string& operator=(const StringViewLike& t) { return Assign(t.data()); }
+    basic_string& operator=(const StringViewLike& t) { return Assign(t.data(), t.size()); }
 
 
-    STRING_INLINE basic_string& assign(const_pointer str)       { return Assign(str); }
-    STRING_INLINE basic_string& assign(const basic_string& str) { return Assign(str); }
+    // assign -- done -- C++17
+    STRING_INLINE basic_string& assign(size_type count, value_type ch) { return Assign(ch, count); }
+    STRING_INLINE basic_string& assign(const basic_string& str)        { return Assign(str);       }
+    STRING_INLINE basic_string& assign(const basic_string& str, size_type pos, size_type count = npos) { return AssignWithRangeCheck(str.c_str(), str.size(), pos, count); }
+    STRING_INLINE basic_string& assign(basic_string&& str) noexcept      { return *this = std::move(str); }
+    STRING_INLINE basic_string& assign(const_pointer s, size_type count) { return Assign(s, count);       }
+    STRING_INLINE basic_string& assign(const_pointer s)                  { return Assign(s);              }
+    template< class InputIt >
+    STRING_INLINE basic_string& assign(InputIt first, InputIt last)             { return AssignFromIterator(first, last);                }
+    STRING_INLINE basic_string& assign(std::initializer_list<value_type> ilist) { return AssignFromIterator(ilist.begin(), ilist.end()); }
+    
+    template<class StringViewLike, is_string_view_ish<StringViewLike> = 0>
+    STRING_INLINE basic_string& assign(const StringViewLike& t) { return Assign(t.data(), t.size()); }
+
+    template < class StringViewLike >
+    STRING_INLINE basic_string& assign(const StringViewLike& t, size_type pos, size_type count = npos) { return AssignWithRangeCheck(t.data(), t.size(), pos, count); }
+
+    // destructor / get_allocator
     STRING_INLINE ~basic_string() noexcept { Deallocate(); }
     STRING_INLINE allocator_type get_allocator() const { return m_Alloc; }
 

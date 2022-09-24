@@ -100,6 +100,11 @@ namespace test
 
         // 3
         {
+            {
+                std::string s1("");
+                string o1("");
+                Compare(s1, o1);
+            }
             std::string s1("Hello");
             string o1("Hello");
             Compare(s1, o1);
@@ -181,6 +186,7 @@ namespace test
 
         // 8
         {
+            Compare(ConstructT(std::initializer_list<char>()));
             Compare(ConstructT({ ' '}));
             Compare(ConstructT({ 'u', 'u', 'u', 'u', 'u', 'u', 'u', 'u' }));
             Compare(ConstructT({ 'u', 'u', 'u', 'u', 'u', 'u', 'u', 'u', 'u', 'u', 'u', 'u', 'u', 'u', 'u', 'u' }));
@@ -190,24 +196,30 @@ namespace test
         // 9
         {
             std::string_view sv1;
-            std::string_view sv2 = "aksdjkas";
-            std::string_view sv3 = "asdjkasdaksdjkas";
+            std::string_view sv2 = "";
+            std::string_view sv3 = "aksdjkas";
+            std::string_view sv4 = "asdjkasdaksdjkas";
 
             Compare(Construct(sv1));
             Compare(Construct(sv2));
             Compare(Construct(sv3));
+            Compare(Construct(sv4));
         }
 
 
         // 10
         {
-            std::string_view sv1 = "ajskaj";
-            std::string_view sv2 = "aksdjkas";
-            std::string_view sv3 = "asdjkasdaksdjkas";
+            std::string_view sv1;
+            std::string_view sv2 = "";
+            std::string_view sv3 = "ajskaj";
+            std::string_view sv4 = "aksdjkas";
+            std::string_view sv5 = "asdjkasdaksdjkas";
 
-            Compare(Construct(sv1, 3, 6));
+            Compare(Construct(sv1, 0, 0));
             Compare(Construct(sv2, 0, 0));
-            Compare(Construct(sv3, 4, 8));
+            Compare(Construct(sv3, 1, 4));
+            Compare(Construct(sv4, 2, 6));
+            Compare(Construct(sv5, 3, 8));
         }
         std::cout << "Passed constructor tests" << std::endl;
     }
@@ -256,6 +268,81 @@ namespace test
         o1 = std::move(s.os);
         Compare(s1, o1);
         std::cout << "Passed operator= tests" << std::endl;
+    }
+
+
+    void Assign()
+    {
+        Compare(Construct(GetRandomNum(0, 100), GetRandomChar()));
+
+        std::string s1 = "";
+        string o1 = "";
+        Compare(s1, o1);
+
+        std::string s2;
+        string o2;
+        s2.assign(s1);
+        o2.assign(o1);
+        Compare(s2, o2);
+        s1 = "Heja";
+        o1 = "Heja";
+        s2.assign(s1);
+        o2.assign(o1);
+        Compare(s2, o2);
+
+        s2.assign(s1, 1, 3);
+        o2.assign(o1, 1, 3);
+        Compare(s2, o2);
+        s2.assign(s1, 2, 100);
+        o2.assign(o1, 2, 100);
+        Compare(s2, o2);
+
+        s2.assign("Hello", 4);
+        o2.assign("Hello", 4);
+        Compare(s2, o2);
+        s2.assign("", 0);
+        o2.assign("", 0);
+        Compare(s2, o2);
+
+        s2.assign("Hello");
+        o2.assign("Hello");
+        Compare(s2, o2);
+        s2.assign("");
+        o2.assign("");
+        Compare(s2, o2);
+
+        s2.assign(s1.rbegin(), s1.rend());
+        o2.assign(o1.rbegin(), o1.rend());
+        Compare(s2, o2);
+        s2.assign(s1.rbegin(), s1.rend());
+        o2.assign(o1.rbegin(), o1.rend());
+        Compare(s2, o2);
+
+        s2.assign({});
+        o2.assign({});
+        Compare(s2, o2);
+        s2.assign({ 'u', 'u', 'u', 'u', 'u', 'u', 'u', 'u' });
+        o2.assign({ 'u', 'u', 'u', 'u', 'u', 'u', 'u', 'u' });
+        Compare(s2, o2);
+
+        s2.assign(std::string_view("Hdajsjd"));
+        o2.assign(std::string_view("Hdajsjd"));
+        Compare(s2, o2);
+        s2.assign(std::string_view(""));
+        o2.assign(std::string_view(""));
+        Compare(s2, o2);
+
+        s2.assign(std::string_view("Hdajsjd"), 1, 5);
+        o2.assign(std::string_view("Hdajsjd"), 1, 5);
+        Compare(s2, o2);
+        s2.assign(std::string_view(""), 0, 0);
+        o2.assign(std::string_view(""), 0, 0);
+        Compare(s2, o2);
+
+        s2.assign(std::move(s1));
+        o2.assign(std::move(o1));
+        Compare(s2, o2);
+        std::cout << "Passed assign tests" << std::endl;
     }
 
 
