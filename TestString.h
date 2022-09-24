@@ -3,7 +3,7 @@
 #include <random>
 #include "String.h"
 
-#define CHECK(s, o) if (s != o) assert(false)
+#define CHECK(s, o, m) assert(s == o && m)
 
 namespace test
 {
@@ -13,6 +13,12 @@ namespace test
         std::mt19937 rng(dev());
         std::uniform_int_distribution<std::mt19937::result_type> dist6(min, max);
         return dist6(rng);
+    }
+
+
+    char GetRandomChar()
+    {
+        return (char)GetRandomNum(65, 125);
     }
 
 
@@ -52,6 +58,12 @@ namespace test
         std::string std(t);
         string os(t);
         return { std, os };
+    }
+
+
+    S GetRandomStr()
+    {
+        return Construct(GetRandomNum(0, 100), (char)GetRandomNum(65, 125));
     }
 
 
@@ -194,10 +206,56 @@ namespace test
             std::string_view sv3 = "asdjkasdaksdjkas";
 
             Compare(Construct(sv1, 3, 6));
-            Compare(Construct(sv2, 3, 6));
-            Compare(Construct(sv3, 3, 6));
+            Compare(Construct(sv2, 0, 0));
+            Compare(Construct(sv3, 4, 8));
         }
         std::cout << "Passed constructor tests" << std::endl;
+    }
+
+
+    void OperatorIsEq()
+    {
+        std::string s1;
+        string o1;
+        S s = GetRandomStr();
+
+        s1 = s.std;
+        o1 = s.os;
+        Compare(s1, o1);
+
+        s1 = s.std.c_str();
+        o1 = s.os.c_str();
+        Compare(s1, o1);
+
+        char c = GetRandomChar();
+        s1 = c;
+        o1 = c;
+        Compare(s1, o1);
+
+        s1 = {};
+        o1 = {};
+        Compare(s1, o1);
+        s1 = {' '};
+        o1 = {' '};
+        Compare(s1, o1);
+        s1 = { 'u', 'u', 'u', 'u', 'u', 'u', 'u', 'u' };
+        o1 = { 'u', 'u', 'u', 'u', 'u', 'u', 'u', 'u' };
+        Compare(s1, o1);
+
+        s1 = std::string_view("");
+        o1 = std::string_view("");
+        Compare(s1, o1);
+        s1 = std::string_view("dasjfkjasfjkask");
+        o1 = std::string_view("dasjfkjasfjkask");
+        Compare(s1, o1);
+        s1 = std::string_view("dasjfkjaasdawdsfjkask");
+        o1 = std::string_view("dasjfkjaasdawdsfjkask");
+        Compare(s1, o1);
+
+        s1 = std::move(s.std);
+        o1 = std::move(s.os);
+        Compare(s1, o1);
+        std::cout << "Passed operator= tests" << std::endl;
     }
 
 
@@ -206,14 +264,15 @@ namespace test
         std::string s1 = "akfknveuacakvnueueowadlakdlscksnvkshfkjskajiwaxkack";
         string o1 = "akfknveuacakvnueueowadlakdlscksnvkshfkjskajiwaxkack";
 
-        CHECK(s1.front(), o1.front());
-        CHECK(s1.back(), o1.back());
+        CHECK(s1.front(), o1.front(), "front");
+        CHECK(s1.back(), o1.back(), "back");
 
         for (int i = 0; i < s1.size(); ++i)
         {
-            CHECK(s1.at(i), o1.at(i));
-            CHECK(s1[i], o1[i]);
+            CHECK(s1.at(i), o1.at(i), "at");
+            CHECK(s1[i], o1[i], "operator[]");
         }
+        std::cout << "Passed element access tests" << std::endl;
     }
 
 
@@ -229,15 +288,28 @@ namespace test
 
         for (const auto& i : vec)
         {
-            CHECK(i.std.empty(), i.os.empty());
-            CHECK(i.std.size(), i.os.size());
-            CHECK(i.std.length(), i.os.length());
+            CHECK(i.std.empty(), i.os.empty(), "empty");
+            CHECK(i.std.size(), i.os.size(), "size");
+            CHECK(i.std.length(), i.os.length(), "length");
         }
+        std::cout << "Passed capacity tests" << std::endl;
     }
 
 
     void Iterator()
     {
+        {
+            string o1(GetRandomNum(0, 100), (char)GetRandomNum(65, 125));
+            std::string s1(o1.begin(), o1.end());
+            Compare(s1, o1);
+        }
 
+
+        {
+            string o1(GetRandomNum(0, 100), (char)GetRandomNum(65, 125));
+            std::string s1(o1.rbegin(), o1.rend());
+            Compare(s1, o1);
+        }
+        std::cout << "Passed iterator tests" << std::endl;
     }
 }

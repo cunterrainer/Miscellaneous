@@ -228,6 +228,10 @@ private:
     using scary_val = string_val<string_iter_types<Elem, typename alloc_traits::size_type,
         typename alloc_traits::difference_type, typename alloc_traits::pointer,
         typename alloc_traits::const_pointer, Elem&, const Elem&>>;
+
+    template <class string_view_ish>
+    using is_string_view_ish = std::enable_if_t<std::conjunction_v<std::is_convertible<const string_view_ish&, std::basic_string_view<Elem, Traits>>,
+        std::negation<std::is_convertible<const string_view_ish&, const Elem*>>>, int>;
 public:
     using traits_type     = Traits;
     using allocator_type  = Alloc;
@@ -336,7 +340,7 @@ private:
 
 
     template <class InputIt>
-    STRING_INLINE void AssignFromInterator(InputIt first, InputIt last)
+    STRING_INLINE basic_string& AssignFromIterator(InputIt first, InputIt last)
     {
         const std::iterator_traits<InputIt>::difference_type dist = std::distance(first, last);
         ReallocIfNeeded(dist, false);
@@ -349,6 +353,7 @@ private:
             ++first;
             ++i;
         }
+        return *this;
     }
 
 
@@ -362,21 +367,8 @@ private:
         m_Size = strlen;
         return *this;
     }
-
-
-    template <class StrType>
-    STRING_INLINE basic_string& Assign(const StrType& str)
-    {
-        constexpr bool is_same_basic_string  = std::is_same_v<StrType, basic_string>;
-        constexpr bool is_same_const_pointer = std::is_same_v<StrType, const_pointer>;
-        static_assert(is_same_basic_string || is_same_const_pointer, "Invalid type for assign");
-
-        if constexpr (is_same_basic_string)
-            Assign(str.c_str(), str.size());
-        else if constexpr (is_same_const_pointer)
-            Assign(str, STR_LN(str));
-        return *this;
-    }
+    STRING_INLINE basic_string& Assign(const basic_string& str) { return Assign(str.c_str(), str.size()); }
+    STRING_INLINE basic_string& Assign(const_pointer str)       { return Assign(str, STR_LN(str)); }
 
 
     STRING_INLINE void MoveFromBasicString(basic_string&& other, bool move_allocator = true) noexcept
@@ -411,7 +403,7 @@ public:
     basic_string(const_pointer s, const Alloc& alloc = Alloc()) : m_Alloc(alloc) { Assign(s); }
 
     template <class InputIt>
-    basic_string(InputIt first, InputIt last, const Alloc& alloc = Alloc()) : m_Alloc(alloc) { AssignFromInterator(first, last); }
+    basic_string(InputIt first, InputIt last, const Alloc& alloc = Alloc()) : m_Alloc(alloc) { AssignFromIterator(first, last); }
 
     basic_string(const basic_string& other) : basic_string(other, other.get_allocator()) {}
     basic_string(const basic_string& other, const Alloc& alloc) : m_Alloc(alloc) { Assign(other); }
@@ -421,19 +413,19 @@ public:
 
     basic_string(std::initializer_list<value_type> ilist, const Alloc& alloc = Alloc()) : basic_string(ilist.begin(), ilist.end(), alloc) {}
 
-    template <class StringViewLike, std::enable_if_t<std::is_convertible_v<const StringViewLike&, std::basic_string_view<Elem, Traits>>, bool> = true>
+    template <class StringViewLike, is_string_view_ish<StringViewLike> = 0>
     explicit basic_string(const StringViewLike& t, const Alloc& alloc = Alloc()) : basic_string(t.data(), t.size(), alloc) {}
 
     template <class StringViewLike, std::enable_if_t<std::is_convertible_v<const StringViewLike&, std::basic_string_view<Elem, Traits>>, bool> = true>
     basic_string(const StringViewLike& t, size_type pos, size_type n, const Alloc& alloc = Alloc()) : basic_string(t.substr(pos, n), alloc) { if (pos > t.size()) THROW_OUT_OF_RANGE; }
 
 
-    // assignment operators
+    // assignment operators -- done -- C++17
     basic_string& operator=(const basic_string& str) { return Assign(str); }
     basic_string& operator=(basic_string&& str) noexcept
     {
         if constexpr (alloc_traits::propagate_on_container_move_assignment::value)
-            MoveFromBasicString(std::forward<basic_string>(str));
+            MoveFromBasicString(std::forward<basic_string>(str), true);
         else if constexpr (!alloc_traits::propagate_on_container_move_assignment::value)
             Assign(str);
         return *this;
@@ -442,6 +434,28 @@ public:
     basic_string& operator=(const_pointer s)
     {
         return Assign(s);
+    }
+
+    basic_string& operator=(value_type ch)
+    {
+        clear();
+        ReallocIfNeeded(1, true);
+        m_Str[0] = ch;
+        m_Size = 1;
+        return *this;
+    }
+
+
+    basic_string& operator=(std::initializer_list<value_type> ilist)
+    {
+        return AssignFromIterator(ilist.begin(), ilist.end());
+    }
+
+
+    template<class StringViewLike, is_string_view_ish<StringViewLike> = 0>
+    basic_string& operator=(const StringViewLike& t)
+    {
+        return Assign(t.data());
     }
 
 
