@@ -367,9 +367,10 @@ private:
         m_Size = strlen;
         return *this;
     }
-    STRING_INLINE basic_string& Assign(const basic_string& str) { return Assign(str.c_str(), str.size()); }
-    STRING_INLINE basic_string& Assign(const_pointer str)       { return Assign(str, STR_LN(str)); }
-
+    STRING_INLINE basic_string& Assign(value_type ch, size_type n) { return Assign(&ch, n);                  }
+    STRING_INLINE basic_string& Assign(const basic_string& str)    { return Assign(str.c_str(), str.size()); }
+    STRING_INLINE basic_string& Assign(const_pointer str)          { return Assign(str, STR_LN(str));        }
+                                                                   
 
     STRING_INLINE void MoveFromBasicString(basic_string&& other, bool move_allocator = true) noexcept
     {
@@ -430,33 +431,11 @@ public:
             Assign(str);
         return *this;
     }
-
-    basic_string& operator=(const_pointer s)
-    {
-        return Assign(s);
-    }
-
-    basic_string& operator=(value_type ch)
-    {
-        clear();
-        ReallocIfNeeded(1, true);
-        m_Str[0] = ch;
-        m_Size = 1;
-        return *this;
-    }
-
-
-    basic_string& operator=(std::initializer_list<value_type> ilist)
-    {
-        return AssignFromIterator(ilist.begin(), ilist.end());
-    }
-
-
+    basic_string& operator=(const_pointer s) { return Assign(s);     }
+    basic_string& operator=(value_type ch)   { return Assign(ch, 1); }
+    basic_string& operator=(std::initializer_list<value_type> ilist) { return AssignFromIterator(ilist.begin(), ilist.end()); }
     template<class StringViewLike, is_string_view_ish<StringViewLike> = 0>
-    basic_string& operator=(const StringViewLike& t)
-    {
-        return Assign(t.data());
-    }
+    basic_string& operator=(const StringViewLike& t) { return Assign(t.data()); }
 
 
     STRING_INLINE basic_string& assign(const_pointer str)       { return Assign(str); }
