@@ -127,11 +127,35 @@ void swap(const stack<T, Container>& lhs, const stack<T, Container>& rhs) noexce
     lhs.swap(rhs);
 }
 
-template <class Container>
-stack(Container) -> stack<typename Container::value_type, Container>;
+
+template <class T, class = void>
+struct is_allocator : std::false_type {};
+
+template <class T>
+struct is_allocator<T, std::void_t<typename T::value_type, decltype(std::declval<T&>().deallocate(std::declval<T&>().allocate(std::size_t{1}), std::size_t{1}))>> : std::true_type {};
+
+template <class T>
+inline constexpr bool is_allocator_v = is_allocator<T>::value;
+
+
+
+template <class T, class Alloc, class = void>
+struct has_allocator_type : std::false_type{}; // tests for suitable _Ty::allocator_type
+
+template <class T, class Alloc>
+struct has_allocator_type<T, Alloc, std::void_t<typename T::allocator_type>> : std::is_convertible<Alloc, typename T::allocator_type>::type {};
+
 
 template<class Container, class Alloc>
-stack(Container, Alloc) -> stack<typename Container::value_type, Container>;
+struct uses_allocator : has_allocator_type<Container, Alloc>::value {};
 
 template<class T, class Container, class Alloc>
-struct std::uses_allocator<stack<T, Container>, Alloc> : std::uses_allocator<Container, Alloc>::type {};
+struct uses_allocator<stack<T, Container>, Alloc> : uses_allocator<Container, Alloc>::type {};
+
+
+
+template <class Container, std::enable_if_t<!is_allocator_v<Container>, int> = 0>
+stack(Container) -> stack<typename Container::value_type, Container>;
+
+template<class Container, class Alloc, std::enable_if_t<std::conjunction_v<std::negation<is_allocator<Container>>, uses_allocator<Container, Alloc>>, int> = 0>
+stack(Container, Alloc) -> stack<typename Container::value_type, Container>;
