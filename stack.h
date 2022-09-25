@@ -140,7 +140,7 @@ inline constexpr bool is_allocator_v = is_allocator<T>::value;
 
 
 template <class T, class Alloc, class = void>
-struct has_allocator_type : std::false_type{}; // tests for suitable _Ty::allocator_type
+struct has_allocator_type : std::false_type{};
 
 template <class T, class Alloc>
 struct has_allocator_type<T, Alloc, std::void_t<typename T::allocator_type>> : std::is_convertible<Alloc, typename T::allocator_type>::type {};
