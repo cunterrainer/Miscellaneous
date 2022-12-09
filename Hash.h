@@ -78,7 +78,13 @@ namespace hash
         inline std::vector<unsigned char> SplitIntoChunks() const
         {
             std::vector<unsigned char> binRep(m_Str.begin(), m_Str.end());
+            const uint8_t chunkBytesLeft = binRep.size() % 64;
             binRep.push_back(0b10000000);
+            if (chunkBytesLeft >= 56)
+            {
+                for (size_t i = 0; i < 64 - chunkBytesLeft; ++i)
+                    binRep.push_back(0);
+            }
 
             // add padding bits
             while ((binRep.size() * 8) % 512 != 0)
@@ -163,13 +169,12 @@ namespace hash
             stream << std::hex << m_H[0] << m_H[1] << m_H[2] << m_H[3] << m_H[4] << m_H[5] << m_H[6] << m_H[7];
             return stream.str();
 
-
-            //for (int i = 0; i < 64; ++i)
-            //    std::cout << std::bitset<32>(chunk[i]) << " ";
-
             //std::cout << "\n\n" << binRep.size() << std::endl;
             //for (auto c : binRep)
             //    std::cout << std::bitset<8>(c) << " ";
+
+            //for (int i = 0; i < 64; ++i)
+            //    std::cout << std::bitset<32>(chunk[i]) << " ";
         }
     };
 
