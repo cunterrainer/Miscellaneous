@@ -1,12 +1,52 @@
 #pragma once
 #include <vector>
 #include <string>
+#include <locale>
 #include <climits>
 #include <cstdint>
+#include <codecvt>
+#include <sstream>
+#include <type_traits>
 #include <string_view>
 
 namespace hash
 {
+    namespace encode
+    {
+        // C++11 - 17 only | for u16 or u32 strings/string literals
+        template <class String>
+        inline std::string ToUtf8String(const String& str)
+        {
+            // Create a locale that uses the codecvt_utf8 facet
+            //std::locale loc(std::locale(), new std::codecvt_utf8<char>());
+            // Create a wstring_convert object using the locale
+            std::wstring_convert<std::codecvt_utf8<String::value_type>, String::value_type> convert;
+            // Decode the string as a sequence of UTF-8 code points
+            return convert.to_bytes(str);
+        }
+
+
+        // only for strings with characters from -127 - 127
+        // encode iso-8859-1
+        std::string Iso88591ToUtf8(const std::string_view& str)
+        {
+            std::string strOut;
+            for (std::string_view::const_iterator it = str.begin(); it != str.end(); ++it)
+            {
+                uint8_t ch = *it;
+                if (ch < 0x80) {
+                    strOut.push_back(ch);
+                }
+                else {
+                    strOut.push_back(0xc0 | ch >> 6);
+                    strOut.push_back(0x80 | (ch & 0x3f));
+                }
+            }
+            return strOut;
+        }
+    }
+
+
     namespace util
     {
         template <typename T>
@@ -73,11 +113,9 @@ namespace hash
             0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
         };
     private:
-        const std::string_view m_Str;
-    private:
-        inline std::vector<unsigned char> SplitIntoChunks() const
+        inline std::vector<unsigned char> SplitIntoChunks(const std::string_view& str) const
         {
-            std::vector<unsigned char> binRep(m_Str.begin(), m_Str.end());
+            std::vector<unsigned char> binRep(str.begin(), str.end());
             const uint8_t chunkBytesLeft = binRep.size() % 64;
             binRep.push_back(0b10000000);
             if (chunkBytesLeft >= 56)
@@ -90,7 +128,7 @@ namespace hash
             while ((binRep.size() * 8) % 512 != 0)
                 binRep.push_back(0);
 
-            const uint64_t strSize = m_Str.size() * 8;
+            const uint64_t strSize = str.size() * 8;
             uint64_t* const end = (uint64_t*)&binRep.data()[binRep.size() - 8];
             *end = util::IsLittleEndian() ? util::SwapEndian(strSize) : strSize;
             return binRep;
@@ -151,12 +189,10 @@ namespace hash
             m_H[7] += h;
         }
     public:
-        explicit Sha256(const std::string_view& str) : m_Str(str) {}
-
-        inline std::string Generate()
+        inline std::string Generate(const std::string_view& str)
         {
-            std::vector<unsigned char> binRep = SplitIntoChunks();
-
+            std::vector<unsigned char> binRep = SplitIntoChunks(str);
+             
             uint32_t chunk[64] = {0};
             for (size_t i = 0; i < binRep.size() / 64; ++i)
             {
@@ -168,20 +204,14 @@ namespace hash
             std::stringstream stream;
             stream << std::hex << m_H[0] << m_H[1] << m_H[2] << m_H[3] << m_H[4] << m_H[5] << m_H[6] << m_H[7];
             return stream.str();
-
-            //std::cout << "\n\n" << binRep.size() << std::endl;
-            //for (auto c : binRep)
-            //    std::cout << std::bitset<8>(c) << " ";
-
-            //for (int i = 0; i < 64; ++i)
-            //    std::cout << std::bitset<32>(chunk[i]) << " ";
         }
     };
 
 
+    // if you have any kind of unicode string, use the hash::encode functions beforehand for converting the string
     inline std::string sha256(const std::string_view& str)
     {
-        Sha256 s256(str);
-        return s256.Generate();
+        Sha256 s256;
+        return s256.Generate(str);
     }
 }
