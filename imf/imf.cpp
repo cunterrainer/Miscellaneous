@@ -1,4 +1,7 @@
 #include <iostream>
+#include <cstdlib>
+#include <cstring>
+#include <utility>
 
 #define STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -27,9 +30,51 @@ public:
 
     ~Image()
     {
-        // missing copy / move constructor
-        //if(m_Data != NULL)
-        //    stbi_image_free(m_Data);
+        if(m_Data != NULL)
+            stbi_image_free(m_Data);
+    }
+
+
+    Image(const Image& img)
+    {
+        *this = img;
+    }
+
+
+    Image(Image&& img)
+    {
+        *this = std::move(img);
+    }
+
+
+    Image& operator=(Image&& img)
+    {
+        m_Width    = img.m_Width;
+        m_Height   = img.m_Height;
+        m_Channels = img.m_Channels;
+        m_Data     = img.m_Data;
+
+        img.m_Data = NULL;
+        img.m_Width = 0;
+        img.m_Height = 0;
+        img.m_Channels = 0;
+        return *this;
+    }
+
+
+    Image& operator=(const Image& img)
+    {
+        m_Width = img.m_Width;
+        m_Height = img.m_Height;
+        m_Channels = img.m_Channels;
+        m_Data = static_cast<unsigned char*>(std::malloc(img.Values()));
+        if(m_Data == NULL)
+        {
+            std::cerr << "Failed to allocate memory while copying Image()\n";
+            return *this;
+        }
+        std::memcpy(m_Data, img.m_Data, img.Values());
+        return *this;
     }
 
 
@@ -103,8 +148,9 @@ namespace Filter
 
 int main()
 {
-    Image img("6.png");
+    Image img("7.png");
     std::cout << "w:" << img.Width() << " h: " << img.Height() << " c: " << img.Channels() << std::endl;
+    img = Filter::FlipHorizontally(img);
     img = Filter::FlipVertically(img);
     img.Save("test.png");
 }
