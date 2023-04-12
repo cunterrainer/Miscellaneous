@@ -53,11 +53,11 @@ proc main() =
 
     resistance.button.onClick = proc(event: ClickEvent) =
         if voltage.input.text.len != 0 and current.input.text.len != 0:
-            voltage.input.text = fmt"{parseFloat(voltage.input.text)/parseFloat(current.input.text)}"
+            resistance.input.text = fmt"{parseFloat(voltage.input.text)/parseFloat(current.input.text)}"
 
     power.button.onClick = proc(event: ClickEvent) =
         if voltage.input.text.len != 0 and current.input.text.len != 0:
-            voltage.input.text = fmt"{parseFloat(voltage.input.text)*parseFloat(current.input.text)}"
+            power.input.text = fmt"{parseFloat(voltage.input.text)*parseFloat(current.input.text)}"
         
     window.show()
     app.run()
