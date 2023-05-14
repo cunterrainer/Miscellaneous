@@ -1,0 +1,5 @@
+Size of:
+    Is a file that prints the size of certain data types in bytes.
+    There are already prebuild executables for windows, x86 or x64, gcc or clang or msvc.
+    If you need any other compiler, platform or architecture configuration simply build it yourself
+    using the sizeof.c file.
