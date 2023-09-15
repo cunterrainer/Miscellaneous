@@ -12,8 +12,6 @@
 #include <type_traits>
 #include <string_view>
 
-#include <cassert>
-
 namespace Hash
 {
     namespace Encode
@@ -91,8 +89,7 @@ namespace Hash
     class Sha256
     {
     private:
-        bool m_Finalized = false;
-        uint64_t m_Bytes = 0;
+        uint64_t m_Bitlen = 0;
         size_t m_BufferSize = 0;
         unsigned char m_Buffer[64] = {0};
 
@@ -175,32 +172,28 @@ namespace Hash
             m_H[6] += g;
             m_H[7] += h;
         }
+
+
+        inline void Transform()
+        {
+            uint32_t chunk[64] = {0};
+            std::memcpy(chunk, m_Buffer, 64);
+            CreateMessageSchedule(chunk);
+            Compression(chunk);
+        }
     public:
         inline void Update(const unsigned char* data, std::size_t size)
         {
-            uint32_t chunk[64] = {0};
-            for (size_t i = 0; i < size / 64; ++i)
+            for (size_t i = 0; i < size; ++i)
             {
-                std::memcpy(chunk, &data[64*i], 64);
-                CreateMessageSchedule(chunk);
-                Compression(chunk);
+                m_Buffer[m_BufferSize++] = data[i];
+                if (m_BufferSize == 64)
+                {
+                    Transform();
+                    m_BufferSize = 0;
+                    m_Bitlen += 512;
+                }
             }
-
-            if (m_Finalized) return;
-
-            size_t remainder = size % 64;
-            if (m_BufferSize + remainder >= 64)
-            {
-                std::memcpy(chunk, m_Buffer, m_BufferSize);
-                std::memcpy(&chunk[m_BufferSize], &data[size-remainder], 64 - m_BufferSize);
-                CreateMessageSchedule(chunk);
-                Compression(chunk);
-                remainder -= 64 - m_BufferSize;
-            }
-
-            std::memcpy(m_Buffer, &data[size-remainder], remainder);
-            m_BufferSize = remainder;
-            m_Bytes += size;
         }
 
 
@@ -213,44 +206,32 @@ namespace Hash
         {
             Update((const unsigned char*)data.data(), data.size());
         }
- 
+
 
         inline void Finalize()
         {
-            uint64_t sstrSize = m_Bytes;
-            std::vector<unsigned char> binRep(m_Buffer, m_Buffer + m_BufferSize);
-            binRep.reserve(128);
-            const uint8_t chunkBytesLeft = m_BufferSize % 64;
-            binRep.push_back(0b10000000);
-            ++m_Bytes;
-            
-            if (chunkBytesLeft >= 56)
+            uint64_t i = m_BufferSize;
+            uint8_t end = m_BufferSize < 56 ? 56 : 64;
+
+            m_Buffer[i++] = 0b10000000;
+            while (i < end)
+                m_Buffer[i++] = 0; // Pad with zeros
+
+            if (m_BufferSize >= 56)
             {
-                for (size_t i = 0; i < (size_t)(64 - chunkBytesLeft); ++i)
-                {
-                    ++m_Bytes;
-                    binRep.push_back(0);
-                }
+                Transform();
+                std::memset(m_Buffer, 0, 56);
             }
 
-            // add padding bits
-            while ((m_Bytes * 8) % 512 != 0)
-            {
-                m_Bytes++;
-                binRep.push_back(0);
-            }
-
-            const uint64_t strSize = sstrSize * 8;
-            uint64_t* const end = (uint64_t*)&binRep.data()[binRep.size() - 8];
-            *end = Util::IsLittleEndian() ? Util::SwapEndian(strSize) : strSize;
-            m_Finalized = true;
-            Update(binRep.data(), binRep.size());
+            m_Bitlen += m_BufferSize * 8;
+            uint64_t* const size = (uint64_t*)&m_Buffer[64 - 8];
+            *size = Util::IsLittleEndian() ? Util::SwapEndian(m_Bitlen) : m_Bitlen;
+            Transform();
         }
 
 
-        inline std::string Hexdigest()
+        inline std::string Hexdigest() const
         {
-            if (!m_Finalized) return "";
             std::stringstream stream;
             stream << std::hex << std::setfill('0') << std::setw(8) << m_H[0] << std::setw(8) << m_H[1] << std::setw(8) << m_H[2] << std::setw(8) << m_H[3] << std::setw(8)<< m_H[4] << std::setw(8) << m_H[5] << std::setw(8) << m_H[6] << std::setw(8) << m_H[7];
             return stream.str();
