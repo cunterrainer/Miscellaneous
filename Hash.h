@@ -12,6 +12,8 @@
 #include <type_traits>
 #include <string_view>
 
+#include <cassert>
+
 namespace Hash
 {
     namespace Encode
@@ -89,6 +91,11 @@ namespace Hash
     class Sha256
     {
     private:
+        bool m_Finalized = false;
+        uint64_t m_Bytes = 0;
+        size_t m_BufferSize = 0;
+        unsigned char m_Buffer[64] = {0};
+
         // FracPartsSqareRoots
         uint32_t m_H[8] =
         {
@@ -115,28 +122,6 @@ namespace Hash
             0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
         };
     private:
-        inline std::vector<unsigned char> SplitIntoChunks(const std::string_view& str) const
-        {
-            std::vector<unsigned char> binRep(str.begin(), str.end());
-            const uint8_t chunkBytesLeft = binRep.size() % 64;
-            binRep.push_back(0b10000000);
-            if (chunkBytesLeft >= 56)
-            {
-                for (size_t i = 0; i < (size_t)(64 - chunkBytesLeft); ++i)
-                    binRep.push_back(0);
-            }
-
-            // add padding bits
-            while ((binRep.size() * 8) % 512 != 0)
-                binRep.push_back(0);
-
-            const uint64_t strSize = str.size() * 8;
-            uint64_t* const end = (uint64_t*)&binRep.data()[binRep.size() - 8];
-            *end = Util::IsLittleEndian() ? Util::SwapEndian(strSize) : strSize;
-            return binRep;
-        }
-
-
         inline void CreateMessageSchedule(uint32_t* const w) const
         {
             if (Util::IsLittleEndian())
@@ -191,18 +176,81 @@ namespace Hash
             m_H[7] += h;
         }
     public:
-        inline std::string Generate(const std::string_view& str)
+        inline void Update(const unsigned char* data, std::size_t size)
         {
-            std::vector<unsigned char> binRep = SplitIntoChunks(str);
-             
             uint32_t chunk[64] = {0};
-            for (size_t i = 0; i < binRep.size() / 64; ++i)
+            for (size_t i = 0; i < size / 64; ++i)
             {
-                std::memcpy(chunk, &binRep.data()[64*i], 64);
+                std::memcpy(chunk, &data[64*i], 64);
                 CreateMessageSchedule(chunk);
                 Compression(chunk);
             }
 
+            if (m_Finalized) return;
+
+            size_t remainder = size % 64;
+            if (m_BufferSize + remainder >= 64)
+            {
+                std::memcpy(chunk, m_Buffer, m_BufferSize);
+                std::memcpy(&chunk[m_BufferSize], &data[size-remainder], 64 - m_BufferSize);
+                CreateMessageSchedule(chunk);
+                Compression(chunk);
+                remainder -= 64 - m_BufferSize;
+            }
+
+            std::memcpy(m_Buffer, &data[size-remainder], remainder);
+            m_BufferSize = remainder;
+            m_Bytes += size;
+        }
+
+
+        inline void Update(const char* data, std::size_t size)
+        {
+            Update((const unsigned char*)data, size);
+        }
+
+        inline void Update(std::string_view data)
+        {
+            Update((const unsigned char*)data.data(), data.size());
+        }
+ 
+
+        inline void Finalize()
+        {
+            uint64_t sstrSize = m_Bytes;
+            std::vector<unsigned char> binRep(m_Buffer, m_Buffer + m_BufferSize);
+            binRep.reserve(128);
+            const uint8_t chunkBytesLeft = m_BufferSize % 64;
+            binRep.push_back(0b10000000);
+            ++m_Bytes;
+            
+            if (chunkBytesLeft >= 56)
+            {
+                for (size_t i = 0; i < (size_t)(64 - chunkBytesLeft); ++i)
+                {
+                    ++m_Bytes;
+                    binRep.push_back(0);
+                }
+            }
+
+            // add padding bits
+            while ((m_Bytes * 8) % 512 != 0)
+            {
+                m_Bytes++;
+                binRep.push_back(0);
+            }
+
+            const uint64_t strSize = sstrSize * 8;
+            uint64_t* const end = (uint64_t*)&binRep.data()[binRep.size() - 8];
+            *end = Util::IsLittleEndian() ? Util::SwapEndian(strSize) : strSize;
+            m_Finalized = true;
+            Update(binRep.data(), binRep.size());
+        }
+
+
+        inline std::string Hexdigest()
+        {
+            if (!m_Finalized) return "";
             std::stringstream stream;
             stream << std::hex << std::setfill('0') << std::setw(8) << m_H[0] << std::setw(8) << m_H[1] << std::setw(8) << m_H[2] << std::setw(8) << m_H[3] << std::setw(8)<< m_H[4] << std::setw(8) << m_H[5] << std::setw(8) << m_H[6] << std::setw(8) << m_H[7];
             return stream.str();
@@ -210,11 +258,21 @@ namespace Hash
     };
 
 
-    // if you have any kind of unicode string, use the hash::encode functions beforehand for converting the string
+    // if you have any kind of unicode string, use the Hash::encode functions beforehand to convert the string
     inline std::string sha256(std::string_view str)
     {
-        Sha256 s256;
-        return s256.Generate(str);
+        Sha256 s;
+        s.Update(str.data(), str.size());
+        s.Finalize();
+        return s.Hexdigest();
+    }
+
+    inline std::string sha256(const char* str, std::size_t size)
+    {
+        Sha256 s;
+        s.Update(str, size);
+        s.Finalize();
+        return s.Hexdigest();
     }
 
 
