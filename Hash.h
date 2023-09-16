@@ -101,20 +101,7 @@ namespace Hash
         uint64_t m_Bitlen = 0;
         size_t m_BufferSize = 0;
         unsigned char m_Buffer[64] = {0};
-
-        // FracPartsSqareRoots
-        uint32_t m_H[8] =
-        {
-            0x6a09e667,
-            0xbb67ae85,
-            0x3c6ef372,
-            0xa54ff53a,
-            0x510e527f,
-            0x9b05688c,
-            0x1f83d9ab,
-            0x5be0cd19
-        };
-
+    private:
         // FracPartsCubeRoots
         static constexpr uint32_t s_K[64] =
         {
@@ -126,6 +113,19 @@ namespace Hash
             0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
             0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
             0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+        };
+    protected:
+        // FracPartsSqareRoots
+        uint32_t m_H[8] =
+        {
+            0x6a09e667,
+            0xbb67ae85,
+            0x3c6ef372,
+            0xa54ff53a,
+            0x510e527f,
+            0x9b05688c,
+            0x1f83d9ab,
+            0x5be0cd19
         };
     private:
         inline void CreateMessageSchedule(uint32_t* const w) const
@@ -191,6 +191,10 @@ namespace Hash
             Compression(chunk);
         }
     public:
+        constexpr explicit Sha256() = default;
+        constexpr explicit Sha256(uint32_t h0, uint32_t h1, uint32_t h2, uint32_t h3, uint32_t h4, uint32_t h5, uint32_t h6, uint32_t h7) : m_H{ h0, h1, h2, h3, h4, h5, h6, h7 } {}
+        virtual ~Sha256() = default;
+
         inline void Update(const unsigned char* data, std::size_t size)
         {
             for (size_t i = 0; i < size; ++i)
@@ -239,7 +243,7 @@ namespace Hash
         }
 
 
-        inline std::string Hexdigest() const
+        inline virtual std::string Hexdigest() const
         {
             std::stringstream stream;
             stream << std::hex << std::setfill('0') << std::setw(8) << m_H[0] << std::setw(8) << m_H[1] << std::setw(8) << m_H[2] << std::setw(8) << m_H[3] << std::setw(8)<< m_H[4] << std::setw(8) << m_H[5] << std::setw(8) << m_H[6] << std::setw(8) << m_H[7];
@@ -266,6 +270,36 @@ namespace Hash
     }
 
 
+
+    class Sha224 : public Sha256
+    {
+    public:
+        constexpr explicit Sha224() : Sha256(0xC1059ED8, 0x367CD507, 0x3070DD17, 0xF70E5939, 0xFFC00B31, 0x68581511, 0x64F98FA7, 0xBEFA4FA4) {}
+        inline std::string Hexdigest() const override
+        {
+            std::stringstream stream;
+            stream << std::hex << std::setfill('0') << std::setw(8) << m_H[0] << std::setw(8) << m_H[1] << std::setw(8) << m_H[2] << std::setw(8) << m_H[3] << std::setw(8) << m_H[4] << std::setw(8) << m_H[5] << std::setw(8) << m_H[6];
+            return stream.str();
+        }
+    };
+
+
+    // if you have any kind of unicode string, use the Hash::encode functions beforehand to convert the string
+    inline std::string sha224(std::string_view str)
+    {
+        Sha224 s;
+        s.Update(str.data(), str.size());
+        s.Finalize();
+        return s.Hexdigest();
+    }
+
+    inline std::string sha224(const char* str, std::size_t size)
+    {
+        Sha224 s;
+        s.Update(str, size);
+        s.Finalize();
+        return s.Hexdigest();
+    }
 
 
     /* MD5
