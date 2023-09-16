@@ -9,6 +9,13 @@ Most of the programs/header files in here are self explanatory
     - SHA-512
     - SHA-512/224
     - SHA-512/256
+- SHA-3 family
+    - SHA3-224
+    - SHA3-256
+    - SHA3-384
+    - SHA3-512
+- Shake-128
+- Shake-256
 - MD5
 
 ### array.h
