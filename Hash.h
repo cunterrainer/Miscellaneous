@@ -114,11 +114,11 @@ namespace Hash
 
     class Sha256
     {
-    protected:
+    private:
         uint64_t m_Bitlen = 0;
         uint8_t m_BufferSize = 0;
         uint8_t m_Buffer[64];
-
+    protected:
         // FracPartsSqareRoots
         uint32_t m_H[8] =
         {
@@ -222,7 +222,6 @@ namespace Hash
                 }
             }
         }
-
 
         inline void Update(const char* data, std::size_t size)
         {
@@ -909,11 +908,11 @@ namespace Hash
 
     class Sha512
     {
-    protected:
+    private:
         uint64_t m_Bitlen = 0;
         uint8_t m_BufferSize = 0;
         uint8_t m_Buffer[128];
-
+    protected:
         uint64_t m_H[8] =
         {
             0x6a09e667f3bcc908,
@@ -1011,6 +1010,10 @@ namespace Hash
             Compress(w);
         }
     public:
+        Sha512() = default;
+        explicit Sha512(uint64_t h0, uint64_t h1, uint64_t h2, uint64_t h3, uint64_t h4, uint64_t h5, uint64_t h6, uint64_t h7) : m_H{ h0, h1, h2, h3, h4, h5, h6, h7 } {}
+        virtual ~Sha512() = default;
+
         inline void Update(const uint8_t* data, std::size_t size)
         {
             for (size_t i = 0; i < size; ++i)
@@ -1090,6 +1093,48 @@ namespace Hash
         inline std::string sha512(std::string_view path, std::ios::openmode flag = std::ios::in)
         {
             return Hash::sha512(Util::LoadFile(path.data(), flag));
+        }
+    }
+
+
+
+    class Sha384 : public Sha512
+    {
+    public:
+        Sha384() : Sha512(0xcbbb9d5dc1059ed8, 0x629a292a367cd507, 0x9159015a3070dd17, 0x152fecd8f70e5939, 0x67332667ffc00b31, 0x8eb44a8768581511, 0xdb0c2e0d64f98fa7, 0x47b5481dbefa4fa4) {}
+        inline std::string Hexdigest() const override
+        {
+            std::stringstream stream;
+            stream << std::hex << std::setfill('0') << std::setw(16) << m_H[0] << std::setw(16) << m_H[1] << std::setw(16) << m_H[2] << std::setw(16) << m_H[3] << std::setw(16) << m_H[4] << std::setw(16) << m_H[5];
+            return stream.str();
+        }
+    };
+
+
+    // if you have any kind of unicode string, use the Hash::encode functions beforehand to convert the string
+    inline std::string sha384(const char* str, std::size_t size)
+    {
+        Sha384 s;
+        s.Update(str, size);
+        s.Finalize();
+        return s.Hexdigest();
+    }
+
+    inline std::string sha384(std::string_view str)
+    {
+        return sha384(str.data(), str.size());
+    }
+
+    namespace File
+    {
+        inline std::string sha384(const char* path, std::ios::openmode flag = std::ios::in)
+        {
+            return Hash::sha384(Util::LoadFile(path, flag));
+        }
+
+        inline std::string sha384(std::string_view path, std::ios::openmode flag = std::ios::in)
+        {
+            return Hash::sha384(Util::LoadFile(path.data(), flag));
         }
     }
 }
