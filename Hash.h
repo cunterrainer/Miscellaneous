@@ -53,7 +53,7 @@ namespace Hash
 
     namespace Util
     {
-        inline std::string LoadFile(const char* path, std::ios::openmode flag) // std::ios::in | std::ios::binary
+        inline std::string LoadFile(const char* path, std::ios::openmode flag) // std::ios::binary | std::ios::binary
         {
             std::ifstream infile(path, flag);
             if (!infile.is_open())
@@ -280,12 +280,12 @@ namespace Hash
 
     namespace File
     {
-        inline std::string sha256(const char* path, std::ios::openmode flag = std::ios::in)
+        inline std::string sha256(const char* path, std::ios::openmode flag = std::ios::binary)
         {
             return Hash::sha256(Util::LoadFile(path, flag));
         }
 
-        inline std::string sha256(std::string_view path, std::ios::openmode flag = std::ios::in)
+        inline std::string sha256(std::string_view path, std::ios::openmode flag = std::ios::binary)
         {
             return Hash::sha256(Util::LoadFile(path.data(), flag));
         }
@@ -322,12 +322,12 @@ namespace Hash
 
     namespace File
     {
-        inline std::string sha224(const char* path, std::ios::openmode flag = std::ios::in)
+        inline std::string sha224(const char* path, std::ios::openmode flag = std::ios::binary)
         {
             return Hash::sha224(Util::LoadFile(path, flag));
         }
 
-        inline std::string sha224(std::string_view path, std::ios::openmode flag = std::ios::in)
+        inline std::string sha224(std::string_view path, std::ios::openmode flag = std::ios::binary)
         {
             return Hash::sha224(Util::LoadFile(path.data(), flag));
         }
@@ -731,12 +731,12 @@ namespace Hash
 
     namespace File
     {
-        inline std::string md5(const char* path, std::ios::openmode flag = std::ios::in)
+        inline std::string md5(const char* path, std::ios::openmode flag = std::ios::binary)
         {
             return Hash::md5(Util::LoadFile(path, flag));
         }
 
-        inline std::string md5(std::string_view path, std::ios::openmode flag = std::ios::in)
+        inline std::string md5(std::string_view path, std::ios::openmode flag = std::ios::binary)
         {
             return Hash::md5(Util::LoadFile(path.data(), flag));
         }
@@ -891,12 +891,12 @@ namespace Hash
 
     namespace File
     {
-        inline std::string sha1(const char* path, std::ios::openmode flag = std::ios::in)
+        inline std::string sha1(const char* path, std::ios::openmode flag = std::ios::binary)
         {
             return Hash::sha1(Util::LoadFile(path, flag));
         }
 
-        inline std::string sha1(std::string_view path, std::ios::openmode flag = std::ios::in)
+        inline std::string sha1(std::string_view path, std::ios::openmode flag = std::ios::binary)
         {
             return Hash::sha1(Util::LoadFile(path.data(), flag));
         }
@@ -1014,6 +1014,12 @@ namespace Hash
         explicit Sha512(uint64_t h0, uint64_t h1, uint64_t h2, uint64_t h3, uint64_t h4, uint64_t h5, uint64_t h6, uint64_t h7) : m_H{ h0, h1, h2, h3, h4, h5, h6, h7 } {}
         virtual ~Sha512() = default;
 
+        inline void Reset()
+        {
+            m_Bitlen = 0;
+            m_BufferSize = 0;
+        }
+
         inline void Update(const uint8_t* data, std::size_t size)
         {
             for (size_t i = 0; i < size; ++i)
@@ -1039,7 +1045,7 @@ namespace Hash
         }
 
 
-        inline virtual void Finalize()
+        inline void Finalize()
         {
             uint8_t start = m_BufferSize;
             uint8_t end = m_BufferSize < 112 ? 120 : 128; // 120 instead of 112 because m_Bitlen is a 64 bit uint
@@ -1085,16 +1091,115 @@ namespace Hash
 
     namespace File
     {
-        inline std::string sha512(const char* path, std::ios::openmode flag = std::ios::in)
+        inline std::string sha512(const char* path, std::ios::openmode flag = std::ios::binary)
         {
             return Hash::sha512(Util::LoadFile(path, flag));
         }
 
-        inline std::string sha512(std::string_view path, std::ios::openmode flag = std::ios::in)
+        inline std::string sha512(std::string_view path, std::ios::openmode flag = std::ios::binary)
         {
             return Hash::sha512(Util::LoadFile(path.data(), flag));
         }
     }
+
+
+
+
+
+    class Sha512T : public Sha512
+    {
+    private:
+        size_t m_T;
+    private:
+        inline std::string HexdigestFull() const
+        {
+            return Sha512::Hexdigest();
+        }
+    public:
+        inline explicit Sha512T(size_t t) : Sha512(0xcfac43c256196cad, 0x1ec20b20216f029e, 0x99cb56d75b315d8e, 0x00ea509ffab89354, 0xf4abf7da08432774, 0x3ea0cd298e9bc9ba, 0xba267c0e5ee418ce, 0xfe4568bcb6db84dc), m_T(t)
+        {
+            assert(t != 384 && "t = 384 is not allowed use Sha384 instead!");
+            assert(t >= 4 && t <= 2048 && "t > 2048 is not allowed!");
+
+            std::string s = "SHA-512/" + std::to_string(m_T);
+            Update(s);
+            Finalize();
+            s = HexdigestFull();
+            Reset();
+
+            for (size_t i = 0; i < s.size(); i += 16)
+            {
+                static size_t k = 0;
+                std::stringstream ss;
+                ss << std::hex << std::string_view(&s.c_str()[i], 16);
+                ss >> m_H[k++];
+            }
+        }
+
+        inline std::string Hexdigest() const override
+        {
+            return Sha512::Hexdigest().substr(0, m_T / 4);
+        }
+    };
+
+
+    template <size_t T>
+    class Sha512_T : public Sha512T
+    {
+        static_assert(T != 384, "T = 384 is not allowed use Sha384 instead!");
+        static_assert(T >= 4 && T <= 2048 * 4, "T > 2048 is not allowed!");
+    public:
+        inline Sha512_T() : Sha512T(T) {}
+    };
+    using Sha512_224 = Sha512_T<224>;
+    using Sha512_256 = Sha512_T<256>;
+
+
+    inline std::string sha512t(size_t t, const char* str, std::size_t size)
+    {
+        Sha512T s(t);
+        s.Update(str, size);
+        s.Finalize();
+        return s.Hexdigest();
+    }
+
+    inline std::string sha512t(size_t t, std::string_view str)
+    {
+        return sha512t(t, str.data(), str.size());
+    }
+
+    template <size_t T> inline std::string sha512t(const char* str, std::size_t size)
+    {
+        Sha512_T<T> s;
+        s.Update(str, size);
+        s.Finalize();
+        return s.Hexdigest();
+    }
+
+    template <size_t T> inline std::string sha512t(std::string_view str)
+    {
+        return sha512t<T>(str.data(), str.size());
+    }
+
+    inline std::string sha512_224(std::string_view str) { return sha512t<224>(str.data(), str.size()); }
+    inline std::string sha512_256(std::string_view str) { return sha512t<256>(str.data(), str.size()); }
+    inline std::string sha512_224(const char* str, std::size_t size) { return sha512t<224>(str, size); }
+    inline std::string sha512_256(const char* str, std::size_t size) { return sha512t<256>(str, size); }
+
+    namespace File
+    {
+        inline std::string sha512t(size_t t, const char* path,      std::ios::openmode flag = std::ios::binary) { return Hash::sha512t(t, Util::LoadFile(path, flag));        }
+        inline std::string sha512t(size_t t, std::string_view path, std::ios::openmode flag = std::ios::binary) { return Hash::sha512t(t, Util::LoadFile(path.data(), flag)); }
+        template <size_t T> inline std::string sha512t(const char* path,      std::ios::openmode flag = std::ios::binary) { return Hash::sha512t<T>(Util::LoadFile(path, flag));        }
+        template <size_t T> inline std::string sha512t(std::string_view path, std::ios::openmode flag = std::ios::binary) { return Hash::sha512t<T>(Util::LoadFile(path.data(), flag)); }
+    
+        inline std::string sha512_224(const char* path,      std::ios::openmode flag = std::ios::binary) { return sha512t<224>(path, flag); }
+        inline std::string sha512_256(const char* path,      std::ios::openmode flag = std::ios::binary) { return sha512t<256>(path, flag); }
+        inline std::string sha512_224(std::string_view path, std::ios::openmode flag = std::ios::binary) { return sha512t<224>(path, flag); }
+        inline std::string sha512_256(std::string_view path, std::ios::openmode flag = std::ios::binary) { return sha512t<256>(path, flag); }
+    }
+
+
 
 
 
@@ -1127,12 +1232,12 @@ namespace Hash
 
     namespace File
     {
-        inline std::string sha384(const char* path, std::ios::openmode flag = std::ios::in)
+        inline std::string sha384(const char* path, std::ios::openmode flag = std::ios::binary)
         {
             return Hash::sha384(Util::LoadFile(path, flag));
         }
 
-        inline std::string sha384(std::string_view path, std::ios::openmode flag = std::ios::in)
+        inline std::string sha384(std::string_view path, std::ios::openmode flag = std::ios::binary)
         {
             return Hash::sha384(Util::LoadFile(path.data(), flag));
         }
