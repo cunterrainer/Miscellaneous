@@ -52,6 +52,22 @@ namespace Hash
 
     namespace Util
     {
+        inline std::string LoadFile(const char* path, int flag) // std::ios::in | std::ios::binary
+        {
+            std::ifstream infile(path, flag);
+            if (!infile.is_open())
+                return "";
+
+            infile.seekg(0, std::ios::end);
+            size_t size = infile.tellg();
+            infile.seekg(0, std::ios::beg);
+
+            std::string data(size, ' ');
+            infile.read(data.data(), size);
+            return data;
+        }
+
+
         template <typename T>
         constexpr T SwapEndian(T u)
         {
@@ -253,20 +269,30 @@ namespace Hash
 
 
     // if you have any kind of unicode string, use the Hash::encode functions beforehand to convert the string
-    inline std::string sha256(std::string_view str)
-    {
-        Sha256 s;
-        s.Update(str.data(), str.size());
-        s.Finalize();
-        return s.Hexdigest();
-    }
-
     inline std::string sha256(const char* str, std::size_t size)
     {
         Sha256 s;
         s.Update(str, size);
         s.Finalize();
         return s.Hexdigest();
+    }
+
+    inline std::string sha256(std::string_view str)
+    {
+        return sha256(str.data(), str.size());
+    }
+
+    namespace File
+    {
+        inline std::string sha256(const char* path, int flag = std::ios::in)
+        {
+            return Hash::sha256(Util::LoadFile(path, flag));
+        }
+
+        inline std::string sha256(std::string_view path, int flag = std::ios::in)
+        {
+            return Hash::sha256(Util::LoadFile(path.data(), flag));
+        }
     }
 
 
@@ -285,14 +311,6 @@ namespace Hash
 
 
     // if you have any kind of unicode string, use the Hash::encode functions beforehand to convert the string
-    inline std::string sha224(std::string_view str)
-    {
-        Sha224 s;
-        s.Update(str.data(), str.size());
-        s.Finalize();
-        return s.Hexdigest();
-    }
-
     inline std::string sha224(const char* str, std::size_t size)
     {
         Sha224 s;
@@ -300,6 +318,25 @@ namespace Hash
         s.Finalize();
         return s.Hexdigest();
     }
+
+    inline std::string sha224(std::string_view str)
+    {
+        return sha224(str.data(), str.size());
+    }
+
+    namespace File
+    {
+        inline std::string sha224(const char* path, int flag = std::ios::in)
+        {
+            return Hash::sha224(Util::LoadFile(path, flag));
+        }
+
+        inline std::string sha224(std::string_view path, int flag = std::ios::in)
+        {
+            return Hash::sha224(Util::LoadFile(path.data(), flag));
+        }
+    }
+
 
 
     /* MD5
@@ -696,13 +733,18 @@ namespace Hash
         return md5.hexdigest();
     }
 
+    namespace File
+    {
+        inline std::string md5(const char* path, int flag = std::ios::in)
+        {
+            return Hash::md5(Util::LoadFile(path, flag));
+        }
 
-
-
-
-
-
-
+        inline std::string md5(std::string_view path, int flag = std::ios::in)
+        {
+            return Hash::md5(Util::LoadFile(path.data(), flag));
+        }
+    }
 
 
 
@@ -839,19 +881,29 @@ namespace Hash
         }
     };
 
-    inline std::string sha1(std::string_view str)
-    {
-        Sha1 s;
-        s.Update(str.data(), str.size());
-        s.Finalize();
-        return s.Hexdigest();
-    }
-
     inline std::string sha1(const char* str, std::size_t size)
     {
         Sha1 s;
         s.Update(str, size);
         s.Finalize();
         return s.Hexdigest();
+    }
+
+    inline std::string sha1(std::string_view str)
+    {
+        return sha1(str.data(), str.size());
+    }
+
+    namespace File
+    {
+        inline std::string sha1(const char* path, int flag = std::ios::in)
+        {
+            return Hash::sha1(Util::LoadFile(path, flag));
+        }
+
+        inline std::string sha1(std::string_view path, int flag = std::ios::in)
+        {
+            return Hash::sha1(Util::LoadFile(path.data(), flag));
+        }
     }
 }
