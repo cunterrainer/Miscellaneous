@@ -77,11 +77,20 @@ namespace Hash
             return *(char*)&num == 1;
         }
 
-        constexpr uint32_t RightRotate32(uint32_t n, unsigned int c)
+        constexpr uint32_t RightRotate32(uint32_t n, unsigned int c) // doesn't loose bits
         {
-            const unsigned int mask = (CHAR_BIT * sizeof(n) - 1);
-            c &= mask;
-            return (n >> c) | (n << ((-c) & mask));
+            //const unsigned int mask = (CHAR_BIT * sizeof(n) - 1);
+            //c &= mask;
+            //return (n >> c) | (n << ((-c) & mask));
+            return (n >> c) | (n << (32 - c));
+        }
+
+        constexpr uint32_t LeftRotate32(uint32_t n, unsigned int c) // doesn't loose bits
+        {
+            //const unsigned int mask = (CHAR_BIT * sizeof(n) - 1);
+            //c &= mask;
+            //return (n << c) | (n >> ((-c) & mask));
+            return (n << c) | (n >> (32 - c));
         }
     }
 
@@ -651,5 +660,164 @@ namespace Hash
     {
         MD5 md5 = MD5(str);
         return md5.hexdigest();
+    }
+
+
+
+
+
+
+
+
+
+
+
+    class Sha1
+    {
+    private:
+        uint64_t m_Bitlen = 0;
+        size_t m_BufferSize = 0;
+        unsigned char m_Buffer[64] = {0};
+
+        uint32_t m_H[5] =
+        {
+            0x67452301,
+            0xEFCDAB89,
+            0x98BADCFE,
+            0x10325476,
+            0xC3D2E1F0
+        };
+    private:
+        inline void Transform()
+        {
+            uint32_t w[80] = { 0 };
+            for (size_t i = 0; i < 16; ++i)
+            {
+                uint8_t* ptr = (uint8_t*)&w[i];
+                ptr[0] = m_Buffer[4 * i];
+                ptr[1] = m_Buffer[4 * i + 1];
+                ptr[2] = m_Buffer[4 * i + 2];
+                ptr[3] = m_Buffer[4 * i + 3];
+                w[i] = Util::IsLittleEndian() ? Util::SwapEndian<uint32_t>(w[i]) : w[i];
+            }
+
+            for (size_t i = 16; i < 80; ++i)
+            {
+                w[i] = (Util::LeftRotate32(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1));
+            }
+
+            uint32_t a = m_H[0];
+            uint32_t b = m_H[1];
+            uint32_t c = m_H[2];
+            uint32_t d = m_H[3];
+            uint32_t e = m_H[4];
+            uint32_t k, f;
+
+            for (size_t i = 0; i <= 79; ++i)
+            {
+                if (i <= 19)
+                {
+                    f = (b & c) | ((~b) & d);
+                    k = 0x5A827999;
+                }
+                else if (i >= 20 && i <= 39)
+                {
+                    f = b ^ c ^ d;
+                    k = 0x6ED9EBA1;
+                }
+                else if (i >= 40 && i <= 59)
+                {
+                    f = (b & c) | (b & d) | (c & d);
+                    k = 0x8F1BBCDC;
+                }
+                else if (i >= 60 && i <= 79)
+                {
+                    f = b ^ c ^ d;
+                    k = 0xCA62C1D6;
+                }
+
+                const uint32_t tmp = Util::LeftRotate32(a, 5) + f + e + k + w[i];
+                e = d;
+                d = c;
+                c = Util::LeftRotate32(b, 30);
+                b = a;
+                a = tmp;
+            }
+
+            m_H[0] = m_H[0] + a;
+            m_H[1] = m_H[1] + b;
+            m_H[2] = m_H[2] + c;
+            m_H[3] = m_H[3] + d;
+            m_H[4] = m_H[4] + e;
+        }
+    public:
+        inline void Finalize()
+        {
+            m_Bitlen += m_BufferSize * 8;
+
+            uint64_t i = m_BufferSize;
+            uint8_t end = m_BufferSize < 56 ? 56 : 64;
+
+            m_Buffer[i++] = 0b10000000;
+            while (i < end)
+                m_Buffer[i++] = 0; // Pad with zeros
+
+            if (m_BufferSize >= 56)
+            {
+                Transform();
+                std::memset(m_Buffer, 0, 56);
+            }
+
+            uint64_t* const size = (uint64_t*)&m_Buffer[64-8];
+            *size = Util::IsLittleEndian() ? Util::SwapEndian(m_Bitlen) : m_Bitlen;
+            Transform();
+        }
+
+        inline void Update(const unsigned char* data, std::size_t size)
+        {
+            for (size_t i = 0; i < size; ++i)
+            {
+                m_Buffer[m_BufferSize++] = data[i];
+                if (m_BufferSize == 64)
+                {
+                    Transform();
+                    m_BufferSize = 0;
+                    m_Bitlen = 512;
+                }
+            }
+        }
+
+        inline void Update(const char* data, std::size_t size)
+        {
+            Update((const unsigned char*)data, size);
+        }
+
+        inline void Update(std::string_view data)
+        {
+            Update((const unsigned char*)data.data(), data.size());
+        }
+
+        inline std::string Hexdigest() const
+        {
+            std::stringstream stream;
+            stream << std::hex << std::setfill('0') << std::setw(8) << m_H[0] << std::setw(8) << m_H[1] << std::setw(8) << m_H[2] << std::setw(8) << m_H[3] << std::setw(8) << m_H[4];
+            return stream.str();
+        }
+    };
+
+    inline std::string sha1(std::string_view str)
+    {
+        Sha1 s;
+        s.Update(str.data(), str.size());
+        s.Finalize();
+        return s.Hexdigest();
+    }
+
+    inline std::string sha1(const char* str, std::size_t size)
+    {
+        Sha1 s;
+        s.Update(str, size);
+        s.Finalize();
+        return s.Hexdigest();
     }
 }
