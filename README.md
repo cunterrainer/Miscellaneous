@@ -1,6 +1,6 @@
 Most of the programs/header files in here are self explanatory
 
-### Hash.h
+### Hash.h (C/C++)
 - SHA-1
 - SHA-2 family
     - SHA-224
@@ -18,6 +18,7 @@ Most of the programs/header files in here are self explanatory
 - Shake-256
 - MD5
 
+The documentation is in the header
 The SHA-3 and Shake functions can not be updated data has to be supplied in a single string
 
 ### array.h
