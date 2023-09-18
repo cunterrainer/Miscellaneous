@@ -315,7 +315,7 @@ HASH_INLINE const char* hash_sha256_hexdigest(Hash_Sha256* s, char* buffer)
     char* buff = buffer == NULL ? hex : buffer;
     for (size_t i = 0; i < 8; ++i)
     {
-        sprintf(&buff[i*8], "%08" PRIx32, s->h[i]);
+        sprintf(&buff[i * 8], "%08" PRIx32, s->h[i]);
     }
     buff[64] = 0;
     return buff;
@@ -655,7 +655,7 @@ HASH_INLINE Hash_Sha512T hash_sha512t_init(size_t t)
     s.h[6] = 0xba267c0e5ee418ce;
     s.h[7] = 0xfe4568bcb6db84dc;
     s.t = t;
-    
+
     char str[13], buff[129];
     memset(str, 0, 13);
     sprintf(str, "SHA-512/%u", (unsigned int)t);
@@ -702,7 +702,7 @@ HASH_INLINE const char* hash_sha512t_hexdigest(Hash_Sha512T* s, char* buffer)
     {
         sprintf(&buff[i * 16], "%016" PRIx64, s->h[i]);
     }
-    buff[s->t/4] = 0;
+    buff[s->t / 4] = 0;
     return buff;
 }
 
@@ -1187,13 +1187,14 @@ HASH_INLINE void hash_private_md5_transform(Hash_MD5* m, const uint8_t block[HAS
 
 HASH_INLINE void hash_private_md5_update_binary(Hash_MD5* m, const unsigned char* input, size_t size)
 {
+    const uint32_t s = (uint32_t)size;
     // compute number of bytes mod 64
     uint32_t index = m->count[0] / 8 % HASH_PRIVATE_Hash_MD5_BLOCKSIZE;
 
     // Update number of bits
-    if ((m->count[0] += (size << 3)) < (size << 3))
+    if ((m->count[0] += (s << 3)) < (s << 3))
         m->count[1]++;
-    m->count[1] += (size >> 29);
+    m->count[1] += (s >> 29);
 
     // number of bytes we need to fill in buffer
     uint32_t firstpart = 64 - index;
@@ -1201,14 +1202,14 @@ HASH_INLINE void hash_private_md5_update_binary(Hash_MD5* m, const unsigned char
     uint32_t i;
 
     // transform as many times as possible.
-    if (size >= firstpart)
+    if (s >= firstpart)
     {
         // fill buffer first, transform
         memcpy(&m->buffer[index], input, firstpart);
         hash_private_md5_transform(m, m->buffer);
 
         // transform chunks of blocksize (64 bytes)
-        for (i = firstpart; i + HASH_PRIVATE_Hash_MD5_BLOCKSIZE <= size; i += HASH_PRIVATE_Hash_MD5_BLOCKSIZE)
+        for (i = firstpart; i + HASH_PRIVATE_Hash_MD5_BLOCKSIZE <= s; i += HASH_PRIVATE_Hash_MD5_BLOCKSIZE)
             hash_private_md5_transform(m, &input[i]);
 
         index = 0;
@@ -1217,7 +1218,7 @@ HASH_INLINE void hash_private_md5_update_binary(Hash_MD5* m, const unsigned char
         i = 0;
 
     // buffer remaining input
-    memcpy(&m->buffer[index], &input[i], size - i);
+    memcpy(&m->buffer[index], &input[i], s - i);
 }
 
 
@@ -1594,7 +1595,7 @@ namespace Hash
         inline virtual std::string Hexdigest() const
         {
             std::stringstream stream;
-            stream << std::hex << std::setfill('0') << std::setw(8) << m_H[0] << std::setw(8) << m_H[1] << std::setw(8) << m_H[2] << std::setw(8) << m_H[3] << std::setw(8)<< m_H[4] << std::setw(8) << m_H[5] << std::setw(8) << m_H[6] << std::setw(8) << m_H[7];
+            stream << std::hex << std::setfill('0') << std::setw(8) << m_H[0] << std::setw(8) << m_H[1] << std::setw(8) << m_H[2] << std::setw(8) << m_H[3] << std::setw(8) << m_H[4] << std::setw(8) << m_H[5] << std::setw(8) << m_H[6] << std::setw(8) << m_H[7];
             return stream.str();
         }
     };
@@ -1757,13 +1758,13 @@ namespace Hash
             {
                 uint8_t* c = (uint8_t*)&w[i];
                 c[0] = m_Buffer[8 * i];
-                c[1] = m_Buffer[8*i+1];
-                c[2] = m_Buffer[8*i+2];
-                c[3] = m_Buffer[8*i+3];
-                c[4] = m_Buffer[8*i+4];
-                c[5] = m_Buffer[8*i+5];
-                c[6] = m_Buffer[8*i+6];
-                c[7] = m_Buffer[8*i+7];
+                c[1] = m_Buffer[8 * i + 1];
+                c[2] = m_Buffer[8 * i + 2];
+                c[3] = m_Buffer[8 * i + 3];
+                c[4] = m_Buffer[8 * i + 4];
+                c[5] = m_Buffer[8 * i + 5];
+                c[6] = m_Buffer[8 * i + 6];
+                c[7] = m_Buffer[8 * i + 7];
                 w[i] = Util::IsLittleEndian() ? Util::SwapEndian(w[i]) : w[i];
             }
 
@@ -1954,13 +1955,13 @@ namespace Hash
 
     namespace File
     {
-        inline std::string sha512t(size_t t, const char* path,      std::ios::openmode flag = std::ios::binary) { return Hash::sha512t(t, Util::LoadFile(path, flag));        }
+        inline std::string sha512t(size_t t, const char* path, std::ios::openmode flag = std::ios::binary) { return Hash::sha512t(t, Util::LoadFile(path, flag)); }
         inline std::string sha512t(size_t t, std::string_view path, std::ios::openmode flag = std::ios::binary) { return Hash::sha512t(t, Util::LoadFile(path.data(), flag)); }
-        template <size_t T> inline std::string sha512t(const char* path,      std::ios::openmode flag = std::ios::binary) { return Hash::sha512t<T>(Util::LoadFile(path, flag));        }
+        template <size_t T> inline std::string sha512t(const char* path, std::ios::openmode flag = std::ios::binary) { return Hash::sha512t<T>(Util::LoadFile(path, flag)); }
         template <size_t T> inline std::string sha512t(std::string_view path, std::ios::openmode flag = std::ios::binary) { return Hash::sha512t<T>(Util::LoadFile(path.data(), flag)); }
-    
-        inline std::string sha512_224(const char* path,      std::ios::openmode flag = std::ios::binary) { return sha512t<224>(path, flag); }
-        inline std::string sha512_256(const char* path,      std::ios::openmode flag = std::ios::binary) { return sha512t<256>(path, flag); }
+
+        inline std::string sha512_224(const char* path, std::ios::openmode flag = std::ios::binary) { return sha512t<224>(path, flag); }
+        inline std::string sha512_256(const char* path, std::ios::openmode flag = std::ios::binary) { return sha512t<256>(path, flag); }
         inline std::string sha512_224(std::string_view path, std::ios::openmode flag = std::ios::binary) { return sha512t<224>(path, flag); }
         inline std::string sha512_256(std::string_view path, std::ios::openmode flag = std::ios::binary) { return sha512t<256>(path, flag); }
     }
@@ -2072,7 +2073,7 @@ namespace Hash
                     k = 0x8F1BBCDC;
                 }
                 else
-                //else if (i >= 60 && i <= 79)
+                    //else if (i >= 60 && i <= 79)
                 {
                     f = b ^ c ^ d;
                     k = 0xCA62C1D6;
@@ -2656,11 +2657,11 @@ namespace Hash
       * @param  outputByteLen   The number of output bytes desired.
       * @pre    One must have r+c=1600 and the rate a multiple of 8 bits in this implementation.
       */
-    void hash_private_keccak_Keccak(unsigned int rate, unsigned int capacity, const unsigned char* input, unsigned long long int inputByteLen, unsigned char delimitedSuffix, unsigned char* output, unsigned long long int outputByteLen);
+inline void hash_private_keccak_Keccak(unsigned int rate, unsigned int capacity, const unsigned char* input, unsigned long long int inputByteLen, unsigned char delimitedSuffix, unsigned char* output, unsigned long long int outputByteLen);
 
 namespace Hash
 {
-    inline std::string shake128(const unsigned char* data, unsigned int size, int outsizeBytes)
+    inline std::string shake128(const unsigned char* data, size_t size, size_t outsizeBytes)
     {
         std::string buff(outsizeBytes / 2, ' ');
         hash_private_keccak_Keccak(1344, 256, data, size, 0x1F, (unsigned char*)buff.data(), outsizeBytes / 2);
@@ -2668,20 +2669,20 @@ namespace Hash
     }
 
 
-    inline std::string shake256(const unsigned char* data, unsigned int size, int outsizeBytes)
+    inline std::string shake256(const unsigned char* data, size_t size, size_t outsizeBytes)
     {
         std::string buff(outsizeBytes / 2, ' ');
         hash_private_keccak_Keccak(1088, 512, data, size, 0x1F, (unsigned char*)buff.data(), outsizeBytes / 2);
         return Util::CharArrayToHexString((unsigned char*)buff.data(), outsizeBytes / 2);
     }
 
-    inline std::string shake128(const char* data, unsigned int size, int outsizeBytes) { return shake128((const unsigned char*)data, size, outsizeBytes); }
-    inline std::string shake256(const char* data, unsigned int size, int outsizeBytes) { return shake256((const unsigned char*)data, size, outsizeBytes); }
-    inline std::string shake128(std::string_view data, int outsizeBytes) { return shake128(data.data(), data.size(), outsizeBytes); }
-    inline std::string shake256(std::string_view data, int outsizeBytes) { return shake256(data.data(), data.size(), outsizeBytes); }
+    inline std::string shake128(const char* data, size_t size, size_t outsizeBytes) { return shake128((const unsigned char*)data, size, outsizeBytes); }
+    inline std::string shake256(const char* data, size_t size, size_t outsizeBytes) { return shake256((const unsigned char*)data, size, outsizeBytes); }
+    inline std::string shake128(std::string_view data, size_t outsizeBytes) { return shake128(data.data(), data.size(), outsizeBytes); }
+    inline std::string shake256(std::string_view data, size_t outsizeBytes) { return shake256(data.data(), data.size(), outsizeBytes); }
 
 
-    template <int outsizeBytes> inline std::string shake128(const unsigned char* data, unsigned int size)
+    template <size_t outsizeBytes> inline std::string shake128(const unsigned char* data, size_t size)
     {
         static_assert(outsizeBytes > 0, "outsizeBytes must be greater than 0!");
         unsigned char buff[outsizeBytes / 2];
@@ -2690,7 +2691,7 @@ namespace Hash
     }
 
 
-    template <int outsizeBytes> inline std::string shake256(const unsigned char* data, unsigned int size)
+    template <size_t outsizeBytes> inline std::string shake256(const unsigned char* data, size_t size)
     {
         static_assert(outsizeBytes > 0, "outsizeBytes must be greater than 0!");
         unsigned char buff[outsizeBytes / 2];
@@ -2698,60 +2699,60 @@ namespace Hash
         return Util::CharArrayToHexString(buff, outsizeBytes / 2);
     }
 
-    template <int outsizeBytes> inline std::string shake128(const char* data, unsigned int size) { return shake128<outsizeBytes>((const unsigned char*)data, size); }
-    template <int outsizeBytes> inline std::string shake256(const char* data, unsigned int size) { return shake256<outsizeBytes>((const unsigned char*)data, size); }
-    template <int outsizeBytes> inline std::string shake128(std::string_view data) { return shake128<outsizeBytes>(data.data(), data.size()); }
-    template <int outsizeBytes> inline std::string shake256(std::string_view data) { return shake256<outsizeBytes>(data.data(), data.size()); }
+    template <size_t outsizeBytes> inline std::string shake128(const char* data, size_t size) { return shake128<outsizeBytes>((const unsigned char*)data, size); }
+    template <size_t outsizeBytes> inline std::string shake256(const char* data, size_t size) { return shake256<outsizeBytes>((const unsigned char*)data, size); }
+    template <size_t outsizeBytes> inline std::string shake128(std::string_view data) { return shake128<outsizeBytes>(data.data(), data.size()); }
+    template <size_t outsizeBytes> inline std::string shake256(std::string_view data) { return shake256<outsizeBytes>(data.data(), data.size()); }
 
 
     namespace File
     {
-        inline std::string shake128(const char* path,      int outsizeBytes, std::ios::openmode flag = std::ios::binary) { return Hash::shake128(Util::LoadFile(path, flag),        outsizeBytes); }
-        inline std::string shake128(std::string_view path, int outsizeBytes, std::ios::openmode flag = std::ios::binary) { return Hash::shake128(Util::LoadFile(path.data(), flag), outsizeBytes); }
-        inline std::string shake256(const char* path,      int outsizeBytes, std::ios::openmode flag = std::ios::binary) { return Hash::shake256(Util::LoadFile(path, flag),        outsizeBytes); }
-        inline std::string shake256(std::string_view path, int outsizeBytes, std::ios::openmode flag = std::ios::binary) { return Hash::shake256(Util::LoadFile(path.data(), flag), outsizeBytes); }
+        inline std::string shake128(const char* path,      size_t outsizeBytes, std::ios::openmode flag = std::ios::binary) { return Hash::shake128(Util::LoadFile(path, flag),        outsizeBytes); }
+        inline std::string shake128(std::string_view path, size_t outsizeBytes, std::ios::openmode flag = std::ios::binary) { return Hash::shake128(Util::LoadFile(path.data(), flag), outsizeBytes); }
+        inline std::string shake256(const char* path,      size_t outsizeBytes, std::ios::openmode flag = std::ios::binary) { return Hash::shake256(Util::LoadFile(path, flag),        outsizeBytes); }
+        inline std::string shake256(std::string_view path, size_t outsizeBytes, std::ios::openmode flag = std::ios::binary) { return Hash::shake256(Util::LoadFile(path.data(), flag), outsizeBytes); }
 
-        template <int outsizeBytes> inline std::string shake128(const char* path,      std::ios::openmode flag = std::ios::binary) { return Hash::shake128<outsizeBytes>(Util::LoadFile(path, flag));        }
-        template <int outsizeBytes> inline std::string shake128(std::string_view path, std::ios::openmode flag = std::ios::binary) { return Hash::shake128<outsizeBytes>(Util::LoadFile(path.data(), flag)); }
-        template <int outsizeBytes> inline std::string shake256(const char* path,      std::ios::openmode flag = std::ios::binary) { return Hash::shake256<outsizeBytes>(Util::LoadFile(path, flag));        }
-        template <int outsizeBytes> inline std::string shake256(std::string_view path, std::ios::openmode flag = std::ios::binary) { return Hash::shake256<outsizeBytes>(Util::LoadFile(path.data(), flag)); }
+        template <size_t outsizeBytes> inline std::string shake128(const char* path,      std::ios::openmode flag = std::ios::binary) { return Hash::shake128<outsizeBytes>(Util::LoadFile(path,        flag)); }
+        template <size_t outsizeBytes> inline std::string shake128(std::string_view path, std::ios::openmode flag = std::ios::binary) { return Hash::shake128<outsizeBytes>(Util::LoadFile(path.data(), flag)); }
+        template <size_t outsizeBytes> inline std::string shake256(const char* path,      std::ios::openmode flag = std::ios::binary) { return Hash::shake256<outsizeBytes>(Util::LoadFile(path,        flag)); }
+        template <size_t outsizeBytes> inline std::string shake256(std::string_view path, std::ios::openmode flag = std::ios::binary) { return Hash::shake256<outsizeBytes>(Util::LoadFile(path.data(), flag)); }
     }
 
 
 
 
-    inline std::string sha3_224(const unsigned char* data, unsigned int size)
+    inline std::string sha3_224(const unsigned char* data, size_t size)
     {
         unsigned char buff[28];
         hash_private_keccak_Keccak(1152, 448, data, size, 0x06, buff, 28);
         return Util::CharArrayToHexString(buff, 28);
     }
 
-    inline std::string sha3_256(const unsigned char* data, unsigned int size)
+    inline std::string sha3_256(const unsigned char* data, size_t size)
     {
         unsigned char buff[32];
         hash_private_keccak_Keccak(1088, 512, data, size, 0x06, buff, 32);
         return Util::CharArrayToHexString(buff, 32);
     }
 
-    inline std::string sha3_384(const unsigned char* data, unsigned int size)
+    inline std::string sha3_384(const unsigned char* data, size_t size)
     {
         unsigned char buff[48];
         hash_private_keccak_Keccak(832, 768, data, size, 0x06, buff, 48);
         return Util::CharArrayToHexString(buff, 48);
     }
 
-    inline std::string sha3_512(const unsigned char* data, unsigned int size)
+    inline std::string sha3_512(const unsigned char* data, size_t size)
     {
         unsigned char buff[64];
         hash_private_keccak_Keccak(576, 1024, data, size, 0x06, buff, 64);
         return Util::CharArrayToHexString(buff, 64);
     }
 
-    inline std::string sha3_224(const char* data, unsigned int size) { return sha3_224((const unsigned char*)data, size); }
-    inline std::string sha3_256(const char* data, unsigned int size) { return sha3_256((const unsigned char*)data, size); }
-    inline std::string sha3_384(const char* data, unsigned int size) { return sha3_384((const unsigned char*)data, size); }
-    inline std::string sha3_512(const char* data, unsigned int size) { return sha3_512((const unsigned char*)data, size); }
+    inline std::string sha3_224(const char* data, size_t size) { return sha3_224((const unsigned char*)data, size); }
+    inline std::string sha3_256(const char* data, size_t size) { return sha3_256((const unsigned char*)data, size); }
+    inline std::string sha3_384(const char* data, size_t size) { return sha3_384((const unsigned char*)data, size); }
+    inline std::string sha3_512(const char* data, size_t size) { return sha3_512((const unsigned char*)data, size); }
 
     inline std::string sha3_224(std::string_view data) { return sha3_224(data.data(), data.size()); }
     inline std::string sha3_256(std::string_view data) { return sha3_256(data.data(), data.size()); }
@@ -2761,13 +2762,13 @@ namespace Hash
 
     namespace File
     {
-        inline std::string sha3_224(const char* path,      std::ios::openmode flag = std::ios::binary) { return Hash::sha3_224(Util::LoadFile(path, flag)); }
+        inline std::string sha3_224(const char* path,      std::ios::openmode flag = std::ios::binary) { return Hash::sha3_224(Util::LoadFile(path,        flag)); }
         inline std::string sha3_224(std::string_view path, std::ios::openmode flag = std::ios::binary) { return Hash::sha3_224(Util::LoadFile(path.data(), flag)); }
-        inline std::string sha3_256(const char* path,      std::ios::openmode flag = std::ios::binary) { return Hash::sha3_256(Util::LoadFile(path, flag)); }
+        inline std::string sha3_256(const char* path,      std::ios::openmode flag = std::ios::binary) { return Hash::sha3_256(Util::LoadFile(path,        flag)); }
         inline std::string sha3_256(std::string_view path, std::ios::openmode flag = std::ios::binary) { return Hash::sha3_256(Util::LoadFile(path.data(), flag)); }
-        inline std::string sha3_384(const char* path,      std::ios::openmode flag = std::ios::binary) { return Hash::sha3_384(Util::LoadFile(path, flag)); }
+        inline std::string sha3_384(const char* path,      std::ios::openmode flag = std::ios::binary) { return Hash::sha3_384(Util::LoadFile(path,        flag)); }
         inline std::string sha3_384(std::string_view path, std::ios::openmode flag = std::ios::binary) { return Hash::sha3_384(Util::LoadFile(path.data(), flag)); }
-        inline std::string sha3_512(const char* path,      std::ios::openmode flag = std::ios::binary) { return Hash::sha3_512(Util::LoadFile(path, flag)); }
+        inline std::string sha3_512(const char* path,      std::ios::openmode flag = std::ios::binary) { return Hash::sha3_512(Util::LoadFile(path,        flag)); }
         inline std::string sha3_512(std::string_view path, std::ios::openmode flag = std::ios::binary) { return Hash::sha3_512(Util::LoadFile(path.data(), flag)); }
     }
 }
@@ -2775,354 +2776,354 @@ namespace Hash
 #endif // __cplusplus
 #if HASH_ENABLE_KECCAK == 1
 #if HASH_ENABLE_C_FUNCTIONS == 1
-    void hash_private_keccak_Keccak(unsigned int rate, unsigned int capacity, const unsigned char* input, unsigned long long int inputByteLen, unsigned char delimitedSuffix, unsigned char* output, unsigned long long int outputByteLen);
-    
-    // heap allocated if outsizeBytes > HASH_SHAKE_128_MALLOC_LIMIT
-    HASH_INLINE const char* hash_shake128_binary(const char* data, unsigned int size, int outsizeBytes, char* buffer /*outsizeBytes+1*/)
-    {
-        static char hex[HASH_SHAKE_128_MALLOC_LIMIT + 1];
-        static unsigned char intBuff[HASH_SHAKE_128_MALLOC_LIMIT / 2];
-        char* out = buffer;
-        unsigned char* buff = intBuff;
+HASH_INLINE void hash_private_keccak_Keccak(unsigned int rate, unsigned int capacity, const unsigned char* input, unsigned long long int inputByteLen, unsigned char delimitedSuffix, unsigned char* output, unsigned long long int outputByteLen);
 
-        if (buffer == NULL)
+// heap allocated if outsizeBytes > HASH_SHAKE_128_MALLOC_LIMIT
+HASH_INLINE const char* hash_shake128_binary(const char* data, size_t size, size_t outsizeBytes, char* buffer /*outsizeBytes+1*/)
+{
+    static char hex[HASH_SHAKE_128_MALLOC_LIMIT + 1];
+    static unsigned char intBuff[HASH_SHAKE_128_MALLOC_LIMIT / 2];
+    char* out = buffer;
+    unsigned char* buff = intBuff;
+
+    if (buffer == NULL)
+    {
+        if (outsizeBytes > HASH_SHAKE_128_MALLOC_LIMIT)
         {
-            if (outsizeBytes > HASH_SHAKE_128_MALLOC_LIMIT)
-            {
-                char* tmp = (char*)malloc(outsizeBytes * 3 + 1);
-                buff = (unsigned char*)tmp;
-                out = &tmp[outsizeBytes];
-            }
-            else
-                out = hex;
+            char* tmp = (char*)malloc(outsizeBytes * 3 + 1);
+            buff = (unsigned char*)tmp;
+            out = &tmp[outsizeBytes];
         }
-
-        hash_private_keccak_Keccak(1344, 256, (const unsigned char*)data, size, 0x1F, buff, outsizeBytes / 2);
-        hash_util_char_array_to_hex_string(buff, outsizeBytes / 2, out);
-        return out;
+        else
+            out = hex;
     }
 
-    // heap allocated if outsizeBytes > HASH_SHAKE_256_MALLOC_LIMIT
-    HASH_INLINE const char* hash_shake256_binary(const char* data, unsigned int size, int outsizeBytes, char* buffer /*outsizeBytes+1*/)
-    {
-        static char hex[HASH_SHAKE_256_MALLOC_LIMIT+1];
-        static unsigned char intBuff[HASH_SHAKE_256_MALLOC_LIMIT/2];
-        char* out = buffer;
-        unsigned char* buff = intBuff;
+    hash_private_keccak_Keccak(1344, 256, (const unsigned char*)data, size, 0x1F, buff, outsizeBytes / 2);
+    hash_util_char_array_to_hex_string(buff, outsizeBytes / 2, out);
+    return out;
+}
 
-        if (buffer == NULL)
+// heap allocated if outsizeBytes > HASH_SHAKE_256_MALLOC_LIMIT
+HASH_INLINE const char* hash_shake256_binary(const char* data, size_t size, size_t outsizeBytes, char* buffer /*outsizeBytes+1*/)
+{
+    static char hex[HASH_SHAKE_256_MALLOC_LIMIT + 1];
+    static unsigned char intBuff[HASH_SHAKE_256_MALLOC_LIMIT / 2];
+    char* out = buffer;
+    unsigned char* buff = intBuff;
+
+    if (buffer == NULL)
+    {
+        if (outsizeBytes > HASH_SHAKE_256_MALLOC_LIMIT)
         {
-            if (outsizeBytes > HASH_SHAKE_256_MALLOC_LIMIT)
-            {
-                char* tmp = (char*)malloc(outsizeBytes * 3 + 1);
-                buff = (unsigned char*)tmp;
-                out = &tmp[outsizeBytes];
-            }
-            else
-                out = hex;
+            char* tmp = (char*)malloc(outsizeBytes * 3 + 1);
+            buff = (unsigned char*)tmp;
+            out = &tmp[outsizeBytes];
         }
-
-        hash_private_keccak_Keccak(1088, 512, (const unsigned char*)data, size, 0x1F, buff, outsizeBytes / 2);
-        hash_util_char_array_to_hex_string(buff, outsizeBytes / 2, out);
-        return out;
+        else
+            out = hex;
     }
 
-    HASH_INLINE const char* hash_shake128(const char* data, int outsizeBytes, char* buffer) { return hash_shake128_binary(data, strlen(data), outsizeBytes, buffer); }
-    HASH_INLINE const char* hash_shake256(const char* data, int outsizeBytes, char* buffer) { return hash_shake256_binary(data, strlen(data), outsizeBytes, buffer); }
+    hash_private_keccak_Keccak(1088, 512, (const unsigned char*)data, size, 0x1F, buff, outsizeBytes / 2);
+    hash_util_char_array_to_hex_string(buff, outsizeBytes / 2, out);
+    return out;
+}
 
-    HASH_INLINE const char* hash_shake128_easy(const char* data, int outsizeBytes) { return hash_shake128_binary(data, strlen(data), outsizeBytes, NULL); }
-    HASH_INLINE const char* hash_shake256_easy(const char* data, int outsizeBytes) { return hash_shake256_binary(data, strlen(data), outsizeBytes, NULL); }
+HASH_INLINE const char* hash_shake128(const char* data, size_t outsizeBytes, char* buffer) { return hash_shake128_binary(data, strlen(data), outsizeBytes, buffer); }
+HASH_INLINE const char* hash_shake256(const char* data, size_t outsizeBytes, char* buffer) { return hash_shake256_binary(data, strlen(data), outsizeBytes, buffer); }
 
-    HASH_INLINE const char* hash_shake128_file(const char* path, const char* mode, int outsizeBytes, char* buffer)
-    {
-        long fsize;
-        char* content = hash_util_load_file(path, mode, &fsize);
-        if (content == NULL) return "";
-        const char* hash = hash_shake128_binary(content, fsize, outsizeBytes, buffer);
-        if (content != NULL)
-            free(content);
-        return hash;
-    }
+HASH_INLINE const char* hash_shake128_easy(const char* data, size_t outsizeBytes) { return hash_shake128_binary(data, strlen(data), outsizeBytes, NULL); }
+HASH_INLINE const char* hash_shake256_easy(const char* data, size_t outsizeBytes) { return hash_shake256_binary(data, strlen(data), outsizeBytes, NULL); }
 
-    HASH_INLINE const char* hash_shake256_file(const char* path, const char* mode, int outsizeBytes, char* buffer)
-    {
-        long fsize;
-        char* content = hash_util_load_file(path, mode, &fsize);
-        if (content == NULL) return "";
-        const char* hash = hash_shake256_binary(content, fsize, outsizeBytes, buffer);
-        if (content != NULL)
-            free(content);
-        return hash;
-    }
+HASH_INLINE const char* hash_shake128_file(const char* path, const char* mode, size_t outsizeBytes, char* buffer)
+{
+    long fsize;
+    char* content = hash_util_load_file(path, mode, &fsize);
+    if (content == NULL) return "";
+    const char* hash = hash_shake128_binary(content, fsize, outsizeBytes, buffer);
+    if (content != NULL)
+        free(content);
+    return hash;
+}
 
-    HASH_INLINE const char* hash_shake128_file_easy(const char* path, const char* mode, int outsizeBytes) { return hash_shake128_file(path, mode, outsizeBytes, NULL); }
-    HASH_INLINE const char* hash_shake256_file_easy(const char* path, const char* mode, int outsizeBytes) { return hash_shake256_file(path, mode, outsizeBytes, NULL); }
+HASH_INLINE const char* hash_shake256_file(const char* path, const char* mode, size_t outsizeBytes, char* buffer)
+{
+    long fsize;
+    char* content = hash_util_load_file(path, mode, &fsize);
+    if (content == NULL) return "";
+    const char* hash = hash_shake256_binary(content, fsize, outsizeBytes, buffer);
+    if (content != NULL)
+        free(content);
+    return hash;
+}
+
+HASH_INLINE const char* hash_shake128_file_easy(const char* path, const char* mode, size_t outsizeBytes) { return hash_shake128_file(path, mode, outsizeBytes, NULL); }
+HASH_INLINE const char* hash_shake256_file_easy(const char* path, const char* mode, size_t outsizeBytes) { return hash_shake256_file(path, mode, outsizeBytes, NULL); }
 
 
 
 
-    HASH_INLINE const char* hash_sha3_224_binary(const char* data, size_t size, char* buffer /*57 chars*/)
-    {
-        static char hex[57];
-        static unsigned char buff[28];
-        char* out = buffer == NULL ? hex : buffer;
-        hash_private_keccak_Keccak(1152, 448, (const unsigned char*)data, (unsigned int)size, 0x06, buff, 28);
-        hash_util_char_array_to_hex_string(buff, 28, out);
-        return out;
-    }
+HASH_INLINE const char* hash_sha3_224_binary(const char* data, size_t size, char* buffer /*57 chars*/)
+{
+    static char hex[57];
+    static unsigned char buff[28];
+    char* out = buffer == NULL ? hex : buffer;
+    hash_private_keccak_Keccak(1152, 448, (const unsigned char*)data, size, 0x06, buff, 28);
+    hash_util_char_array_to_hex_string(buff, 28, out);
+    return out;
+}
 
-    HASH_INLINE const char* hash_sha3_256_binary(const char* data, size_t size, char* buffer /*65 chars*/)
-    {
-        static char hex[65];
-        static unsigned char buff[32];
-        char* out = buffer == NULL ? hex : buffer;
-        hash_private_keccak_Keccak(1088, 512, (const unsigned char*)data, (unsigned int)size, 0x06, buff, 32);
-        hash_util_char_array_to_hex_string(buff, 32, out);
-        return out;
-    }
+HASH_INLINE const char* hash_sha3_256_binary(const char* data, size_t size, char* buffer /*65 chars*/)
+{
+    static char hex[65];
+    static unsigned char buff[32];
+    char* out = buffer == NULL ? hex : buffer;
+    hash_private_keccak_Keccak(1088, 512, (const unsigned char*)data, size, 0x06, buff, 32);
+    hash_util_char_array_to_hex_string(buff, 32, out);
+    return out;
+}
 
-    HASH_INLINE const char* hash_sha3_384_binary(const char* data, size_t size, char* buffer /*97 chars*/)
-    {
-        static char hex[97];
-        static unsigned char buff[48];
-        char* out = buffer == NULL ? hex : buffer;
-        hash_private_keccak_Keccak(832, 768, (const unsigned char*)data, (unsigned int)size, 0x06, buff, 48);
-        hash_util_char_array_to_hex_string(buff, 48, out);
-        return out;
-    }
+HASH_INLINE const char* hash_sha3_384_binary(const char* data, size_t size, char* buffer /*97 chars*/)
+{
+    static char hex[97];
+    static unsigned char buff[48];
+    char* out = buffer == NULL ? hex : buffer;
+    hash_private_keccak_Keccak(832, 768, (const unsigned char*)data, size, 0x06, buff, 48);
+    hash_util_char_array_to_hex_string(buff, 48, out);
+    return out;
+}
 
-    HASH_INLINE const char* hash_sha3_512_binary(const char* data, size_t size, char* buffer /*129 chars*/)
-    {
-        static char hex[129];
-        static unsigned char buff[64];
-        char* out = buffer == NULL ? hex : buffer;
-        hash_private_keccak_Keccak(576, 1024, (const unsigned char*)data, (unsigned int)size, 0x06, buff, 64);
-        hash_util_char_array_to_hex_string(buff, 64, out);
-        return out;
-    }
+HASH_INLINE const char* hash_sha3_512_binary(const char* data, size_t size, char* buffer /*129 chars*/)
+{
+    static char hex[129];
+    static unsigned char buff[64];
+    char* out = buffer == NULL ? hex : buffer;
+    hash_private_keccak_Keccak(576, 1024, (const unsigned char*)data, size, 0x06, buff, 64);
+    hash_util_char_array_to_hex_string(buff, 64, out);
+    return out;
+}
 
-    HASH_INLINE const char* hash_sha3_224(const char* data, char* buffer) { return hash_sha3_224_binary(data, strlen(data), buffer); }
-    HASH_INLINE const char* hash_sha3_256(const char* data, char* buffer) { return hash_sha3_256_binary(data, strlen(data), buffer); }
-    HASH_INLINE const char* hash_sha3_384(const char* data, char* buffer) { return hash_sha3_384_binary(data, strlen(data), buffer); }
-    HASH_INLINE const char* hash_sha3_512(const char* data, char* buffer) { return hash_sha3_512_binary(data, strlen(data), buffer); }
+HASH_INLINE const char* hash_sha3_224(const char* data, char* buffer) { return hash_sha3_224_binary(data, strlen(data), buffer); }
+HASH_INLINE const char* hash_sha3_256(const char* data, char* buffer) { return hash_sha3_256_binary(data, strlen(data), buffer); }
+HASH_INLINE const char* hash_sha3_384(const char* data, char* buffer) { return hash_sha3_384_binary(data, strlen(data), buffer); }
+HASH_INLINE const char* hash_sha3_512(const char* data, char* buffer) { return hash_sha3_512_binary(data, strlen(data), buffer); }
 
-    HASH_INLINE const char* hash_sha3_224_easy(const char* data) { return hash_sha3_224_binary(data, strlen(data), NULL); }
-    HASH_INLINE const char* hash_sha3_256_easy(const char* data) { return hash_sha3_256_binary(data, strlen(data), NULL); }
-    HASH_INLINE const char* hash_sha3_384_easy(const char* data) { return hash_sha3_384_binary(data, strlen(data), NULL); }
-    HASH_INLINE const char* hash_sha3_512_easy(const char* data) { return hash_sha3_512_binary(data, strlen(data), NULL); }
+HASH_INLINE const char* hash_sha3_224_easy(const char* data) { return hash_sha3_224_binary(data, strlen(data), NULL); }
+HASH_INLINE const char* hash_sha3_256_easy(const char* data) { return hash_sha3_256_binary(data, strlen(data), NULL); }
+HASH_INLINE const char* hash_sha3_384_easy(const char* data) { return hash_sha3_384_binary(data, strlen(data), NULL); }
+HASH_INLINE const char* hash_sha3_512_easy(const char* data) { return hash_sha3_512_binary(data, strlen(data), NULL); }
 
-    HASH_INLINE const char* hash_sha3_224_file(const char* path, const char* mode, char* buffer) { return hash_util_hash_file(path, mode, hash_sha3_224_binary, buffer); }
-    HASH_INLINE const char* hash_sha3_256_file(const char* path, const char* mode, char* buffer) { return hash_util_hash_file(path, mode, hash_sha3_256_binary, buffer); }
-    HASH_INLINE const char* hash_sha3_384_file(const char* path, const char* mode, char* buffer) { return hash_util_hash_file(path, mode, hash_sha3_384_binary, buffer); }
-    HASH_INLINE const char* hash_sha3_512_file(const char* path, const char* mode, char* buffer) { return hash_util_hash_file(path, mode, hash_sha3_512_binary, buffer); }
+HASH_INLINE const char* hash_sha3_224_file(const char* path, const char* mode, char* buffer) { return hash_util_hash_file(path, mode, hash_sha3_224_binary, buffer); }
+HASH_INLINE const char* hash_sha3_256_file(const char* path, const char* mode, char* buffer) { return hash_util_hash_file(path, mode, hash_sha3_256_binary, buffer); }
+HASH_INLINE const char* hash_sha3_384_file(const char* path, const char* mode, char* buffer) { return hash_util_hash_file(path, mode, hash_sha3_384_binary, buffer); }
+HASH_INLINE const char* hash_sha3_512_file(const char* path, const char* mode, char* buffer) { return hash_util_hash_file(path, mode, hash_sha3_512_binary, buffer); }
 
-    HASH_INLINE const char* hash_sha3_224_file_easy(const char* path, const char* mode) { return hash_util_hash_file(path, mode, hash_sha3_224_binary, NULL); }
-    HASH_INLINE const char* hash_sha3_256_file_easy(const char* path, const char* mode) { return hash_util_hash_file(path, mode, hash_sha3_256_binary, NULL); }
-    HASH_INLINE const char* hash_sha3_384_file_easy(const char* path, const char* mode) { return hash_util_hash_file(path, mode, hash_sha3_384_binary, NULL); }
-    HASH_INLINE const char* hash_sha3_512_file_easy(const char* path, const char* mode) { return hash_util_hash_file(path, mode, hash_sha3_512_binary, NULL); }
+HASH_INLINE const char* hash_sha3_224_file_easy(const char* path, const char* mode) { return hash_util_hash_file(path, mode, hash_sha3_224_binary, NULL); }
+HASH_INLINE const char* hash_sha3_256_file_easy(const char* path, const char* mode) { return hash_util_hash_file(path, mode, hash_sha3_256_binary, NULL); }
+HASH_INLINE const char* hash_sha3_384_file_easy(const char* path, const char* mode) { return hash_util_hash_file(path, mode, hash_sha3_384_binary, NULL); }
+HASH_INLINE const char* hash_sha3_512_file_easy(const char* path, const char* mode) { return hash_util_hash_file(path, mode, hash_sha3_512_binary, NULL); }
 #endif // HASH_ENABLE_C_FUNCTIONS
 
-    /*
-    ================================================================
-    Technicalities
-    ================================================================
-    */
+/*
+================================================================
+Technicalities
+================================================================
+*/
 
-    #if HASH_KECCAK_LITTLE_ENDIAN != 1
-    /** Function to load a 64-bit value using the little-endian (LE) convention.
-      * On a LE platform, this could be greatly simplified using a cast.
-      */
-    HASH_INLINE uint64_t hash_private_keccak_load64(const uint8_t* x)
-    {
-        int i;
-        uint64_t u = 0;
+#if HASH_KECCAK_LITTLE_ENDIAN != 1
+/** Function to load a 64-bit value using the little-endian (LE) convention.
+  * On a LE platform, this could be greatly simplified using a cast.
+  */
+HASH_INLINE uint64_t hash_private_keccak_load64(const uint8_t* x)
+{
+    int i;
+    uint64_t u = 0;
 
-        for (i = 7; i >= 0; --i) {
-            u <<= 8;
-            u |= x[i];
+    for (i = 7; i >= 0; --i) {
+        u <<= 8;
+        u |= x[i];
+    }
+    return u;
+}
+
+/** Function to store a 64-bit value using the little-endian (LE) convention.
+  * On a LE platform, this could be greatly simplified using a cast.
+  */
+HASH_INLINE void hash_private_keccak_store64(uint8_t* x, uint64_t u)
+{
+    unsigned int i;
+
+    for (i = 0; i < 8; ++i) {
+        x[i] = u;
+        u >>= 8;
+    }
+}
+
+/** Function to XOR into a 64-bit value using the little-endian (LE) convention.
+  * On a LE platform, this could be greatly simplified using a cast.
+  */
+HASH_INLINE void hash_private_keccak_xor64(uint8_t* x, uint64_t u)
+{
+    unsigned int i;
+
+    for (i = 0; i < 8; ++i) {
+        x[i] ^= u;
+        u >>= 8;
+    }
+}
+#endif
+
+
+
+#define hash_private_keccak_ROL64(a, offset) ((((uint64_t)a) << offset) ^ (((uint64_t)a) >> (64-offset)))
+#define hash_private_keccak_i(x, y) ((x)+5*(y))
+
+#if HASH_KECCAK_LITTLE_ENDIAN == 1
+#define hash_private_keccak_readLane(x, y)          (((uint64_t*)state)[hash_private_keccak_i(x, y)])
+#define hash_private_keccak_writeLane(x, y, lane)   (((uint64_t*)state)[hash_private_keccak_i(x, y)]) = (lane)
+#define hash_private_keccak_XORLane(x, y, lane)     (((uint64_t*)state)[hash_private_keccak_i(x, y)]) ^= (lane)
+#else
+#define hash_private_keccak_readLane(x, y)          hash_private_keccak_load64((uint8_t*)state+sizeof(uint64_t)*hash_private_keccak_i(x, y))
+#define hash_private_keccak_writeLane(x, y, lane)   hash_private_keccak_store64((uint8_t*)state+sizeof(uint64_t)*hash_private_keccak_i(x, y), lane)
+#define hash_private_keccak_XORLane(x, y, lane)     hash_private_keccak_xor64((uint8_t*)state+sizeof(uint64_t)*hash_private_keccak_i(x, y), lane)
+#endif
+
+/**
+  * Function that computes the linear feedback shift register (LFSR) used to
+  * define the round constants (see [Keccak Reference, Section 1.2]).
+  */
+HASH_INLINE int hash_private_keccak_LFSR86540(uint8_t* LFSR)
+{
+    int result = ((*LFSR) & 0x01) != 0;
+    if (((*LFSR) & 0x80) != 0)
+        /* Primitive polynomial over GF(2): x^8+x^6+x^5+x^4+1 */
+        (*LFSR) = ((*LFSR) << 1) ^ 0x71;
+    else
+        (*LFSR) <<= 1;
+    return result;
+}
+
+/**
+ * Function that computes the Keccak-f[1600] permutation on the given state.
+ */
+HASH_INLINE void hash_private_keccak_KeccakF1600_StatePermute(void* state)
+{
+    unsigned int round, x, y, j, t;
+    uint8_t LFSRstate = 0x01;
+
+    for (round = 0; round < 24; round++) {
+        {   /* === θ step (see [Keccak Reference, Section 2.3.2]) === */
+            uint64_t C[5], D;
+
+            /* Compute the parity of the columns */
+            for (x = 0; x < 5; x++)
+                C[x] = hash_private_keccak_readLane(x, 0) ^ hash_private_keccak_readLane(x, 1) ^ hash_private_keccak_readLane(x, 2) ^ hash_private_keccak_readLane(x, 3) ^ hash_private_keccak_readLane(x, 4);
+            for (x = 0; x < 5; x++) {
+                /* Compute the θ effect for a given column */
+                D = C[(x + 4) % 5] ^ hash_private_keccak_ROL64(C[(x + 1) % 5], 1);
+                /* Add the θ effect to the whole column */
+                for (y = 0; y < 5; y++)
+                    hash_private_keccak_XORLane(x, y, D);
+            }
         }
-        return u;
-    }
 
-    /** Function to store a 64-bit value using the little-endian (LE) convention.
-      * On a LE platform, this could be greatly simplified using a cast.
-      */
-    HASH_INLINE void hash_private_keccak_store64(uint8_t* x, uint64_t u)
-    {
-        unsigned int i;
-
-        for (i = 0; i < 8; ++i) {
-            x[i] = u;
-            u >>= 8;
+        {   /* === ρ and π steps (see [Keccak Reference, Sections 2.3.3 and 2.3.4]) === */
+            uint64_t current, temp;
+            /* Start at coordinates (1 0) */
+            x = 1; y = 0;
+            current = hash_private_keccak_readLane(x, y);
+            /* Iterate over ((0 1)(2 3))^t * (1 0) for 0 ≤ t ≤ 23 */
+            for (t = 0; t < 24; t++) {
+                /* Compute the rotation constant r = (t+1)(t+2)/2 */
+                unsigned int r = ((t + 1) * (t + 2) / 2) % 64;
+                /* Compute ((0 1)(2 3)) * (x y) */
+                unsigned int Y = (2 * x + 3 * y) % 5; x = y; y = Y;
+                /* Swap current and state(x,y), and rotate */
+                temp = hash_private_keccak_readLane(x, y);
+                hash_private_keccak_writeLane(x, y, hash_private_keccak_ROL64(current, r));
+                current = temp;
+            }
         }
-    }
 
-    /** Function to XOR into a 64-bit value using the little-endian (LE) convention.
-      * On a LE platform, this could be greatly simplified using a cast.
-      */
-    HASH_INLINE void hash_private_keccak_xor64(uint8_t* x, uint64_t u)
-    {
-        unsigned int i;
-
-        for (i = 0; i < 8; ++i) {
-            x[i] ^= u;
-            u >>= 8;
-        }
-    }
-    #endif
-
-
-
-    #define hash_private_keccak_ROL64(a, offset) ((((uint64_t)a) << offset) ^ (((uint64_t)a) >> (64-offset)))
-    #define hash_private_keccak_i(x, y) ((x)+5*(y))
-
-    #if HASH_KECCAK_LITTLE_ENDIAN == 1
-    #define hash_private_keccak_readLane(x, y)          (((uint64_t*)state)[hash_private_keccak_i(x, y)])
-    #define hash_private_keccak_writeLane(x, y, lane)   (((uint64_t*)state)[hash_private_keccak_i(x, y)]) = (lane)
-    #define hash_private_keccak_XORLane(x, y, lane)     (((uint64_t*)state)[hash_private_keccak_i(x, y)]) ^= (lane)
-    #else
-    #define hash_private_keccak_readLane(x, y)          hash_private_keccak_load64((uint8_t*)state+sizeof(uint64_t)*hash_private_keccak_i(x, y))
-    #define hash_private_keccak_writeLane(x, y, lane)   hash_private_keccak_store64((uint8_t*)state+sizeof(uint64_t)*hash_private_keccak_i(x, y), lane)
-    #define hash_private_keccak_XORLane(x, y, lane)     hash_private_keccak_xor64((uint8_t*)state+sizeof(uint64_t)*hash_private_keccak_i(x, y), lane)
-    #endif
-
-    /**
-      * Function that computes the linear feedback shift register (LFSR) used to
-      * define the round constants (see [Keccak Reference, Section 1.2]).
-      */
-    HASH_INLINE int hash_private_keccak_LFSR86540(uint8_t* LFSR)
-    {
-        int result = ((*LFSR) & 0x01) != 0;
-        if (((*LFSR) & 0x80) != 0)
-            /* Primitive polynomial over GF(2): x^8+x^6+x^5+x^4+1 */
-            (*LFSR) = ((*LFSR) << 1) ^ 0x71;
-        else
-            (*LFSR) <<= 1;
-        return result;
-    }
-
-    /**
-     * Function that computes the Keccak-f[1600] permutation on the given state.
-     */
-    HASH_INLINE void hash_private_keccak_KeccakF1600_StatePermute(void* state)
-    {
-        unsigned int round, x, y, j, t;
-        uint8_t LFSRstate = 0x01;
-
-        for (round = 0; round < 24; round++) {
-            {   /* === θ step (see [Keccak Reference, Section 2.3.2]) === */
-                uint64_t C[5], D;
-
-                /* Compute the parity of the columns */
+        {   /* === χ step (see [Keccak Reference, Section 2.3.1]) === */
+            uint64_t temp[5];
+            for (y = 0; y < 5; y++) {
+                /* Take a copy of the plane */
                 for (x = 0; x < 5; x++)
-                    C[x] = hash_private_keccak_readLane(x, 0) ^ hash_private_keccak_readLane(x, 1) ^ hash_private_keccak_readLane(x, 2) ^ hash_private_keccak_readLane(x, 3) ^ hash_private_keccak_readLane(x, 4);
-                for (x = 0; x < 5; x++) {
-                    /* Compute the θ effect for a given column */
-                    D = C[(x + 4) % 5] ^ hash_private_keccak_ROL64(C[(x + 1) % 5], 1);
-                    /* Add the θ effect to the whole column */
-                    for (y = 0; y < 5; y++)
-                        hash_private_keccak_XORLane(x, y, D);
-                }
+                    temp[x] = hash_private_keccak_readLane(x, y);
+                /* Compute χ on the plane */
+                for (x = 0; x < 5; x++)
+                    hash_private_keccak_writeLane(x, y, temp[x] ^ ((~temp[(x + 1) % 5]) & temp[(x + 2) % 5]));
             }
+        }
 
-            {   /* === ρ and π steps (see [Keccak Reference, Sections 2.3.3 and 2.3.4]) === */
-                uint64_t current, temp;
-                /* Start at coordinates (1 0) */
-                x = 1; y = 0;
-                current = hash_private_keccak_readLane(x, y);
-                /* Iterate over ((0 1)(2 3))^t * (1 0) for 0 ≤ t ≤ 23 */
-                for (t = 0; t < 24; t++) {
-                    /* Compute the rotation constant r = (t+1)(t+2)/2 */
-                    unsigned int r = ((t + 1) * (t + 2) / 2) % 64;
-                    /* Compute ((0 1)(2 3)) * (x y) */
-                    unsigned int Y = (2 * x + 3 * y) % 5; x = y; y = Y;
-                    /* Swap current and state(x,y), and rotate */
-                    temp = hash_private_keccak_readLane(x, y);
-                    hash_private_keccak_writeLane(x, y, hash_private_keccak_ROL64(current, r));
-                    current = temp;
-                }
-            }
-
-            {   /* === χ step (see [Keccak Reference, Section 2.3.1]) === */
-                uint64_t temp[5];
-                for (y = 0; y < 5; y++) {
-                    /* Take a copy of the plane */
-                    for (x = 0; x < 5; x++)
-                        temp[x] = hash_private_keccak_readLane(x, y);
-                    /* Compute χ on the plane */
-                    for (x = 0; x < 5; x++)
-                        hash_private_keccak_writeLane(x, y, temp[x] ^ ((~temp[(x + 1) % 5]) & temp[(x + 2) % 5]));
-                }
-            }
-
-            {   /* === ι step (see [Keccak Reference, Section 2.3.5]) === */
-                for (j = 0; j < 7; j++) {
-                    unsigned int bitPosition = (1 << j) - 1; /* 2^j-1 */
-                    if (hash_private_keccak_LFSR86540(&LFSRstate))
-                        hash_private_keccak_XORLane(0, 0, (uint64_t)1 << bitPosition);
-                }
+        {   /* === ι step (see [Keccak Reference, Section 2.3.5]) === */
+            for (j = 0; j < 7; j++) {
+                unsigned int bitPosition = (1 << j) - 1; /* 2^j-1 */
+                if (hash_private_keccak_LFSR86540(&LFSRstate))
+                    hash_private_keccak_XORLane(0, 0, (uint64_t)1 << bitPosition);
             }
         }
     }
+}
 
-    /*
-    ================================================================
-    A readable and compact implementation of the Keccak sponge functions
-    that use the Keccak-f[1600] permutation.
-    ================================================================
-    */
+/*
+================================================================
+A readable and compact implementation of the Keccak sponge functions
+that use the Keccak-f[1600] permutation.
+================================================================
+*/
 
-    #define hash_private_keccak_MIN(a, b) ((a) < (b) ? (a) : (b))
-    HASH_INLINE void hash_private_keccak_Keccak(unsigned int rate, unsigned int capacity, const unsigned char* input, unsigned long long int inputByteLen, unsigned char delimitedSuffix, unsigned char* output, unsigned long long int outputByteLen)
-    {
-        uint8_t state[200];
-        unsigned int rateInBytes = rate / 8;
-        unsigned int blockSize = 0;
-        unsigned int i;
+#define hash_private_keccak_MIN(a, b) ((a) < (b) ? (a) : (b))
+HASH_INLINE void hash_private_keccak_Keccak(unsigned int rate, unsigned int capacity, const unsigned char* input, unsigned long long int inputByteLen, unsigned char delimitedSuffix, unsigned char* output, unsigned long long int outputByteLen)
+{
+    uint8_t state[200];
+    unsigned int rateInBytes = rate / 8;
+    unsigned int blockSize = 0;
+    unsigned int i;
 
-        if (((rate + capacity) != 1600) || ((rate % 8) != 0))
-            return;
+    if (((rate + capacity) != 1600) || ((rate % 8) != 0))
+        return;
 
-        /* === Initialize the state === */
-        memset(state, 0, sizeof(state));
+    /* === Initialize the state === */
+    memset(state, 0, sizeof(state));
 
-        /* === Absorb all the input blocks === */
-        while (inputByteLen > 0) {
-            blockSize = hash_private_keccak_MIN(inputByteLen, rateInBytes);
-            for (i = 0; i < blockSize; i++)
-                state[i] ^= input[i];
-            input += blockSize;
-            inputByteLen -= blockSize;
+    /* === Absorb all the input blocks === */
+    while (inputByteLen > 0) {
+        blockSize = (unsigned int)hash_private_keccak_MIN(inputByteLen, rateInBytes);
+        for (i = 0; i < blockSize; i++)
+            state[i] ^= input[i];
+        input += blockSize;
+        inputByteLen -= blockSize;
 
-            if (blockSize == rateInBytes) {
-                hash_private_keccak_KeccakF1600_StatePermute(state);
-                blockSize = 0;
-            }
-        }
-
-        /* === Do the padding and switch to the squeezing phase === */
-        /* Absorb the last few bits and add the first bit of padding (which coincides with the delimiter in delimitedSuffix) */
-        state[blockSize] ^= delimitedSuffix;
-        /* If the first bit of padding is at position rate-1, we need a whole new block for the second bit of padding */
-        if (((delimitedSuffix & 0x80) != 0) && (blockSize == (rateInBytes - 1)))
+        if (blockSize == rateInBytes) {
             hash_private_keccak_KeccakF1600_StatePermute(state);
-        /* Add the second bit of padding */
-        state[rateInBytes - 1] ^= 0x80;
-        /* Switch to the squeezing phase */
-        hash_private_keccak_KeccakF1600_StatePermute(state);
-
-        /* === Squeeze out all the output blocks === */
-        while (outputByteLen > 0) {
-            blockSize = hash_private_keccak_MIN(outputByteLen, rateInBytes);
-            memcpy(output, state, blockSize);
-            output += blockSize;
-            outputByteLen -= blockSize;
-
-            if (outputByteLen > 0)
-                hash_private_keccak_KeccakF1600_StatePermute(state);
+            blockSize = 0;
         }
     }
-    //=============================================================================
+
+    /* === Do the padding and switch to the squeezing phase === */
+    /* Absorb the last few bits and add the first bit of padding (which coincides with the delimiter in delimitedSuffix) */
+    state[blockSize] ^= delimitedSuffix;
+    /* If the first bit of padding is at position rate-1, we need a whole new block for the second bit of padding */
+    if (((delimitedSuffix & 0x80) != 0) && (blockSize == (rateInBytes - 1)))
+        hash_private_keccak_KeccakF1600_StatePermute(state);
+    /* Add the second bit of padding */
+    state[rateInBytes - 1] ^= 0x80;
+    /* Switch to the squeezing phase */
+    hash_private_keccak_KeccakF1600_StatePermute(state);
+
+    /* === Squeeze out all the output blocks === */
+    while (outputByteLen > 0) {
+        blockSize = (unsigned int)hash_private_keccak_MIN(outputByteLen, rateInBytes);
+        memcpy(output, state, blockSize);
+        output += blockSize;
+        outputByteLen -= blockSize;
+
+        if (outputByteLen > 0)
+            hash_private_keccak_KeccakF1600_StatePermute(state);
+    }
+}
+//=============================================================================
 #endif // HASH_ENABLE_KECCAK
 #endif // HASH_H
 
