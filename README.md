@@ -21,6 +21,9 @@ Most of the programs/header files in here are self explanatory
 The documentation is in the header  
 The SHA-3 and Shake functions can not be updated data has to be supplied in a single string
 
+### cstring.h
+Implements the C++ string interface in C
+
 ### array.h
 C++17 compliant std::array implementation
 
