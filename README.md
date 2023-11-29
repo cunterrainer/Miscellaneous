@@ -21,6 +21,19 @@ Most of the programs/header files in here are self explanatory
 The documentation is in the header  
 The SHA-3 and Shake functions can not be updated data has to be supplied in a single string
 
+### Profiler.h
+Measure the execution time of code snippets e.g. in loops.  
+Example (simplified, from hash_benchmark.cpp)
+``` c++
+for (const std::string& s : strings)
+{
+    Profiler::Start();
+    sha256(s);
+    Profiler::End();
+}
+Profiler::Log(Profiler::Conversion::Milliseconds); // print to stdout
+```
+
 ### cstring.h
 Implements the C++ string interface in C
 
