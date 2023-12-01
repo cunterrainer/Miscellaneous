@@ -241,7 +241,7 @@ void board_add_snake(Board* b, Snake s)
 {
     for (size_t i = 0; i < s.size; ++i)
     {
-        b->board[s.body[i].y * b->width + s.body[i].x] = i == 0 ? '*' : '=';
+        b->board[s.body[i].y * b->width + s.body[i].x] = i == 0 ? 'o' : '~';
     }
 }
 
