@@ -6,51 +6,181 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
-#include <Windows.h>
 
-#define KEY_W     0x57
-#define KEY_A     0x41
-#define KEY_S     0x53
-#define KEY_D     0x44
-#define KEY_UP    VK_UP
-#define KEY_LEFT  VK_LEFT
-#define KEY_DOWN  VK_DOWN
-#define KEY_RIGHT VK_RIGHT
-#define KEY_ESC   VK_ESCAPE
-#define KEY_SPACE VK_SPACE
-
-#define KEY_PRESSED(keystate) ((1 << 15) & keystate)
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))
 
+size_t g_LastPressedKey = 0;
 
-size_t g_LastPressedKey = KEY_ESC;
-void query_keys()
-{
-    if (KEY_PRESSED(GetAsyncKeyState(KEY_W) || KEY_PRESSED(GetAsyncKeyState(KEY_UP))))
+#ifdef _WIN32
+    #include <Windows.h>
+    #define KEY_W     0x57
+    #define KEY_A     0x41
+    #define KEY_S     0x53
+    #define KEY_D     0x44
+    #define KEY_UP    VK_UP
+    #define KEY_LEFT  VK_LEFT
+    #define KEY_DOWN  VK_DOWN
+    #define KEY_RIGHT VK_RIGHT
+    #define KEY_ESC   VK_ESCAPE
+    #define KEY_SPACE VK_SPACE
+
+    #define KEY_PRESSED(keystate) ((1 << 15) & keystate)
+
+    void query_keys()
     {
-        g_LastPressedKey = KEY_W;
+        if (KEY_PRESSED(GetAsyncKeyState(KEY_W) || KEY_PRESSED(GetAsyncKeyState(KEY_UP))))
+        {
+            g_LastPressedKey = KEY_W;
+        }
+        if (KEY_PRESSED(GetAsyncKeyState(KEY_A) || KEY_PRESSED(GetAsyncKeyState(KEY_LEFT))))
+        {
+            g_LastPressedKey = KEY_A;
+        }
+        if (KEY_PRESSED(GetAsyncKeyState(KEY_S) || KEY_PRESSED(GetAsyncKeyState(KEY_DOWN))))
+        {
+            g_LastPressedKey = KEY_S;
+        }
+        if (KEY_PRESSED(GetAsyncKeyState(KEY_D) || KEY_PRESSED(GetAsyncKeyState(KEY_RIGHT))))
+        {
+            g_LastPressedKey = KEY_D;
+        }
+        if (KEY_PRESSED(GetAsyncKeyState(KEY_SPACE)))
+        {
+            g_LastPressedKey = KEY_SPACE;
+        }
+        if (KEY_PRESSED(GetAsyncKeyState(KEY_ESC)))
+        {
+            g_LastPressedKey = KEY_ESC;
+        }
     }
-    if (KEY_PRESSED(GetAsyncKeyState(KEY_A) || KEY_PRESSED(GetAsyncKeyState(KEY_LEFT))))
+
+
+    void wait(size_t milliseconds)
     {
-        g_LastPressedKey = KEY_A;
+        /*
+            We don't use the sleep function because then we wouldn't be able to query
+            the keys while waiting, resulting in a laggy experience, since the user
+            has to press the key in the exact moment we ask for it in snake_move()
+        */
+        LARGE_INTEGER frequency;        // ticks per second
+        LARGE_INTEGER t1, t2;           // ticks
+
+        QueryPerformanceFrequency(&frequency); // get ticks per second
+        QueryPerformanceCounter(&t1); // start timer
+
+        double elapsedTime = 0.0;
+        while (elapsedTime < milliseconds)
+        {
+            query_keys();
+            QueryPerformanceCounter(&t2);
+            elapsedTime = (t2.QuadPart - t1.QuadPart) * 1000.0 / frequency.QuadPart;
+        }
     }
-    if (KEY_PRESSED(GetAsyncKeyState(KEY_S) || KEY_PRESSED(GetAsyncKeyState(KEY_DOWN))))
+#elif defined(__linux__)
+    #include <fcntl.h>
+    #include <errno.h>
+    #include <unistd.h>
+    #include <bits/time.h>
+    #include <linux/input.h>
+
+    #define COMMAND_BUFFER_SIZE 10
+
+    bool execute_command(const char *cmd, char* result)
     {
-        g_LastPressedKey = KEY_S;
+        FILE *pipe = popen(cmd, "r");
+        if(!pipe)
+        {
+            printf("Failed to open the command pipe: %s\n", strerror(errno));
+            return false; 
+        }
+
+        char buffer[COMMAND_BUFFER_SIZE] = { 0 };
+      
+        while (!feof(pipe))
+        {
+            if (fgets(buffer, COMMAND_BUFFER_SIZE, pipe) != NULL)
+            {
+                memcpy(result, buffer, COMMAND_BUFFER_SIZE);
+            }
+        }
+
+        pclose(pipe);
+        return true;
     }
-    if (KEY_PRESSED(GetAsyncKeyState(KEY_D) || KEY_PRESSED(GetAsyncKeyState(KEY_RIGHT))))
+
+
+    bool get_keyboard_device_path(char* path)
     {
-        g_LastPressedKey = KEY_D;
+        static const char* command_get_keyboard_device_path =
+            "grep -E 'Handlers|EV=' /proc/bus/input/devices |"
+            "grep -B1 'EV=120013' |"
+            "grep -Eo 'event[0-9]+' |"
+            "grep -Eo '[0-9]+' |"
+            "tr -d '\n'";
+
+        const char* event_path = "/dev/input/event";
+        const size_t event_path_size = strlen(event_path);
+        char device_number[COMMAND_BUFFER_SIZE];
+
+        if (!execute_command(command_get_keyboard_device_path, device_number)) return false;
+        memcpy(path, "/dev/input/event", event_path_size);
+        memcpy(path + event_path_size, device_number, COMMAND_BUFFER_SIZE);
+        return true;
     }
-    if (KEY_PRESSED(GetAsyncKeyState(KEY_SPACE)))
+
+
+    int g_KeyboardFd = 0;
+    bool init_keyboard_listener()
     {
-        g_LastPressedKey = KEY_SPACE;
+        char path[100];
+        if (!get_keyboard_device_path(path)) return false;
+
+        g_KeyboardFd = open(path, O_RDONLY);
+        if (g_KeyboardFd < 0)
+        {
+            printf("Failed to open keyboard device path '%s': %s\nDid you start the program as root?\n", path, strerror(errno));
+            return false;
+        }
+
+        const int flags = fcntl(g_KeyboardFd, F_GETFL, 0);
+        fcntl(g_KeyboardFd, F_SETFL, flags | O_NONBLOCK);
+        return true;
     }
-    if (KEY_PRESSED(GetAsyncKeyState(KEY_ESC)))
+
+
+    void close_keyboard_listener()
     {
-        g_LastPressedKey = KEY_ESC;
+        close(g_KeyboardFd);
     }
-}
+
+    
+    void query_keys()
+    {
+        struct input_event event;
+        if (read(g_KeyboardFd, &event, sizeof(event)) > 0)
+        {
+            if (event.type == EV_KEY && event.value == 1)
+            {
+                g_LastPressedKey = event.code;
+            }
+        }
+    }
+
+    
+    void wait(size_t milliseconds)
+    {
+        struct timespec start, end;
+        clock_gettime(CLOCK_REALTIME, &start);
+
+        double elapsedTime = 0.0;
+        while (elapsedTime < milliseconds)
+        {
+            query_keys();
+            clock_gettime(CLOCK_REALTIME, &end);
+            elapsedTime = ((end.tv_sec - start.tv_sec) * 1.0e9 + (end.tv_nsec - start.tv_nsec)) / 1000000;
+        }
+    }
+#endif
 
 
 typedef struct
@@ -91,7 +221,11 @@ void board_reset(Board* b)
 
 void board_print(const Board* b, size_t score)
 {
-    system("cls");
+    #ifdef _WIN32
+        system("cls");
+    #elif defined(__linux__)
+        system("clear");
+    #endif
     printf("Score: %zu\n", score);
 
     const size_t size = b->width * b->height;
@@ -107,14 +241,14 @@ void board_add_snake(Board* b, Snake s)
 {
     for (size_t i = 0; i < s.size; ++i)
     {
-        b->board[s.body[i].y * b->width + s.body[i].x] = i == 0 ? 'H' : 'S';
+        b->board[s.body[i].y * b->width + s.body[i].x] = i == 0 ? '*' : '=';
     }
 }
 
 
 void board_add_apple(Board* b, Tile apple)
 {
-    b->board[apple.y * b->width + apple.x] = 'A';
+    b->board[apple.y * b->width + apple.x] = 'a';
 }
 
 
@@ -159,15 +293,19 @@ bool snake_move(Snake* s)
     switch (g_LastPressedKey)
     {
     case KEY_W:
+    case KEY_UP:
         newHeadPos.y--;
         break;
     case KEY_A:
+    case KEY_LEFT:
         newHeadPos.x--;
         break;
     case KEY_S:
+    case KEY_DOWN:
         newHeadPos.y++;
         break;
     case KEY_D:
+    case KEY_RIGHT:
         newHeadPos.x++;
         break;
     default:
@@ -201,29 +339,6 @@ size_t get_random_num(size_t min, size_t max)
 }
 
 
-void wait(size_t milliseconds)
-{
-    /*
-        We don't use the sleep function because then we wouldn't be able to query
-        the keys while waiting, resulting in a laggy experience, since the user
-        has to press the key in the exact moment we ask for it in snake_move()
-    */
-    LARGE_INTEGER frequency;        // ticks per second
-    LARGE_INTEGER t1, t2;           // ticks
-
-    QueryPerformanceFrequency(&frequency); // get ticks per second
-    QueryPerformanceCounter(&t1); // start timer
-
-    double elapsedTime = 0.0;
-    while (elapsedTime < milliseconds)
-    {
-        query_keys();
-        QueryPerformanceCounter(&t2);
-        elapsedTime = (t2.QuadPart - t1.QuadPart) * 1000.0 / frequency.QuadPart;
-    }
-}
-
-
 void print_help(const char* name, size_t width, size_t height, size_t timeToWait)
 {
     printf("Usage: %s [options]\n", name);
@@ -232,6 +347,11 @@ void print_help(const char* name, size_t width, size_t height, size_t timeToWait
     printf("  -h  | --hight=<value>   Set the board hight (min: 4, default: %zu)\n", height);
     printf("  -s  | --sleep=<value>   Time to wait between moving in milliseconds (min: 1, default: %zu)\n", timeToWait);
     puts("\nIt's recommended for the width to be twice the size of the height");
+
+    #ifdef __linux__
+        puts("Linux users have to run this program with root privileges");
+    #endif
+
     puts("Controlls:");
     puts("- Esc                 Pause");
     puts("- Space               Quit");
@@ -308,6 +428,11 @@ bool parse_args(int argc, char** argv, size_t* width, size_t* height, size_t* ti
 
 int main(int argc, char** argv)
 {
+    #ifdef __linux__
+        if (!init_keyboard_listener()) return EXIT_FAILURE;
+    #endif
+
+    g_LastPressedKey = KEY_ESC;
     size_t timeToWait = 200;
     Board board = { .width = 20, .height = 10, .board = NULL };
     if (!parse_args(argc, argv, &board.width, &board.height, &timeToWait)) return EXIT_SUCCESS;
@@ -376,5 +501,8 @@ int main(int argc, char** argv)
 
     free(snake.body);
     free(board.board);
+    #ifdef __linux__
+        close_keyboard_listener();
+    #endif
     return EXIT_SUCCESS;
 }
