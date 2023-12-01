@@ -55,7 +55,7 @@ size_t g_LastPressedKey = 0;
     }
 
 
-    void wait(size_t milliseconds)
+    void elapse(size_t milliseconds)
     {
         /*
             We don't use the sleep function because then we wouldn't be able to query
@@ -165,9 +165,53 @@ size_t g_LastPressedKey = 0;
             }
         }
     }
+#elif defined(__APPLE__)
+    #include <Carbon/Carbon.h>
 
-    
-    void wait(size_t milliseconds)
+    #define KEY_W     kVK_ANSI_W
+    #define KEY_A     kVK_ANSI_A
+    #define KEY_S     kVK_ANSI_S
+    #define KEY_D     kVK_ANSI_D
+    #define KEY_UP    kVK_UpArrow
+    #define KEY_LEFT  kVK_LeftArrow
+    #define KEY_DOWN  kVK_DownArrow
+    #define KEY_RIGHT kVK_RightArrow
+    #define KEY_ESC   kVK_Escape
+    #define KEY_SPACE kVK_Space
+
+    #define KEY_PRESSED(keycode) CGEventSourceKeyState(kCGEventSourceStateCombinedSessionState, keycode)
+
+    void query_keys()
+    {
+        if (KEY_PRESSED(KEY_W) || KEY_PRESSED(KEY_UP))
+        {
+            g_LastPressedKey = KEY_W;
+        }
+        if (KEY_PRESSED(KEY_A) || KEY_PRESSED(KEY_LEFT))
+        {
+            g_LastPressedKey = KEY_A;
+        }
+        if (KEY_PRESSED(KEY_S) || KEY_PRESSED(KEY_DOWN))
+        {
+            g_LastPressedKey = KEY_S;
+        }
+        if (KEY_PRESSED(KEY_D) || KEY_PRESSED(KEY_RIGHT))
+        {
+            g_LastPressedKey = KEY_D;
+        }
+        if (KEY_PRESSED(KEY_SPACE))
+        {
+            g_LastPressedKey = KEY_SPACE;
+        }
+        if (KEY_PRESSED(KEY_ESC))
+        {
+            g_LastPressedKey = KEY_ESC;
+        }
+    }
+#endif
+
+#if defined(__linux__) || defined(__APPLE__)
+    void elapse(size_t milliseconds)
     {
         struct timespec start, end;
         clock_gettime(CLOCK_REALTIME, &start);
@@ -223,7 +267,7 @@ void board_print(const Board* b, size_t score)
 {
     #ifdef _WIN32
         system("cls");
-    #elif defined(__linux__)
+    #elif defined(__linux__) || defined(__APPLE__)
         system("clear");
     #endif
     printf("Score: %zu\n", score);
@@ -496,7 +540,7 @@ int main(int argc, char** argv)
 
         board_add_apple(&board, apple);
         board_print(&board, snake.size - 1);
-        wait(timeToWait);
+        elapse(timeToWait);
     }
 
     free(snake.body);
