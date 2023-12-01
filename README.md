@@ -34,6 +34,13 @@ for (const std::string& s : strings)
 Profiler::Log(Profiler::Conversion::Milliseconds); // print to stdout
 ```
 
+### snake_console.c
+A snake implementation meant to be played in the console, supports Windows, Linux and macOS  
+Compiling on macOS:
+``` bash
+gcc snake_console.c -framework Carbon
+```
+
 ### cstring.h
 Implements the C++ string interface in C
 
