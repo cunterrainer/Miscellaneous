@@ -404,7 +404,7 @@ void print_help(const char* name, size_t width, size_t height, size_t timeToWait
 }
 
 
-bool parse_args(int argc, char** argv, size_t* width, size_t* height, size_t* timeToWait)
+bool parse_args(int argc, char** argv, long* width, long* height, long* timeToWait)
 {
     const size_t defaultWidth = *width;
     const size_t defaultHeight = *height;
@@ -453,7 +453,7 @@ bool parse_args(int argc, char** argv, size_t* width, size_t* height, size_t* ti
             char* end;
             const char* result = strchr(argv[i], '=') + 1;
             *timeToWait = strtol(result, &end, 10);
-            if (*timeToWait < 4)
+            if (*timeToWait < 1)
             {
                 fprintf(stderr, "Sleep must be greater than or equal to 1\nTry '--help' for additional help\n");
                 return false;
@@ -479,7 +479,7 @@ int main(int argc, char** argv)
     g_LastPressedKey = KEY_ESC;
     size_t timeToWait = 200;
     Board board = { .width = 20, .height = 10, .board = NULL };
-    if (!parse_args(argc, argv, &board.width, &board.height, &timeToWait)) return EXIT_SUCCESS;
+    if (!parse_args(argc, argv, (long*)&board.width, (long*)&board.height, (long*)&timeToWait)) return EXIT_SUCCESS;
 
     board.board = malloc(board.width * board.height * sizeof(char));
     if (board.board == NULL)
