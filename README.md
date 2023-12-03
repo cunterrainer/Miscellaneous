@@ -36,6 +36,11 @@ Profiler::Log(Profiler::Conversion::Milliseconds); // print to stdout
 
 ### snake_console.c
 A snake implementation meant to be played in the console, supports Windows, Linux and macOS  
+Compiling on Windows:
+``` bash
+gcc snake_console.c -lUser32
+```
+
 Compiling on macOS:
 ``` bash
 gcc snake_console.c -framework Carbon
