@@ -41,6 +41,11 @@ Compiling on macOS:
 gcc snake_console.c -framework Carbon
 ```
 
+For additional information and to change settings
+``` bash
+./snake --help
+```
+
 ### cstring.h
 Implements the C++ string interface in C
 
