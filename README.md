@@ -21,7 +21,7 @@ Most of the programs/header files in here are self explanatory
 The documentation is in the header  
 The SHA-3 and Shake functions can not be updated data has to be supplied in a single string
 
-### Hash.zig
+### hash.zig
 Hash strings or files, supported functions:
 - SHA-1
 - SHA-2 family
