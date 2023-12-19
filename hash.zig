@@ -151,13 +151,16 @@ pub fn hash_text(buffer: [] const u8, hasher: HashFunctions, upper_case: bool) v
 
 pub fn hash_file_impl(comptime T: type, file: std.fs.File, upper_case: bool) !void
 {
+    var buf = std.io.bufferedReader(file.reader());
+    var in_stream = buf.reader();
+
     var hasher: T = T.init(.{});
 
     var buff: [4096] u8 = undefined;
     var bytes_read: usize = buff.len;
     while (bytes_read == buff.len)
     {
-        bytes_read = try file.readAll(&buff);
+        bytes_read = try in_stream.readAll(&buff);
         hasher.update(buff[0..bytes_read]);
     }
 
