@@ -21,6 +21,22 @@ Most of the programs/header files in here are self explanatory
 The documentation is in the header  
 The SHA-3 and Shake functions can not be updated data has to be supplied in a single string
 
+### Hash.zig
+Hash strings or files, supported functions:
+- SHA-1
+- SHA-2 family
+    - SHA-224
+    - SHA-256
+    - SHA-384
+    - SHA-512
+    - SHA-512/256
+- SHA-3 family
+    - SHA3-224
+    - SHA3-256
+    - SHA3-384
+    - SHA3-512
+- MD5
+
 ### Profiler.h
 Measure the execution time of code snippets e.g. in loops.  
 Example (simplified, from hash_benchmark.cpp)
