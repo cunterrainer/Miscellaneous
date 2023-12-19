@@ -16,13 +16,14 @@ pub fn print(comptime format: []const u8, args: anytype) void
 pub fn print_help(path: [] const u8) void
 {
     print("Usage: {s} [input] [function] [options]\nOptions:\n", .{path});
-    print("        -i   | --input           Force the next argument to be the input (e.g. to get the hash of '-h')\n", .{});
-    print("        -h   | --help            Show this info message\n", .{});
-    print("        -t   | --text            Treat input as text\n", .{});
-    print("        -f   | --file            Treat input as file\n", .{});
-    print("        -u   | --upper           Print hash upper case\n", .{});
+    print("        -i | --input           Force the next argument to be the input (e.g. to get the hash of '-h')\n", .{});
+    print("        -h | --help            Show this info message\n", .{});
+    print("        -t | --text            Treat input as text\n", .{});
+    print("        -f | --file            Treat input as file\n", .{});
+    print("        -d | --directory       Treat input as directory\n", .{});
+    print("        -u | --upper           Print hash upper case\n", .{});
     print("Supported functions are: md5, sha1, sha224, sha256, sha384, sha512, sha512-256, sha3-224, sha3-256, sha3-384, sha3-512\n", .{});
-    print("If neither the '-f' nor '-t' options are specified, the program will hash the file if it is a valid file path; otherwise, it will be treated as a text string.\n", .{});
+    print("If neither the '-f', '-t' nor '-d' options are specified, the program will try to hash a directory, then a file; otherwise, it will be treated as a text string.\n", .{});
 }
 
 
@@ -146,6 +147,7 @@ pub fn hash_text(buffer: [] const u8, hasher: HashFunctions, upper_case: bool) v
     }
 
     try print_hash(&out_buffer_int, length, upper_case);
+    print("\n", .{});
 }
 
 
@@ -223,6 +225,52 @@ pub fn hash_file(file: std.fs.File, hasher: HashFunctions, upper_case: bool) !vo
 }
 
 
+pub fn hash_directory(allocator: std.mem.Allocator, dir_path: []const u8, function: HashFunctions, upper_case: bool, force_dir: bool) !bool
+{
+    var dir = std.fs.cwd().openDir(dir_path, .{ .iterate = true }) catch |e| {
+        if ((e != std.fs.File.OpenError.NotDir and e != std.fs.File.OpenError.FileNotFound) or force_dir) {
+            print_err("Failed to open directory '{s}': {}\n", .{ dir_path, e });
+        }
+        return force_dir;
+    };
+    defer dir.close();
+
+    var walker = try dir.walk(allocator);
+    defer walker.deinit();
+    
+    while (try walker.next()) |entry|
+    {
+        var full_path: [] u8 = undefined;
+        const contains_slash = dir_path[dir_path.len - 1] == '/' or dir_path[dir_path.len - 1] == '\\';
+
+        if (contains_slash)
+        {
+            full_path = try allocator.alloc(u8, dir_path.len + entry.path.len);
+            std.mem.copyForwards(u8, full_path, dir_path);
+            std.mem.copyForwards(u8, full_path[dir_path.len..], entry.path);
+        }
+        else
+        {
+            full_path = try allocator.alloc(u8, dir_path.len + 1 + entry.path.len);
+            std.mem.copyForwards(u8, full_path, dir_path);
+            full_path[dir_path.len] = '/';
+            std.mem.copyForwards(u8, full_path[dir_path.len+1..], entry.path);
+        }
+        defer allocator.free(full_path);
+
+        const in_file = std.fs.cwd().openFile(full_path, .{}) catch |e| {
+            if (e != std.fs.File.OpenError.IsDir)
+                print_err("Failed to open file '{s}': {}\n", .{full_path, e});
+            continue;
+        };
+        defer in_file.close();
+        try hash_file(in_file, function, upper_case);
+        print(" [{s}]\n", .{full_path});
+    }
+    return true;
+}
+
+
 pub fn main() !void
 {
     const allocator = std.heap.page_allocator;
@@ -233,6 +281,7 @@ pub fn main() !void
 
     var skip: bool = false;
     var input: [] u8 = "";
+    var force_dir: bool = false;
     var force_file: bool = false;
     var force_text: bool = false;
     var upper_case: bool = false;
@@ -264,11 +313,19 @@ pub fn main() !void
         {
             force_file = true;
             force_text = false;
+            force_dir = false;
         }
         else if (strcmp(arg, "-t") or strcmp(arg, "--text"))
         {
-            force_file = false;
             force_text = true;
+            force_file = false;
+            force_dir = false;
+        }
+        else if (strcmp(arg, "-d") or strcmp(arg, "--directory"))
+        {
+            force_dir = true;
+            force_file = false;
+            force_text = false;
         }
         else if (strcmp(arg, "-h") or strcmp(arg, "--help"))
         {
@@ -304,6 +361,11 @@ pub fn main() !void
         return hash_text(input, function, upper_case);
     }
 
+    if (!force_file and try hash_directory(allocator, input, function, upper_case, force_dir))
+    {
+        return;
+    }
+
 
     const in_file = std.fs.cwd().openFile(input, .{}) catch |e| {
         if (e != std.fs.File.OpenError.FileNotFound or force_file)
@@ -315,4 +377,5 @@ pub fn main() !void
     defer in_file.close();
     print("[{s}] ", .{input});
     try hash_file(in_file, function, upper_case);
+    print("\n", .{});
 }
