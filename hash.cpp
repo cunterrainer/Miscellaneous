@@ -337,7 +337,6 @@ std::string hash_file(const char* path, Settings::HashFunction func)
 
 void hash_directory(const std::string& path, Settings::HashFunction func, bool decorator, bool upper_case, const std::string& search, bool multiple, bool conceal)
 {
-    size_t found = 0;
     size_t matches = 0;
     size_t prev_path_length = 0;
     std::unordered_map<std::string, std::vector<std::string>> hash_map;
@@ -354,18 +353,7 @@ void hash_directory(const std::string& path, Settings::HashFunction func, bool d
                     throw std::filesystem::filesystem_error(strerror(errno), entry.path(), std::error_code());
                 }
 
-
-                if (hash == search)
-                {
-                    ++found;
-                    print_hash(std::string(std::string(get_hash_function_name(func)) + ": ").c_str(), std::string(" [" + entry.path().string() + "] ").c_str(), hash.c_str(), decorator, upper_case, true);
-                }
-                else if (!search.empty() && decorator && !conceal)
-                {
-                    printf("File: %-*s\r", static_cast<int>(prev_path_length), entry.path().string().c_str());
-                    prev_path_length = entry.path().string().size();
-                }
-                else if (multiple && search.empty())
+                if (hash == search || (multiple && search.empty()))
                 {
                     if (decorator && !conceal)
                     {
@@ -397,11 +385,11 @@ void hash_directory(const std::string& path, Settings::HashFunction func, bool d
 
     for (const auto& pair : hash_map)
     {
-        if (pair.second.size() > 1)
+        if (!search.empty() || pair.second.size() > 1)
         {
             matches++;
             if (decorator)
-                printf("%s: %s\n", get_hash_function_name(func), pair.first.c_str());
+                printf("%s: %-*s\n", get_hash_function_name(func), static_cast<int>(prev_path_length), pair.first.c_str());
             for (const auto& s : pair.second)
             {
                 printf("%s\n", s.c_str());
@@ -420,7 +408,7 @@ void hash_directory(const std::string& path, Settings::HashFunction func, bool d
     }
     if (!search.empty())
     {
-        printf("Found: %-*zu\r", static_cast<int>(prev_path_length), found);
+        printf("Found: %-*zu\r", static_cast<int>(prev_path_length), matches);
     }
 }
 
