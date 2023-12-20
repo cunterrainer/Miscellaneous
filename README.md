@@ -37,6 +37,9 @@ Hash strings, files or directories. Functionality to print all files that are th
     - SHA3-512
 - MD5
 
+### time.cpp
+Time utility from Linux for Windows
+
 ### Profiler.h
 Measure the execution time of code snippets e.g. in loops.  
 Example (simplified, from hash_benchmark.cpp)
