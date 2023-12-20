@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <cinttypes>
 
-#undef UNICODE
+#define UNICODE
 #include <Windows.h>
 
 #define DECIMAL_PRECISION  3
@@ -23,7 +23,7 @@ std::string error_as_string()
     //Ask Win32 to give us the string version of that message ID.
     //The parameters we pass in, tell Win32 to create the buffer that holds the message for us (because we don't yet know how long the message string will be).
     size_t size = FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, errorMessageID, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPSTR)&messageBuffer, 0, NULL);
-    
+
     //Copy the error message into a std::string.
     std::string message(messageBuffer, size);
     
@@ -68,32 +68,8 @@ void print_time(uint64_t time, const char* fmt)
 }
 
 
-BOOL CtrlHandler(DWORD fdwCtrlType)
+void time_app(LPWSTR args)
 {
-    return fdwCtrlType == CTRL_C_EVENT;
-}
-
-
-int main(int argc, const char* argv[])
-{
-    if (argc < 2)
-    {
-        printf("Usage: %s [command] [arg 1] [arg 2] ...\n", argv[0]);
-        return 0;
-    }
-
-    std::string args;
-    for (int i = 1; i < argc; ++i)
-    {
-        args += argv[i];
-        args += ' ';
-    }
-
-    // no real routine needed, because if ctrl + c used
-    // subprocess will be killed and the handler will return
-    // controll flow to this program
-    SetConsoleCtrlHandler((PHANDLER_ROUTINE)CtrlHandler, TRUE);
-
     STARTUPINFO si;
     PROCESS_INFORMATION pi;
 
@@ -102,10 +78,10 @@ int main(int argc, const char* argv[])
     ZeroMemory(&pi, sizeof(pi));
 
     const auto t_start = std::chrono::high_resolution_clock::now();
-    if (!CreateProcess(NULL, args.data(), NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi))
+    if (!CreateProcessW(NULL, args, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi))
     {
-        printf("Failed to create process '%s': %s\n", args.c_str(), error_as_string().c_str());
-        return 0;
+        fprintf(stderr, "Failed to create process '%S': %s\n", args, error_as_string().c_str());
+        return;
     }
 
     WaitForSingleObject(pi.hProcess, INFINITE);
@@ -132,9 +108,44 @@ int main(int argc, const char* argv[])
     const uint64_t kernelTimeFinal = kernelTimeInt.QuadPart * 100;
     const uint64_t realTime = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(t_end - t_start).count());
     puts("");
-    print_time(realTime,                        "Real time:    ");
-    print_time(userTimeFinal,                   "User time:    ");
-    print_time(kernelTimeFinal,                 "Kernel time:  ");
-    print_time(kernelTimeFinal + userTimeFinal, "Combined time:");
-    return 0;
+    print_time(realTime,                        "Real time:     ");
+    print_time(userTimeFinal,                   "User time:     ");
+    print_time(kernelTimeFinal,                 "Kernel time:   ");
+    print_time(kernelTimeFinal + userTimeFinal, "Total CPU time:");
+}
+
+
+BOOL CtrlHandler(DWORD fdwCtrlType)
+{
+    return fdwCtrlType == CTRL_C_EVENT;
+}
+
+
+int main()
+{
+    int argc = 0;
+    const LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+    if (argc < 2)
+    {
+        std::string error = error_as_string();
+        if (error.empty())
+            fprintf(stderr, "Usage: %S [command] [arg 1] [arg 2] ...\n", argv[0]);
+        else
+            fprintf(stderr, "Failed to get command line arguments: %s\n", error.c_str());
+        return 0;
+    }
+
+    // no real routine needed, because if ctrl + c used
+    // subprocess will be killed and the handler will return
+    // controll flow to this program
+    SetConsoleCtrlHandler((PHANDLER_ROUTINE)CtrlHandler, TRUE);
+
+    std::basic_string<WCHAR> args;
+    for (int i = 1; i < argc; ++i)
+    {
+        args += argv[i];
+        if (i != argc - 1)
+            args += ' ';
+    }
+    time_app(args.data());
 }
