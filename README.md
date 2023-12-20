@@ -21,8 +21,8 @@ Most of the programs/header files in here are self explanatory
 The documentation is in the header  
 The SHA-3 and Shake functions can not be updated data has to be supplied in a single string
 
-### hash.zig
-Hash strings or files, supported functions:
+### hash.zig or hash.cpp
+Hash strings, files or directories. Functionality to print all files that are the same in a directory and search for files based on their hash value (C++ only)
 - SHA-1
 - SHA-2 family
     - SHA-224
