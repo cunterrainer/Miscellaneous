@@ -1,4 +1,4 @@
-﻿#ifndef HASH_H
+#ifndef HASH_H
 #define HASH_H
 /*
     Use the C functions if you want to prevent heap allocations entirely
@@ -11,7 +11,7 @@
     either use the provided functions, all have the same scheme:
 
         hash_sha256("Hello world", buffer); // returns a const char* (internal buffer if buffer == NULL)
-        hash_sha256_file("main.c", "rb", buffer);
+        hash_sha256_file("main.c", "rb", buffer); // a user provided buffer must hold atleast HASH_SHA256_BUFFER_SIZE + 1 (null term char)
 
         hash_sha256_easy("Hello world"); // returns internal buffer
         hash_sha256_file_easy("main.c", "rb");
@@ -26,7 +26,7 @@
         hash_sha256_finalize(s);
         const char* hash = hash_sha256_hexdigest(s, buffer);
 
-    C++ interface:
+    C++ interface: (needs C++17)
     all functions and classes are in the namespace Hash
     either use the provided functions, all have the same scheme:
 
@@ -84,6 +84,16 @@
 #endif // __cplusplus && HASH_ENABLE_CPP_INTERFACE
 
 #if HASH_ENABLE_C_INTERFACE == 1
+#define HASH_MD5_BUFFER_SIZE 32
+#define HASH_SHA1_BUFFER_SIZE 40
+#define HASH_SHA224_BUFFER_SIZE 56
+#define HASH_SHA256_BUFFER_SIZE 64
+#define HASH_SHA384_BUFFER_SIZE 96
+#define HASH_SHA512_BUFFER_SIZE 128
+#define HASH_SHA3_224_BUFFER_SIZE 56
+#define HASH_SHA3_256_BUFFER_SIZE 64
+#define HASH_SHA3_384_BUFFER_SIZE 96
+#define HASH_SHA3_512_BUFFER_SIZE 128
 // ================================Util====================================
 HASH_INLINE void hash_util_char_array_to_hex_string(unsigned char* data, size_t size, char* out)
 {
@@ -315,13 +325,13 @@ HASH_INLINE void hash_sha256_finalize(Hash_Sha256 s)
 // if buffer == NULL returns internal buffer, buffer size must be at least 65 (Null term char)
 HASH_INLINE const char* hash_sha256_hexdigest(const Hash_Sha256 s, char* buffer)
 {
-    static char hex[65];
+    static char hex[HASH_SHA256_BUFFER_SIZE+1];
     char* buff = buffer == NULL ? hex : buffer;
     for (size_t i = 0; i < 8; ++i)
     {
         sprintf(&buff[i * 8], "%08" PRIx32, s->h[i]);
     }
-    buff[64] = 0;
+    buff[HASH_SHA256_BUFFER_SIZE] = 0;
     return buff;
 }
 
@@ -394,13 +404,13 @@ HASH_INLINE void hash_sha224_finalize(Hash_Sha224 s)
 // if buffer == NULL returns internal buffer, buffer size must be at least 57 (Null term char)
 HASH_INLINE const char* hash_sha224_hexdigest(const Hash_Sha224 s, char* buffer)
 {
-    static char hex[57];
+    static char hex[HASH_SHA224_BUFFER_SIZE+1];
     char* buff = buffer == NULL ? hex : buffer;
     for (size_t i = 0; i < 7; ++i)
     {
         sprintf(&buff[i * 8], "%08" PRIx32, s->h[i]);
     }
-    buff[56] = 0;
+    buff[HASH_SHA224_BUFFER_SIZE] = 0;
     return buff;
 }
 
@@ -599,13 +609,13 @@ HASH_INLINE void hash_sha512_finalize(Hash_Sha512 s)
 // if buffer == NULL returns internal buffer, buffer size must be at least 129 (Null term char)
 HASH_INLINE const char* hash_sha512_hexdigest(const Hash_Sha512 s, char* buffer)
 {
-    static char hex[129];
+    static char hex[HASH_SHA512_BUFFER_SIZE+1];
     char* buff = buffer == NULL ? hex : buffer;
     for (size_t i = 0; i < 8; ++i)
     {
         sprintf(&buff[i * 16], "%016" PRIx64, s->h[i]);
     }
-    buff[128] = 0;
+    buff[HASH_SHA512_BUFFER_SIZE] = 0;
     return buff;
 }
 
@@ -718,6 +728,7 @@ HASH_INLINE const char* hash_sha512t_binary(size_t t, const char* str, size_t si
     return hash_sha512t_hexdigest(s, buffer);
 }
 
+// if buffer == NULL returns internal buffer, buffer size must be at least (t/4)+1 (Null term char)
 HASH_INLINE const char* hash_sha512t(size_t t, const char* str, char* buffer)
 {
     return hash_sha512t_binary(t, str, strlen(str), buffer);
@@ -728,6 +739,7 @@ HASH_INLINE const char* hash_sha512t_easy(size_t t, const char* str)
     return hash_sha512t_binary(t, str, strlen(str), NULL);
 }
 
+// if buffer == NULL returns internal buffer, buffer size must be at least (t/4)+1 (Null term char)
 HASH_INLINE const char* hash_sha512t_file(size_t t, const char* path, const char* mode, char* buffer)
 {
     long fsize;
@@ -782,13 +794,13 @@ HASH_INLINE void hash_sha384_finalize(Hash_Sha384 s)
 // if buffer == NULL returns internal buffer, buffer size must be at least 97 (Null term char)
 HASH_INLINE const char* hash_sha384_hexdigest(const Hash_Sha384 s, char* buffer)
 {
-    static char hex[97]; // use max allowed size to avoid memory allocation
+    static char hex[HASH_SHA384_BUFFER_SIZE+1]; // use max allowed size to avoid memory allocation
     char* buff = buffer == NULL ? hex : buffer;
     for (size_t i = 0; i < 6; ++i)
     {
         sprintf(&buff[i * 16], "%016" PRIx64, s->h[i]);
     }
-    buff[96] = 0;
+    buff[HASH_SHA384_BUFFER_SIZE] = 0;
     return buff;
 }
 
@@ -961,13 +973,13 @@ HASH_INLINE void hash_sha1_finalize(Hash_Sha1 s)
 // if buffer == NULL returns internal buffer, buffer size must be at least 41 (Null term char)
 HASH_INLINE const char* hash_sha1_hexdigest(const Hash_Sha1 s, char* buffer)
 {
-    static char hex[41]; // use max allowed size to avoid memory allocation
+    static char hex[HASH_SHA1_BUFFER_SIZE+1]; // use max allowed size to avoid memory allocation
     char* buff = buffer == NULL ? hex : buffer;
     for (size_t i = 0; i < 5; ++i)
     {
         sprintf(&buff[i * 8], "%08" PRIx32, s->h[i]);
     }
-    buff[40] = 0;
+    buff[HASH_SHA1_BUFFER_SIZE] = 0;
     return buff;
 }
 
@@ -1022,11 +1034,11 @@ typedef Hash_Private_MD5 Hash_MD5[1];
 ///////////////////////////////////////////////
 // F, G, H and I are basic Hash_MD5 functions.
 HASH_INLINE uint32_t hash_private_md5_F(uint32_t x, uint32_t y, uint32_t z) {
-    return x & y | ~x & z;
+    return (x & y) | (~x & z);
 }
 
 HASH_INLINE uint32_t hash_private_md5_G(uint32_t x, uint32_t y, uint32_t z) {
-    return x & z | y & ~z;
+    return (x & z) | (y & ~z);
 }
 
 HASH_INLINE uint32_t hash_private_md5_H(uint32_t x, uint32_t y, uint32_t z) {
@@ -1296,11 +1308,11 @@ HASH_INLINE const char* hash_md5_hexdigest(const Hash_MD5 m, char* buffer)
     if (!m->finalized)
         return "";
 
-    static char hex[33];
+    static char hex[HASH_MD5_BUFFER_SIZE+1];
     char* buf = buffer == NULL ? hex : buffer;
     for (int i = 0; i < 16; i++)
         sprintf(buf + i * 2, "%02x", m->digest[i]);
-    buf[32] = 0;
+    buf[HASH_MD5_BUFFER_SIZE] = 0;
     return buf;
 }
 
@@ -1457,6 +1469,8 @@ namespace Hash
 #if HASH_ENABLE_SHA2 == 1
     class Sha256
     {
+    public:
+        static constexpr std::size_t Size = 64;
     private:
         uint64_t m_Bitlen = 0;
         uint8_t m_BufferSize = 0;
@@ -1639,6 +1653,8 @@ namespace Hash
     class Sha224 : public Sha256
     {
     public:
+        static constexpr size_t Size = 56;
+    public:
         Sha224() : Sha256(0xC1059ED8, 0x367CD507, 0x3070DD17, 0xF70E5939, 0xFFC00B31, 0x68581511, 0x64F98FA7, 0xBEFA4FA4) {}
         inline std::string Hexdigest() const override
         {
@@ -1681,6 +1697,8 @@ namespace Hash
 
     class Sha512
     {
+    public:
+        static constexpr std::size_t Size = 128;
     private:
         uint64_t m_Bitlen = 0;
         uint8_t m_BufferSize = 0;
@@ -1979,6 +1997,8 @@ namespace Hash
     class Sha384 : public Sha512
     {
     public:
+        static constexpr std::size_t Size = 96;
+    public:
         Sha384() : Sha512(0xcbbb9d5dc1059ed8, 0x629a292a367cd507, 0x9159015a3070dd17, 0x152fecd8f70e5939, 0x67332667ffc00b31, 0x8eb44a8768581511, 0xdb0c2e0d64f98fa7, 0x47b5481dbefa4fa4) {}
         inline std::string Hexdigest() const override
         {
@@ -2022,6 +2042,8 @@ namespace Hash
 #if HASH_ENABLE_SHA1 == 1
     class Sha1
     {
+    public:
+        static constexpr std::size_t Size = 40;
     private:
         uint64_t m_Bitlen = 0;
         uint8_t m_BufferSize = 0;
@@ -2228,8 +2250,9 @@ namespace Hash
     class MD5
     {
     public:
-        typedef unsigned int size_type; // must be 32bit
+        static constexpr std::size_t Size = 32;
     private:
+        typedef unsigned int size_type; // must be 32bit
         typedef unsigned char uint1; //  8bit
         typedef unsigned int uint4;  // 32bit
         enum { blocksize = 64 }; // VC6 won't eat a const static int here
@@ -2239,6 +2262,9 @@ namespace Hash
         uint4 count[2];   // 64bit counter for number of bits (lo, hi)
         uint4 state[4];   // digest so far
         uint1 digest[16]; // the result
+
+        static_assert(sizeof(size_type) == 4, "MD5 requires unsigned int's to be 32 bit (4 bytes), try disabling MD5");
+        static_assert(sizeof(uint1) == 1, "MD5 requires unsigned char's to be 8 bit (1 byte), try disabling MD5");
     private:
         // Constants for MD5 Transform routine.
         static constexpr uint4 S11 = 7;
@@ -2261,7 +2287,7 @@ namespace Hash
         // default ctor, just initailize
         MD5()
         {
-            init();
+            Init();
         }
 
         //////////////////////////////////////////////
@@ -2269,23 +2295,23 @@ namespace Hash
         // nifty shortcut ctor, compute Hash_MD5 for string and finalize it right away
         MD5(const std::string& text)
         {
-            init();
-            update(text.c_str(), (size_type)text.length());
-            finalize();
+            Init();
+            Update(text.c_str(), (size_type)text.length());
+            Finalize();
         }
 
         MD5(std::string_view text)
         {
-            init();
-            update(text.data(), (size_type)text.length());
-            finalize();
+            Init();
+            Update(text.data(), (size_type)text.length());
+            Finalize();
         }
 
         //////////////////////////////
 
         // MD5 block update operation. Continues an Hash_MD5 message-digest
         // operation, processing another message block
-        void update(const unsigned char input[], size_type length)
+        void Update(const unsigned char input[], size_type length)
         {
             // compute number of bytes mod 64
             size_type index = count[0] / 8 % blocksize;
@@ -2305,11 +2331,11 @@ namespace Hash
             {
                 // fill buffer first, transform
                 memcpy(&buffer[index], input, firstpart);
-                transform(buffer);
+                Transform(buffer);
 
                 // transform chunks of blocksize (64 bytes)
                 for (i = firstpart; i + blocksize <= length; i += blocksize)
-                    transform(&input[i]);
+                    Transform(&input[i]);
 
                 index = 0;
             }
@@ -2323,16 +2349,16 @@ namespace Hash
         //////////////////////////////
 
         // for convenience provide a verson with signed char
-        void update(const char input[], size_type length)
+        inline void Update(const char input[], size_type length)
         {
-            update((const unsigned char*)input, length);
+            Update((const unsigned char*)input, length);
         }
 
         //////////////////////////////
 
         // MD5 finalization. Ends an MD5 message-digest operation, writing the
         // the message digest and zeroizing the context.
-        MD5& finalize()
+        MD5& Finalize()
         {
             static unsigned char padding[64] = {
               0x80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -2343,18 +2369,18 @@ namespace Hash
             if (!finalized) {
                 // Save number of bits
                 unsigned char bits[8];
-                encode(bits, count, 8);
+                Encode(bits, count, 8);
 
                 // pad out to 56 mod 64.
                 size_type index = count[0] / 8 % 64;
                 size_type padLen = (index < 56) ? (56 - index) : (120 - index);
-                update(padding, padLen);
+                Update(padding, padLen);
 
                 // Append length (before padding)
-                update(bits, 8);
+                Update(bits, 8);
 
                 // Store state in digest
-                encode(digest, state, 16);
+                Encode(digest, state, 16);
 
                 // Zeroize sensitive information.
                 memset(buffer, 0, sizeof buffer);
@@ -2369,7 +2395,7 @@ namespace Hash
         //////////////////////////////
 
         // return hex representation of digest as string
-        std::string hexdigest() const
+        std::string Hexdigest() const
         {
             if (!finalized)
                 return "";
@@ -2384,7 +2410,7 @@ namespace Hash
 
         friend std::ostream& operator<<(std::ostream&, const MD5& md5);
     private:
-        void init()
+        void Init()
         {
             finalized = false;
 
@@ -2401,10 +2427,10 @@ namespace Hash
         //////////////////////////////
 
         // apply MD5 algo on a block
-        void transform(const uint1 block[blocksize])
+        void Transform(const uint1 block[blocksize])
         {
             uint4 a = state[0], b = state[1], c = state[2], d = state[3], x[16];
-            decode(x, block, blocksize);
+            Decode(x, block, blocksize);
 
             /* Round 1 */
             FF(a, b, c, d, x[0], S11, 0xd76aa478); /* 1 */
@@ -2490,7 +2516,7 @@ namespace Hash
         //////////////////////////////
 
         // decodes input (unsigned char) into output (uint4). Assumes len is a multiple of 4.
-        static void decode(uint4 output[], const uint1 input[], size_type len)
+        inline void Decode(uint4 output[], const uint1 input[], size_type len)
         {
             for (unsigned int i = 0, j = 0; j < len; i++, j += 4)
                 output[i] = ((uint4)input[j]) | (((uint4)input[j + 1]) << 8) |
@@ -2501,7 +2527,7 @@ namespace Hash
 
         // encodes input (uint4) into output (unsigned char). Assumes len is
         // a multiple of 4.
-        static void encode(uint1 output[], const uint4 input[], size_type len)
+        inline void Encode(uint1 output[], const uint4 input[], size_type len)
         {
             for (size_type i = 0, j = 0; j < len; i++, j += 4) {
                 output[j] = input[i] & 0xff;
@@ -2516,43 +2542,43 @@ namespace Hash
         // low level logic operations
         ///////////////////////////////////////////////
         // F, G, H and I are basic Hash_MD5 functions.
-        static inline uint4 F(uint4 x, uint4 y, uint4 z) {
-            return x & y | ~x & z;
+        inline uint4 F(uint4 x, uint4 y, uint4 z) {
+            return (x & y) | (~x & z);
         }
 
-        static inline uint4 G(uint4 x, uint4 y, uint4 z) {
-            return x & z | y & ~z;
+        inline uint4 G(uint4 x, uint4 y, uint4 z) {
+            return (x & z) | (y & ~z);
         }
 
-        static inline uint4 H(uint4 x, uint4 y, uint4 z) {
+        inline uint4 H(uint4 x, uint4 y, uint4 z) {
             return x ^ y ^ z;
         }
 
-        static inline uint4 I(uint4 x, uint4 y, uint4 z) {
+        inline uint4 I(uint4 x, uint4 y, uint4 z) {
             return y ^ (x | ~z);
         }
 
         // rotate_left rotates x left n bits.
-        static inline uint4 rotate_left(uint4 x, int n) {
+        inline uint4 rotate_left(uint4 x, int n) {
             return (x << n) | (x >> (32 - n));
         }
 
 
         // FF, GG, HH, and II transformations for rounds 1, 2, 3, and 4.
         // Rotation is separate from addition to prevent recomputation.
-        static inline void FF(uint4& a, uint4 b, uint4 c, uint4 d, uint4 x, uint4 s, uint4 ac) {
+        inline void FF(uint4& a, uint4 b, uint4 c, uint4 d, uint4 x, uint4 s, uint4 ac) {
             a = rotate_left(a + F(b, c, d) + x + ac, s) + b;
         }
 
-        static inline void GG(uint4& a, uint4 b, uint4 c, uint4 d, uint4 x, uint4 s, uint4 ac) {
+        inline void GG(uint4& a, uint4 b, uint4 c, uint4 d, uint4 x, uint4 s, uint4 ac) {
             a = rotate_left(a + G(b, c, d) + x + ac, s) + b;
         }
 
-        static inline void HH(uint4& a, uint4 b, uint4 c, uint4 d, uint4 x, uint4 s, uint4 ac) {
+        inline void HH(uint4& a, uint4 b, uint4 c, uint4 d, uint4 x, uint4 s, uint4 ac) {
             a = rotate_left(a + H(b, c, d) + x + ac, s) + b;
         }
 
-        static inline void II(uint4& a, uint4 b, uint4 c, uint4 d, uint4 x, uint4 s, uint4 ac) {
+        inline void II(uint4& a, uint4 b, uint4 c, uint4 d, uint4 x, uint4 s, uint4 ac) {
             a = rotate_left(a + I(b, c, d) + x + ac, s) + b;
         }
 
@@ -2561,7 +2587,7 @@ namespace Hash
 
     inline std::ostream& operator<<(std::ostream& out, const MD5& md5)
     {
-        return out << md5.hexdigest();
+        return out << md5.Hexdigest();
     }
 
     //////////////////////////////
@@ -2569,7 +2595,7 @@ namespace Hash
     inline std::string md5(std::string_view str)
     {
         MD5 md5 = MD5(str);
-        return md5.hexdigest();
+        return md5.Hexdigest();
     }
 
     namespace File
@@ -2725,6 +2751,28 @@ namespace Hash
     }
 
 
+    struct Shake128
+    {
+        size_t OutputSize = 64;
+        inline std::string Hash(std::string_view data)                  const noexcept { return shake128(data, OutputSize);       }
+        inline std::string Hash(const char* data, size_t size)          const noexcept { return shake128(data, size, OutputSize); }
+        inline std::string Hash(const unsigned char* data, size_t size) const noexcept { return shake128(data, size, OutputSize); }
+        inline std::string Hash(std::string_view data, size_t outsize)                  const noexcept { return shake128(data, outsize);       }
+        inline std::string Hash(const char* data, size_t size, size_t outsize)          const noexcept { return shake128(data, size, outsize); }
+        inline std::string Hash(const unsigned char* data, size_t size, size_t outsize) const noexcept { return shake128(data, size, outsize); }
+    };
+
+    struct Shake256
+    {
+        size_t OutputSize = 64;
+        inline std::string Hash(std::string_view data)                  const noexcept { return shake256(data, OutputSize);       }
+        inline std::string Hash(const char* data, size_t size)          const noexcept { return shake256(data, size, OutputSize); }
+        inline std::string Hash(const unsigned char* data, size_t size) const noexcept { return shake256(data, size, OutputSize); }
+        inline std::string Hash(std::string_view data, size_t outsize)                  const noexcept { return shake256(data, outsize);       }
+        inline std::string Hash(const char* data, size_t size, size_t outsize)          const noexcept { return shake256(data, size, outsize); }
+        inline std::string Hash(const unsigned char* data, size_t size, size_t outsize) const noexcept { return shake256(data, size, outsize); }
+    };
+
 
 
     inline std::string sha3_224(const unsigned char* data, size_t size)
@@ -2777,6 +2825,39 @@ namespace Hash
         inline std::string sha3_512(const char* path,      std::ios::openmode flag = std::ios::binary) { return Hash::sha3_512(Util::LoadFile(path,        flag)); }
         inline std::string sha3_512(std::string_view path, std::ios::openmode flag = std::ios::binary) { return Hash::sha3_512(Util::LoadFile(path.data(), flag)); }
     }
+
+
+    struct Sha3_224
+    {
+        static constexpr std::size_t Size = 56;
+        inline std::string Hash(std::string_view data)                  const noexcept { return sha3_224(data);       }
+        inline std::string Hash(const char* data, size_t size)          const noexcept { return sha3_224(data, size); }
+        inline std::string Hash(const unsigned char* data, size_t size) const noexcept { return sha3_224(data, size); }
+    };
+
+    struct Sha3_256
+    {
+        static constexpr std::size_t Size = 64;
+        inline std::string Hash(std::string_view data)                  const noexcept { return sha3_256(data);       }
+        inline std::string Hash(const char* data, size_t size)          const noexcept { return sha3_256(data, size); }
+        inline std::string Hash(const unsigned char* data, size_t size) const noexcept { return sha3_256(data, size); }
+    };
+
+    struct Sha3_384
+    {
+        static constexpr std::size_t Size = 96;
+        inline std::string Hash(std::string_view data)                  const noexcept { return sha3_384(data);       }
+        inline std::string Hash(const char* data, size_t size)          const noexcept { return sha3_384(data, size); }
+        inline std::string Hash(const unsigned char* data, size_t size) const noexcept { return sha3_384(data, size); }
+    };
+
+    struct Sha3_512
+    {
+        static constexpr std::size_t Size = 128;
+        inline std::string Hash(std::string_view data)                  const noexcept { return sha3_512(data);       }
+        inline std::string Hash(const char* data, size_t size)          const noexcept { return sha3_512(data, size); }
+        inline std::string Hash(const unsigned char* data, size_t size) const noexcept { return sha3_512(data, size); }
+    };
 }
 #endif // HASH_ENABLE_KECCAK
 #endif // defined(__cplusplus) && HASH_ENABLE_CPP_INTERFACE
@@ -2870,7 +2951,7 @@ HASH_INLINE const char* hash_shake256_file_easy(const char* path, const char* mo
 
 HASH_INLINE const char* hash_sha3_224_binary(const char* data, size_t size, char* buffer /*57 chars*/)
 {
-    static char hex[57];
+    static char hex[HASH_SHA3_224_BUFFER_SIZE+1];
     static unsigned char buff[28];
     char* out = buffer == NULL ? hex : buffer;
     hash_private_keccak_Keccak(1152, 448, (const unsigned char*)data, size, 0x06, buff, 28);
@@ -2880,7 +2961,7 @@ HASH_INLINE const char* hash_sha3_224_binary(const char* data, size_t size, char
 
 HASH_INLINE const char* hash_sha3_256_binary(const char* data, size_t size, char* buffer /*65 chars*/)
 {
-    static char hex[65];
+    static char hex[HASH_SHA3_256_BUFFER_SIZE+1];
     static unsigned char buff[32];
     char* out = buffer == NULL ? hex : buffer;
     hash_private_keccak_Keccak(1088, 512, (const unsigned char*)data, size, 0x06, buff, 32);
@@ -2890,7 +2971,7 @@ HASH_INLINE const char* hash_sha3_256_binary(const char* data, size_t size, char
 
 HASH_INLINE const char* hash_sha3_384_binary(const char* data, size_t size, char* buffer /*97 chars*/)
 {
-    static char hex[97];
+    static char hex[HASH_SHA3_384_BUFFER_SIZE+1];
     static unsigned char buff[48];
     char* out = buffer == NULL ? hex : buffer;
     hash_private_keccak_Keccak(832, 768, (const unsigned char*)data, size, 0x06, buff, 48);
@@ -2900,7 +2981,7 @@ HASH_INLINE const char* hash_sha3_384_binary(const char* data, size_t size, char
 
 HASH_INLINE const char* hash_sha3_512_binary(const char* data, size_t size, char* buffer /*129 chars*/)
 {
-    static char hex[129];
+    static char hex[HASH_SHA3_512_BUFFER_SIZE+1];
     static unsigned char buff[64];
     char* out = buffer == NULL ? hex : buffer;
     hash_private_keccak_Keccak(576, 1024, (const unsigned char*)data, size, 0x06, buff, 64);
