@@ -4,14 +4,16 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <iostream>
+#include <algorithm>
 #include <filesystem>
 #include <unordered_map>
+
+#include <iostream>
 
 #include "Hash.h"
 
 
-inline void lower_string(std::string& str)
+inline void lower_string(std::string& str) noexcept
 {
     for (char& c : str)
     {
@@ -20,7 +22,7 @@ inline void lower_string(std::string& str)
 }
 
 
-constexpr const char* upper_string(char* str)
+constexpr const char* upper_string(char* str) noexcept
 {
     while(*str)
     {
@@ -42,6 +44,7 @@ void print_help(const char* path)
     printf("        -f | --file            Treat input as file\n");
     printf("        -d | --directory       Treat input as directory\n");
     printf("        -u | --upper           Print hash upper case\n");
+    printf("        -c | --conceal         Don't show the current file when matching/searching in directories\n");
     printf("        -n | --no-decorator    Just print the hash without information and new line (e.g. for piping)\n");
     printf("Supported functions are: md5, sha1, sha224, sha256, sha384, sha512, sha512-224, sha512-256, sha3-224, sha3-256, sha3-384, sha3-512 (sha3 should only be used for smaller files)\n");
     printf("If neither the '-f', '-t' nor '-d' options are specified, the program will try to hash a directory, then a file; otherwise, it will be treated as a string.\n");
@@ -69,6 +72,7 @@ struct Settings
     std::string input;
     std::string search_hash;
     bool valid = true;
+    bool conceal = false;
     bool decorator = true;
     bool force_dir = false;
     bool force_file = false;
@@ -79,7 +83,7 @@ struct Settings
 };
 
 
-inline std::unordered_map<std::string_view, Settings::HashFunction> generate_hash_map()
+inline std::unordered_map<std::string, Settings::HashFunction> generate_hash_map()
 {
     return {
         { "md5", Settings::HashFunction::MD5 },
@@ -98,23 +102,65 @@ inline std::unordered_map<std::string_view, Settings::HashFunction> generate_has
 }
 
 
+constexpr const char* get_hash_function_name(Settings::HashFunction func)
+{
+    switch (func)
+    {
+        case Settings::HashFunction::MD5:        return "MD5";
+        case Settings::HashFunction::Sha1:       return "Sha1";   
+        case Settings::HashFunction::Sha224:     return "Sha224";
+        case Settings::HashFunction::Sha256:     return "Sha256";
+        case Settings::HashFunction::Sha384:     return "Sha384";
+        case Settings::HashFunction::Sha512:     return "Sha512";
+        case Settings::HashFunction::Sha512_224: return "Sha512-224";
+        case Settings::HashFunction::Sha512_256: return "Sha512-256";
+        case Settings::HashFunction::Sha3_224:   return "Sha3-224";
+        case Settings::HashFunction::Sha3_256:   return "Sha3-256";
+        case Settings::HashFunction::Sha3_384:   return "Sha3-384";
+        case Settings::HashFunction::Sha3_512:   return "Sha3-512";
+    }
+    return "";
+}
+
+
+constexpr size_t get_hash_size(Settings::HashFunction func) noexcept
+{
+    switch (func)
+    {
+        case Settings::HashFunction::MD5:        return HASH_MD5_BUFFER_SIZE;
+        case Settings::HashFunction::Sha1:       return HASH_SHA1_BUFFER_SIZE;
+        case Settings::HashFunction::Sha224:     return HASH_SHA224_BUFFER_SIZE;
+        case Settings::HashFunction::Sha256:     return HASH_SHA256_BUFFER_SIZE;
+        case Settings::HashFunction::Sha384:     return HASH_SHA384_BUFFER_SIZE;
+        case Settings::HashFunction::Sha512:     return HASH_SHA512_BUFFER_SIZE;
+        case Settings::HashFunction::Sha512_224: return HASH_SHA224_BUFFER_SIZE;
+        case Settings::HashFunction::Sha512_256: return HASH_SHA256_BUFFER_SIZE;
+        case Settings::HashFunction::Sha3_224:   return HASH_SHA3_224_BUFFER_SIZE;
+        case Settings::HashFunction::Sha3_256:   return HASH_SHA3_256_BUFFER_SIZE;
+        case Settings::HashFunction::Sha3_384:   return HASH_SHA3_384_BUFFER_SIZE;
+        case Settings::HashFunction::Sha3_512:   return HASH_SHA3_512_BUFFER_SIZE;
+    }
+    return 0;
+}
+
+
 Settings parse_args(int argc, const char** argv)
 {
     Settings settings;
-    const std::unordered_map<std::string_view, Settings::HashFunction> hash_func_map = generate_hash_map();
+    const std::unordered_map<std::string, Settings::HashFunction> hash_func_map = generate_hash_map();
 
     for (int i = 1; i < argc; ++i)
     {
         std::string arg(argv[i]);
         lower_string(arg);
 
-        const std::unordered_map<std::string_view, Settings::HashFunction>::const_iterator it = hash_func_map.find(arg.c_str());
+        const std::unordered_map<std::string, Settings::HashFunction>::const_iterator it = hash_func_map.find(arg);
 
         if (it != hash_func_map.end())
         {
             settings.hash_func = it->second;
         }
-        if (arg == "-u" || arg == "--upper")
+        else if (arg == "-u" || arg == "--upper")
         {
             settings.upper_case = true;
         }
@@ -145,6 +191,10 @@ Settings parse_args(int argc, const char** argv)
         else if (arg == "-m" || arg == "--multiple")
         {
             settings.print_same = true;
+        }
+        else if (arg == "-c" || arg == "--conceal")
+        {
+            settings.conceal = true;
         }
         else if (arg == "-n" || arg == " --no-decorator")
         {
@@ -190,29 +240,14 @@ Settings parse_args(int argc, const char** argv)
         settings.force_text = false;
     }
 
+    if (!settings.search_hash.empty() && settings.search_hash.size() != get_hash_size(settings.hash_func))
+    {
+        settings.valid = false;
+        fprintf(stderr, "Search hash is not a valid %s hash, expected size: %zu, hash size: %zu\n", get_hash_function_name(settings.hash_func), get_hash_size(settings.hash_func), settings.search_hash.size());
+    }
+
     settings.force_text = settings.force_text || settings.input.empty();
     return settings;
-}
-
-
-constexpr const char* get_hash_function_name(Settings::HashFunction func)
-{
-    switch (func)
-    {
-        case Settings::HashFunction::MD5:        return "MD5";
-        case Settings::HashFunction::Sha1:       return "Sha1";   
-        case Settings::HashFunction::Sha224:     return "Sha224";
-        case Settings::HashFunction::Sha256:     return "Sha256";
-        case Settings::HashFunction::Sha384:     return "Sha384";
-        case Settings::HashFunction::Sha512:     return "Sha512";
-        case Settings::HashFunction::Sha512_224: return "Sha512-224";
-        case Settings::HashFunction::Sha512_256: return "Sha512-256";
-        case Settings::HashFunction::Sha3_224:   return "Sha3-224";
-        case Settings::HashFunction::Sha3_256:   return "Sha3-256";
-        case Settings::HashFunction::Sha3_384:   return "Sha3-384";
-        case Settings::HashFunction::Sha3_512:   return "Sha3-512";
-    }
-    return "";
 }
 
 
@@ -301,9 +336,25 @@ std::string hash_file(const char* path, Settings::HashFunction func)
 }
 
 
-void hash_directory(const std::string& path, Settings::HashFunction func, bool decorator, bool upper_case, const std::string& search, bool multiple)
+struct hash_entry
 {
-    std::unordered_map<std::string, std::vector<std::string>> hash_map;
+    bool printed = false;
+    std::string hash;
+    std::string first_path;
+
+    inline bool operator==(const std::string& h) noexcept
+    {
+        return hash == h;
+    }
+};
+
+
+void hash_directory(const std::string& path, Settings::HashFunction func, bool decorator, bool upper_case, const std::string& search, bool multiple, bool conceal)
+{
+    size_t found = 0;
+    size_t matches = 0;
+    size_t prev_path_length = 0;
+    std::vector<hash_entry> hash_array;
 
     for (const auto& entry : std::filesystem::recursive_directory_iterator(path, std::filesystem::directory_options::skip_permission_denied))
     {
@@ -319,20 +370,39 @@ void hash_directory(const std::string& path, Settings::HashFunction func, bool d
 
                 if (hash == search)
                 {
+                    ++found;
                     print_hash(std::string(std::string(get_hash_function_name(func)) + ": ").c_str(), std::string(" [" + entry.path().string() + "] ").c_str(), hash.c_str(), decorator, upper_case, true);
+                }
+                else if (!search.empty() && decorator && !conceal)
+                {
+                    printf("File: %-*s\r", static_cast<int>(prev_path_length), entry.path().string().c_str());
+                    prev_path_length = entry.path().string().size();
                 }
                 else if (multiple && search.empty())
                 {
-                    const std::unordered_map<std::string, std::vector<std::string>>::iterator it = hash_map.find(hash);
-
-                    if (it != hash_map.end())
+                    if (decorator && !conceal)
                     {
-                        it->second.push_back(entry.path().string());
+                        printf("File: %-*s\r", static_cast<int>(prev_path_length), entry.path().string().c_str());
+                        prev_path_length = entry.path().string().size();
+                    }
+
+                    auto it = std::find(hash_array.begin(), hash_array.end(), hash);
+                    if (it != hash_array.end())
+                    {
+                        if (!it->printed)
+                        {
+                            print_hash(std::string(std::string(get_hash_function_name(func)) + ": ").c_str(), std::string(" [" + it->first_path + "] ").c_str(), it->hash.c_str(), decorator, upper_case, true);
+                            it->printed = true;
+                            matches++;
+                        }
+                        matches++;
+                        print_hash(std::string(std::string(get_hash_function_name(func)) + ": ").c_str(), std::string(" [" + entry.path().string() + "] ").c_str(), hash.c_str(), decorator, upper_case, true);
                     }
                     else
                     {
-                        hash_map[hash] = std::vector<std::string>({entry.path().string()});
+                        hash_array.push_back({ false, hash, entry.path().string() });
                     }
+
                 }
                 else if (search.empty())
                 {
@@ -346,15 +416,16 @@ void hash_directory(const std::string& path, Settings::HashFunction func, bool d
         }
     }
 
-    for (const std::pair<const std::string, std::vector<std::string>>& pair : hash_map)
+    if (!decorator || conceal)
+        return;
+
+    if (multiple)
     {
-        if (pair.second.size() > 1)
-        {
-            for (const auto& s : pair.second)
-            {
-                print_hash(std::string(std::string(get_hash_function_name(func)) + ": ").c_str(), std::string(" [" + s + "] ").c_str(), pair.first.c_str(), decorator, upper_case, true);
-            }
-        }
+        printf("Matches: %-*zu\r", static_cast<int>(prev_path_length), matches);
+    }
+    if (!search.empty())
+    {
+        printf("Found: %-*zu\r", static_cast<int>(prev_path_length), found);
     }
 }
 
@@ -369,7 +440,7 @@ int main(int argc, const char** argv)
     {
         try
         {
-            hash_directory(settings.input, settings.hash_func, settings.decorator, settings.upper_case, settings.search_hash, settings.print_same);
+            hash_directory(settings.input, settings.hash_func, settings.decorator, settings.upper_case, settings.search_hash, settings.print_same, settings.conceal);
             return 0;
         }
         catch(const std::filesystem::filesystem_error& e)
@@ -401,7 +472,7 @@ int main(int argc, const char** argv)
     {
         try
         {
-            hash_directory(settings.input, settings.hash_func, settings.decorator, settings.upper_case, "", false);
+            hash_directory(settings.input, settings.hash_func, settings.decorator, settings.upper_case, "", false, true);
             return 0;
         }
         catch(const std::filesystem::filesystem_error&)
