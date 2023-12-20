@@ -1,3 +1,4 @@
+#define _CRT_SECURE_NO_WARNINGS // strerror, fopen
 #include <vector>
 #include <string>
 #include <cerrno>
@@ -7,8 +8,6 @@
 #include <algorithm>
 #include <filesystem>
 #include <unordered_map>
-
-#include <iostream>
 
 #include "Hash.h"
 
@@ -336,25 +335,12 @@ std::string hash_file(const char* path, Settings::HashFunction func)
 }
 
 
-struct hash_entry
-{
-    bool printed = false;
-    std::string hash;
-    std::string first_path;
-
-    inline bool operator==(const std::string& h) noexcept
-    {
-        return hash == h;
-    }
-};
-
-
 void hash_directory(const std::string& path, Settings::HashFunction func, bool decorator, bool upper_case, const std::string& search, bool multiple, bool conceal)
 {
     size_t found = 0;
     size_t matches = 0;
     size_t prev_path_length = 0;
-    std::vector<hash_entry> hash_array;
+    std::unordered_map<std::string, std::vector<std::string>> hash_map;
 
     for (const auto& entry : std::filesystem::recursive_directory_iterator(path, std::filesystem::directory_options::skip_permission_denied))
     {
@@ -367,6 +353,7 @@ void hash_directory(const std::string& path, Settings::HashFunction func, bool d
                 {
                     throw std::filesystem::filesystem_error(strerror(errno), entry.path(), std::error_code());
                 }
+
 
                 if (hash == search)
                 {
@@ -386,23 +373,15 @@ void hash_directory(const std::string& path, Settings::HashFunction func, bool d
                         prev_path_length = entry.path().string().size();
                     }
 
-                    auto it = std::find(hash_array.begin(), hash_array.end(), hash);
-                    if (it != hash_array.end())
+                    auto it = hash_map.find(hash);
+                    if (it != hash_map.end())
                     {
-                        if (!it->printed)
-                        {
-                            print_hash(std::string(std::string(get_hash_function_name(func)) + ": ").c_str(), std::string(" [" + it->first_path + "] ").c_str(), it->hash.c_str(), decorator, upper_case, true);
-                            it->printed = true;
-                            matches++;
-                        }
-                        matches++;
-                        print_hash(std::string(std::string(get_hash_function_name(func)) + ": ").c_str(), std::string(" [" + entry.path().string() + "] ").c_str(), hash.c_str(), decorator, upper_case, true);
+                        it->second.push_back(entry.path().string());
                     }
                     else
                     {
-                        hash_array.push_back({ false, hash, entry.path().string() });
+                        hash_map[hash] = std::vector<std::string>({ entry.path().string() });
                     }
-
                 }
                 else if (search.empty())
                 {
@@ -413,6 +392,22 @@ void hash_directory(const std::string& path, Settings::HashFunction func, bool d
         catch(const std::filesystem::filesystem_error& e)
         {
             fprintf(stderr, "Failed to open file '%s': %s\n", e.path1().string().c_str(), e.what());
+        }
+    }
+
+    for (const auto& pair : hash_map)
+    {
+        if (pair.second.size() > 1)
+        {
+            matches++;
+            if (decorator)
+                printf("%s: %s\n", get_hash_function_name(func), pair.first.c_str());
+            for (const auto& s : pair.second)
+            {
+                printf("%s\n", s.c_str());
+            }
+            if (decorator)
+                puts("");
         }
     }
 
