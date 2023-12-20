@@ -404,11 +404,11 @@ void hash_directory(const std::string& path, Settings::HashFunction func, bool d
 
     if (multiple)
     {
-        printf("Matches: %-*zu\r", static_cast<int>(prev_path_length), matches);
+        printf("Matches: %-*zu\n", static_cast<int>(prev_path_length), matches);
     }
     if (!search.empty())
     {
-        printf("Found: %-*zu\r", static_cast<int>(prev_path_length), matches);
+        printf("Found: %-*zu\n", static_cast<int>(prev_path_length), matches);
     }
 }
 
