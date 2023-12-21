@@ -229,6 +229,7 @@ Settings parse_args(int argc, const char** argv)
                 return settings;
             }
             settings.max_num_of_threads = (size_t)num;
+            ++i;
         }
         else if (arg == "-s" || arg == "--search")
         {
@@ -501,6 +502,7 @@ void hash_directory_setup(const std::string& path, Settings::HashFunction func, 
     }
 
     size_t matches = 0;
+    size_t identical = 0;
     for (const auto& pair : g_HashFilesMap)
     {
         if (!search.empty() || pair.second.size() > 1)
@@ -510,6 +512,7 @@ void hash_directory_setup(const std::string& path, Settings::HashFunction func, 
                 printf("%s: %-*s\n", get_hash_function_name(func), static_cast<int>(g_PrevPathLength), pair.first.c_str());
             for (const auto& s : pair.second)
             {
+                ++identical;
                 printf("%s\n", s.c_str());
             }
             if (decorator)
@@ -522,11 +525,11 @@ void hash_directory_setup(const std::string& path, Settings::HashFunction func, 
 
     if (multiple)
     {
-        printf("Matches: %-*zu\r", static_cast<int>(g_PrevPathLength), matches);
+        printf("Matches: %-*zu\nSearched: %zu\nIdentical: %zu\n", static_cast<int>(g_PrevPathLength), matches, g_HashFilesMap.size()+identical-matches, identical);
     }
     if (!search.empty())
     {
-        printf("Found: %-*zu\r", static_cast<int>(g_PrevPathLength), matches);
+        printf("Found: %-*zu\n", static_cast<int>(g_PrevPathLength), matches);
     }
 }
 
