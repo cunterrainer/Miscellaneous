@@ -4,7 +4,6 @@
 #include <cstdint>
 #include <cinttypes>
 #include <algorithm>
-#include <unordered_map>
 
 #define UNICODE
 #define NOMINMAX
