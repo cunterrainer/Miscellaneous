@@ -187,12 +187,11 @@ typedef struct
     uint8_t bufferSize;
     uint8_t buffer[64];
     uint32_t h[8];
-    uint32_t w[64];
 } Hash_Private_Sha256;
 typedef Hash_Private_Sha256 Hash_Sha256[1];
 
 
-HASH_INLINE void hash_private_sha256_compress(Hash_Sha256 s)
+HASH_INLINE void hash_private_sha256_compress(Hash_Sha256 s, const uint32_t* const w)
 {
     static const uint32_t k[64] =
     {
@@ -218,7 +217,7 @@ HASH_INLINE void hash_private_sha256_compress(Hash_Sha256 s)
     {
         const uint32_t s1 = hash_util_right_rotate_u32(e, 6) ^ hash_util_right_rotate_u32(e, 11) ^ hash_util_right_rotate_u32(e, 25);
         const uint32_t ch = (e & f) ^ (~e & g);
-        const uint32_t temp1 = h + s1 + ch + k[i] + s->w[i];
+        const uint32_t temp1 = h + s1 + ch + k[i] + w[i];
         const uint32_t s0 = hash_util_right_rotate_u32(a, 2) ^ hash_util_right_rotate_u32(a, 13) ^ hash_util_right_rotate_u32(a, 22);
         const uint32_t maj = (a & b) ^ (a & c) ^ (b & c);
         const uint32_t temp2 = s0 + maj;
@@ -244,23 +243,24 @@ HASH_INLINE void hash_private_sha256_compress(Hash_Sha256 s)
 
 HASH_INLINE void hash_private_sha256_transform(Hash_Sha256 s)
 {
+    uint32_t w[64];
     for (size_t i = 0; i < 16; ++i)
     {
-        uint8_t* c = (uint8_t*)&s->w[i];
+        uint8_t* c = (uint8_t*)&w[i];
         c[0] = s->buffer[4 * i];
         c[1] = s->buffer[4 * i + 1];
         c[2] = s->buffer[4 * i + 2];
         c[3] = s->buffer[4 * i + 3];
-        s->w[i] = hash_util_is_little_endian() ? hash_util_swap_endian_uint32_t(s->w[i]) : s->w[i];
+        w[i] = hash_util_is_little_endian() ? hash_util_swap_endian_uint32_t(w[i]) : w[i];
     }
 
     for (size_t i = 16; i < 64; ++i)
     {
-        const uint32_t s0 = hash_util_right_rotate_u32(s->w[i - 15], 7) ^ hash_util_right_rotate_u32(s->w[i - 15], 18) ^ (s->w[i - 15] >> 3);
-        const uint32_t s1 = hash_util_right_rotate_u32(s->w[i - 2], 17) ^ hash_util_right_rotate_u32(s->w[i - 2], 19) ^ (s->w[i - 2] >> 10);
-        s->w[i] = s->w[i - 16] + s0 + s->w[i - 7] + s1;
+        const uint32_t s0 = hash_util_right_rotate_u32(w[i - 15], 7) ^ hash_util_right_rotate_u32(w[i - 15], 18) ^ (w[i - 15] >> 3);
+        const uint32_t s1 = hash_util_right_rotate_u32(w[i - 2], 17) ^ hash_util_right_rotate_u32(w[i - 2], 19) ^ (w[i - 2] >> 10);
+        w[i] = w[i - 16] + s0 + w[i - 7] + s1;
     }
-    hash_private_sha256_compress(s);
+    hash_private_sha256_compress(s, w);
 }
 
 
@@ -453,13 +453,12 @@ typedef struct
     uint8_t bufferSize;
     uint8_t buffer[128];
     uint64_t h[8];
-    uint64_t w[80];
     size_t t; // only used for sha512t
 } Hash_Private_Sha512;
 typedef Hash_Private_Sha512 Hash_Sha512[1];
 
 
-HASH_INLINE void hash_private_sha512_compress(Hash_Sha512 s)
+HASH_INLINE void hash_private_sha512_compress(Hash_Sha512 s, const uint64_t* const w)
 {
     static const uint64_t k[80] =
     {
@@ -493,7 +492,7 @@ HASH_INLINE void hash_private_sha512_compress(Hash_Sha512 s)
     {
         const uint64_t s1 = hash_util_right_rotate_u64(e, 14) ^ hash_util_right_rotate_u64(e, 18) ^ hash_util_right_rotate_u64(e, 41);
         const uint64_t ch = (e & f) ^ (~e & g);
-        const uint64_t temp1 = h + s1 + ch + k[i] + s->w[i];
+        const uint64_t temp1 = h + s1 + ch + k[i] + w[i];
         const uint64_t s0 = hash_util_right_rotate_u64(a, 28) ^ hash_util_right_rotate_u64(a, 34) ^ hash_util_right_rotate_u64(a, 39);
         const uint64_t maj = (a & b) ^ (a & c) ^ (b & c);
         const uint64_t temp2 = s0 + maj;
@@ -519,9 +518,10 @@ HASH_INLINE void hash_private_sha512_compress(Hash_Sha512 s)
 
 HASH_INLINE void hash_private_sha512_transform(Hash_Sha512 s)
 {
+    uint64_t w[80];
     for (size_t i = 0; i < 16; ++i)
     {
-        uint8_t* c = (uint8_t*)&s->w[i];
+        uint8_t* c = (uint8_t*)&w[i];
         c[0] = s->buffer[8 * i];
         c[1] = s->buffer[8 * i + 1];
         c[2] = s->buffer[8 * i + 2];
@@ -530,16 +530,16 @@ HASH_INLINE void hash_private_sha512_transform(Hash_Sha512 s)
         c[5] = s->buffer[8 * i + 5];
         c[6] = s->buffer[8 * i + 6];
         c[7] = s->buffer[8 * i + 7];
-        s->w[i] = hash_util_is_little_endian() ? hash_util_swap_endian_uint64_t(s->w[i]) : s->w[i];
+        w[i] = hash_util_is_little_endian() ? hash_util_swap_endian_uint64_t(w[i]) : w[i];
     }
 
     for (size_t i = 16; i < 80; ++i) // Extend the first 16 words
     {
-        const uint64_t s0 = hash_util_right_rotate_u64(s->w[i - 15], 1) ^ hash_util_right_rotate_u64(s->w[i - 15], 8) ^ (s->w[i - 15] >> 7);
-        const uint64_t s1 = hash_util_right_rotate_u64(s->w[i - 2], 19) ^ hash_util_right_rotate_u64(s->w[i - 2], 61) ^ (s->w[i - 2] >> 6);
-        s->w[i] = s->w[i - 16] + s0 + s->w[i - 7] + s1;
+        const uint64_t s0 = hash_util_right_rotate_u64(w[i - 15], 1) ^ hash_util_right_rotate_u64(w[i - 15], 8) ^ (w[i - 15] >> 7);
+        const uint64_t s1 = hash_util_right_rotate_u64(w[i - 2], 19) ^ hash_util_right_rotate_u64(w[i - 2], 61) ^ (w[i - 2] >> 6);
+        w[i] = w[i - 16] + s0 + w[i - 7] + s1;
     }
-    hash_private_sha512_compress(s);
+    hash_private_sha512_compress(s, w);
 }
 
 
@@ -851,7 +851,7 @@ typedef Hash_Private_Sha1 Hash_Sha1[1];
 
 HASH_INLINE void hash_private_hash_sha1_transform(Hash_Sha1 s)
 {
-    uint32_t w[80] = { 0 };
+    uint32_t w[80];
     for (size_t i = 0; i < 16; ++i)
     {
         uint8_t* ptr = (uint8_t*)&w[i];
@@ -1472,7 +1472,6 @@ namespace Hash
     public:
         static constexpr std::size_t Size = 64;
     private:
-        uint32_t m_W[64];
         uint64_t m_Bitlen = 0;
         uint8_t m_BufferSize = 0;
         uint8_t m_Buffer[64];
@@ -1503,7 +1502,7 @@ namespace Hash
             0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
         };
     private:
-        inline void Compress()
+        inline void Compress(const uint32_t* const w)
         {
             uint32_t a = m_H[0];
             uint32_t b = m_H[1];
@@ -1517,7 +1516,7 @@ namespace Hash
             {
                 const uint32_t s1 = Util::RightRotate(e, 6) ^ Util::RightRotate(e, 11) ^ Util::RightRotate(e, 25);
                 const uint32_t ch = (e & f) ^ (~e & g);
-                const uint32_t temp1 = h + s1 + ch + s_K[i] + m_W[i];
+                const uint32_t temp1 = h + s1 + ch + s_K[i] + w[i];
                 const uint32_t s0 = Util::RightRotate(a, 2) ^ Util::RightRotate(a, 13) ^ Util::RightRotate(a, 22);
                 const uint32_t maj = (a & b) ^ (a & c) ^ (b & c);
                 const uint32_t temp2 = s0 + maj;
@@ -1543,23 +1542,24 @@ namespace Hash
 
         inline void Transform()
         {
+            uint32_t w[64];
             for (size_t i = 0; i < 16; ++i)
             {
-                uint8_t* c = (uint8_t*)&m_W[i];
+                uint8_t* c = (uint8_t*)&w[i];
                 c[0] = m_Buffer[4 * i];
                 c[1] = m_Buffer[4 * i + 1];
                 c[2] = m_Buffer[4 * i + 2];
                 c[3] = m_Buffer[4 * i + 3];
-                m_W[i] = Util::IsLittleEndian() ? Util::SwapEndian(m_W[i]) : m_W[i];
+                w[i] = Util::IsLittleEndian() ? Util::SwapEndian(w[i]) : w[i];
             }
 
             for (size_t i = 16; i < 64; ++i)
             {
-                const uint32_t s0 = Util::RightRotate(m_W[i - 15], 7) ^ Util::RightRotate(m_W[i - 15], 18) ^ (m_W[i - 15] >> 3);
-                const uint32_t s1 = Util::RightRotate(m_W[i - 2], 17) ^ Util::RightRotate(m_W[i - 2], 19) ^ (m_W[i - 2] >> 10);
-                m_W[i] = m_W[i - 16] + s0 + m_W[i - 7] + s1;
+                const uint32_t s0 = Util::RightRotate(w[i - 15], 7) ^ Util::RightRotate(w[i - 15], 18) ^ (w[i - 15] >> 3);
+                const uint32_t s1 = Util::RightRotate(w[i - 2], 17) ^ Util::RightRotate(w[i - 2], 19) ^ (w[i - 2] >> 10);
+                w[i] = w[i - 16] + s0 + w[i - 7] + s1;
             }
-            Compress();
+            Compress(w);
         }
     public:
         Sha256() = default;
@@ -1700,7 +1700,6 @@ namespace Hash
     public:
         static constexpr std::size_t Size = 128;
     private:
-        uint64_t m_W[80];
         uint64_t m_Bitlen = 0;
         uint8_t m_BufferSize = 0;
         uint8_t m_Buffer[128];
@@ -1738,7 +1737,7 @@ namespace Hash
             0x431d67c49c100d4c, 0x4cc5d4becb3e42b6, 0x597f299cfc657e2a, 0x5fcb6fab3ad6faec, 0x6c44198c4a475817
         };
     private:
-        inline void Compress()
+        inline void Compress(const uint64_t* const w)
         {
             uint64_t a = m_H[0];
             uint64_t b = m_H[1];
@@ -1752,7 +1751,7 @@ namespace Hash
             {
                 const uint64_t s1 = Util::RightRotate(e, 14) ^ Util::RightRotate(e, 18) ^ Util::RightRotate(e, 41);
                 const uint64_t ch = (e & f) ^ (~e & g);
-                const uint64_t temp1 = h + s1 + ch + s_K[i] + m_W[i];
+                const uint64_t temp1 = h + s1 + ch + s_K[i] + w[i];
                 const uint64_t s0 = Util::RightRotate(a, 28) ^ Util::RightRotate(a, 34) ^ Util::RightRotate(a, 39);
                 const uint64_t maj = (a & b) ^ (a & c) ^ (b & c);
                 const uint64_t temp2 = s0 + maj;
@@ -1778,9 +1777,10 @@ namespace Hash
 
         inline void Transform()
         {
+            uint64_t w[80];
             for (size_t i = 0; i < 16; ++i)
             {
-                uint8_t* c = (uint8_t*)&m_W[i];
+                uint8_t* c = (uint8_t*)&w[i];
                 c[0] = m_Buffer[8 * i];
                 c[1] = m_Buffer[8 * i + 1];
                 c[2] = m_Buffer[8 * i + 2];
@@ -1789,16 +1789,16 @@ namespace Hash
                 c[5] = m_Buffer[8 * i + 5];
                 c[6] = m_Buffer[8 * i + 6];
                 c[7] = m_Buffer[8 * i + 7];
-                m_W[i] = Util::IsLittleEndian() ? Util::SwapEndian(m_W[i]) : m_W[i];
+                w[i] = Util::IsLittleEndian() ? Util::SwapEndian(w[i]) : w[i];
             }
 
             for (size_t i = 16; i < 80; ++i) // Extend the first 16 words
             {
-                const uint64_t s0 = Util::RightRotate(m_W[i - 15], 1) ^ Util::RightRotate(m_W[i - 15], 8) ^ (m_W[i - 15] >> 7);
-                const uint64_t s1 = Util::RightRotate(m_W[i - 2], 19) ^ Util::RightRotate(m_W[i - 2], 61) ^ (m_W[i - 2] >> 6);
-                m_W[i] = m_W[i - 16] + s0 + m_W[i - 7] + s1;
+                const uint64_t s0 = Util::RightRotate(w[i - 15], 1) ^ Util::RightRotate(w[i - 15], 8) ^ (w[i - 15] >> 7);
+                const uint64_t s1 = Util::RightRotate(w[i - 2], 19) ^ Util::RightRotate(w[i - 2], 61) ^ (w[i - 2] >> 6);
+                w[i] = w[i - 16] + s0 + w[i - 7] + s1;
             }
-            Compress();
+            Compress(w);
         }
     public:
         Sha512() = default;
@@ -2060,7 +2060,7 @@ namespace Hash
     private:
         inline void Transform()
         {
-            uint32_t w[80] = { 0 };
+            uint32_t w[80];
             for (size_t i = 0; i < 16; ++i)
             {
                 uint8_t* ptr = (uint8_t*)&w[i];
