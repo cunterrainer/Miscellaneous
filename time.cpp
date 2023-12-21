@@ -93,7 +93,7 @@ void print_time(uint64_t time, const char* fmt, int formatWidth)
 {
     if (time < 1000) // nanoseconds
     {
-        printf("%s %" PRId64 " ns", fmt, time);
+        printf("%s %*" PRId64 " ns", fmt, formatWidth, time);
         PRINT_SECONDS_END(time);
         return;
     }
