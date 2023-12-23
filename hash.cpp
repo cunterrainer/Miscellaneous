@@ -1,4 +1,5 @@
 #define _CRT_SECURE_NO_WARNINGS // strerror, fopen
+#include <map>
 #include <mutex>
 #include <queue>
 #include <thread>
@@ -48,6 +49,7 @@ void print_help(const char* path)
     printf("        -d  | --directory       Treat input as directory\n");
     printf("        -u  | --upper           Print hash upper case\n");
     printf("        -c  | --conceal         Don't show the current file when matching/searching in directories\n");
+    printf("        -dh | --directory-hash  Print a hash value of all hash values of all files in the directory combined\n");
     printf("        -nt | --no-threads      Don't use multiple threads when hashing folders\n");
     printf("        -nd | --no-decorator    Just print the hash without information and new line (e.g. for piping)\n");
     printf("              --threads         Next argument is the max number of threads allowed to use (actuall size can be less)\n");
@@ -84,6 +86,7 @@ struct Settings
     bool force_text = false;
     bool upper_case = false;
     bool print_same = false;
+    bool directory_hash = false;
     bool disable_threads = false;
     size_t max_num_of_threads = 0;
     HashFunction hash_func = HashFunction::Sha256;
@@ -210,6 +213,12 @@ Settings parse_args(int argc, const char** argv)
         else if (arg == "-nt" || arg == " --no-threads")
         {
             settings.disable_threads = true;
+        }
+        else if (arg == "-dh" || arg == "--directory-hash")
+        {
+            settings.force_dir = true;
+            settings.print_same = true;
+            settings.directory_hash = true;
         }
         else if (arg == "--threads")
         {
@@ -380,8 +389,9 @@ std::string hash_file(const char* path, Settings::HashFunction func)
 
 
 size_t g_PrevPathLength = 0;
-std::unordered_map<std::string, std::vector<std::string>> g_HashFilesMap;
-template <typename T> void hash_directory(const std::string& path, Settings::HashFunction func, bool decorator, bool upper_case, const std::string& search, bool multiple, bool conceal)
+std::map<std::string, std::vector<std::string>> g_HashFilesMap;
+std::unordered_map<std::string, std::vector<std::string>> g_HashFilesUnorderedMap;
+template <typename T> void hash_directory(const std::string& path, Settings::HashFunction func, bool decorator, bool upper_case, const std::string& search, bool multiple, bool conceal, bool directory_hash)
 {
     for (const auto& entry : T(path, std::filesystem::directory_options::skip_permission_denied))
     {
@@ -405,14 +415,29 @@ template <typename T> void hash_directory(const std::string& path, Settings::Has
                         g_PrevPathLength = entry.path().string().size();
                     }
 
-                    auto it = g_HashFilesMap.find(hash);
-                    if (it != g_HashFilesMap.end())
+                    if (directory_hash)
                     {
-                        it->second.push_back(entry.path().string());
+                        auto it = g_HashFilesMap.find(hash);
+                        if (it != g_HashFilesMap.end())
+                        {
+                            it->second.push_back(entry.path().string());
+                        }
+                        else
+                        {
+                            g_HashFilesMap[hash] = std::vector<std::string>({ entry.path().string() });
+                        }
                     }
                     else
                     {
-                        g_HashFilesMap[hash] = std::vector<std::string>({ entry.path().string() });
+                        auto it = g_HashFilesUnorderedMap.find(hash);
+                        if (it != g_HashFilesUnorderedMap.end())
+                        {
+                            it->second.push_back(entry.path().string());
+                        }
+                        else
+                        {
+                            g_HashFilesUnorderedMap[hash] = std::vector<std::string>({ entry.path().string() });
+                        }
                     }
                 }
                 else if (search.empty())
@@ -431,7 +456,7 @@ template <typename T> void hash_directory(const std::string& path, Settings::Has
 
 std::mutex g_MutexDirectories;
 std::queue<std::pair<std::string, bool>> g_Directories; // root is true
-void hash_directory_thread_func(Settings::HashFunction func, bool decorator, bool upper_case, const std::string& search, bool multiple, bool conceal)
+void hash_directory_thread_func(Settings::HashFunction func, bool decorator, bool upper_case, const std::string& search, bool multiple, bool conceal, bool directory_hash)
 {
     while (true)
     {
@@ -450,36 +475,36 @@ void hash_directory_thread_func(Settings::HashFunction func, bool decorator, boo
         }
         if (path.second) // is root
         {
-            hash_directory<std::filesystem::directory_iterator>(path.first, func, decorator, upper_case, search, multiple, conceal);
+            hash_directory<std::filesystem::directory_iterator>(path.first, func, decorator, upper_case, search, multiple, conceal, directory_hash);
         }
         else
         {
-            hash_directory<std::filesystem::recursive_directory_iterator>(path.first, func, decorator, upper_case, search, multiple, conceal);
+            hash_directory<std::filesystem::recursive_directory_iterator>(path.first, func, decorator, upper_case, search, multiple, conceal, directory_hash);
         }
     }
 }
 
 
-void hash_directory_threads(Settings::HashFunction func, bool decorator, bool upper_case, const std::string& search, bool multiple, bool conceal, size_t max_num_of_threads)
+void hash_directory_threads(Settings::HashFunction func, bool decorator, bool upper_case, const std::string& search, bool multiple, bool conceal, bool directory_hash, size_t max_num_of_threads)
 {
     std::vector<std::thread> hash_threads;
     const size_t num_of_threads = max_num_of_threads == 0 ? (std::min((size_t)std::thread::hardware_concurrency(), g_Directories.size()) == 0 ? std::min(g_Directories.size(), (size_t)6) : std::min((size_t)std::thread::hardware_concurrency(), g_Directories.size()) - 1) : max_num_of_threads;
     for (size_t i = 0; i < num_of_threads; ++i)
     {
-        hash_threads.push_back(std::thread(hash_directory_thread_func, func, decorator, upper_case, search, multiple, conceal));
+        hash_threads.push_back(std::thread(hash_directory_thread_func, func, decorator, upper_case, search, multiple, conceal, directory_hash));
     }
-    hash_directory_thread_func(func, decorator, upper_case, search, multiple, conceal);
+    hash_directory_thread_func(func, decorator, upper_case, search, multiple, conceal, directory_hash);
 
     for (auto& th : hash_threads)
         th.join();
 }
 
 
-void hash_directory_setup(const std::string& path, Settings::HashFunction func, bool decorator, bool upper_case, const std::string& search, bool multiple, bool conceal, bool disable_threads, size_t max_num_of_threads)
+void hash_directory_setup(const std::string& path, Settings::HashFunction func, bool decorator, bool upper_case, const std::string& search, bool multiple, bool conceal, bool disable_threads, bool directory_hash, size_t max_num_of_threads)
 {
     if (disable_threads)
     {
-        hash_directory<std::filesystem::recursive_directory_iterator>(path, func, decorator, upper_case, search, multiple, conceal);
+        hash_directory<std::filesystem::recursive_directory_iterator>(path, func, decorator, upper_case, search, multiple, conceal, directory_hash);
     }
     else
     {
@@ -498,12 +523,38 @@ void hash_directory_setup(const std::string& path, Settings::HashFunction func, 
         {
             fprintf(stderr, "Failed to add folder '%s' to thread pool: %s\n", e.path1().string().c_str(), e.what());
         }
-        hash_directory_threads(func, decorator, upper_case, search, multiple, conceal, max_num_of_threads);
+        hash_directory_threads(func, decorator, upper_case, search, multiple, conceal, directory_hash, max_num_of_threads);
     }
+
+
+    if (directory_hash)
+    {
+        std::string all_hashes;
+        for (const auto& pair : g_HashFilesMap)
+            all_hashes += pair.first;
+
+        switch (func)
+        {
+            case Settings::HashFunction::MD5:        print_hash(std::string("[" + path + "] ").c_str(), "MD5: ", hash_md5_binary(all_hashes.data(), all_hashes.size(), NULL), decorator, upper_case); return;
+            case Settings::HashFunction::Sha1:       print_hash(std::string("[" + path + "] ").c_str(), "Sha1: ", hash_sha1_binary(all_hashes.data(), all_hashes.size(), NULL), decorator, upper_case); return;
+            case Settings::HashFunction::Sha224:     print_hash(std::string("[" + path + "] ").c_str(), "Sha224: ", hash_sha224_binary(all_hashes.data(), all_hashes.size(), NULL), decorator, upper_case); return;
+            case Settings::HashFunction::Sha256:     print_hash(std::string("[" + path + "] ").c_str(), "Sha256: ", hash_sha256_binary(all_hashes.data(), all_hashes.size(), NULL), decorator, upper_case); return;
+            case Settings::HashFunction::Sha384:     print_hash(std::string("[" + path + "] ").c_str(), "Sha384: ", hash_sha384_binary(all_hashes.data(), all_hashes.size(), NULL), decorator, upper_case); return;
+            case Settings::HashFunction::Sha512:     print_hash(std::string("[" + path + "] ").c_str(), "Sha512: ", hash_sha512_binary(all_hashes.data(), all_hashes.size(), NULL), decorator, upper_case); return;
+            case Settings::HashFunction::Sha512_224: print_hash(std::string("[" + path + "] ").c_str(), "Sha512-224: ", hash_sha512t_binary(224, all_hashes.data(), all_hashes.size(), NULL), decorator, upper_case); return;
+            case Settings::HashFunction::Sha512_256: print_hash(std::string("[" + path + "] ").c_str(), "Sha512-256: ", hash_sha512t_binary(256, all_hashes.data(), all_hashes.size(), NULL), decorator, upper_case); return;
+            case Settings::HashFunction::Sha3_224:   print_hash(std::string("[" + path + "] ").c_str(), "Sha3-224: ", hash_sha3_224_binary(all_hashes.data(), all_hashes.size(), NULL), decorator, upper_case); return;
+            case Settings::HashFunction::Sha3_256:   print_hash(std::string("[" + path + "] ").c_str(), "Sha3-256: ", hash_sha3_256_binary(all_hashes.data(), all_hashes.size(), NULL), decorator, upper_case); return;
+            case Settings::HashFunction::Sha3_384:   print_hash(std::string("[" + path + "] ").c_str(), "Sha3-384: ", hash_sha3_384_binary(all_hashes.data(), all_hashes.size(), NULL), decorator, upper_case); return;
+            case Settings::HashFunction::Sha3_512:   print_hash(std::string("[" + path + "] ").c_str(), "Sha3-512: ", hash_sha3_512_binary(all_hashes.data(), all_hashes.size(), NULL), decorator, upper_case); return;
+        }
+        return;
+    }
+
 
     size_t matches = 0;
     size_t identical = 0;
-    for (const auto& pair : g_HashFilesMap)
+    for (const auto& pair : g_HashFilesUnorderedMap)
     {
         if (!search.empty() || pair.second.size() > 1)
         {
@@ -525,7 +576,7 @@ void hash_directory_setup(const std::string& path, Settings::HashFunction func, 
 
     if (multiple)
     {
-        printf("Matches: %-*zu\nSearched: %zu\nIdentical: %zu\n", static_cast<int>(g_PrevPathLength), matches, g_HashFilesMap.size()+identical-matches, identical);
+        printf("Matches: %-*zu\nSearched: %zu\nIdentical: %zu\n", static_cast<int>(g_PrevPathLength), matches, g_HashFilesUnorderedMap.size()+identical-matches, identical);
     }
     if (!search.empty())
     {
@@ -544,7 +595,7 @@ int main(int argc, const char** argv)
     {
         try
         {
-            hash_directory_setup(settings.input, settings.hash_func, settings.decorator, settings.upper_case, settings.search_hash, settings.print_same, settings.conceal, settings.disable_threads, settings.max_num_of_threads);
+            hash_directory_setup(settings.input, settings.hash_func, settings.decorator, settings.upper_case, settings.search_hash, settings.print_same, settings.conceal, settings.disable_threads, settings.directory_hash, settings.max_num_of_threads);
             return 0;
         }
         catch(const std::filesystem::filesystem_error& e)
@@ -576,7 +627,7 @@ int main(int argc, const char** argv)
     {
         try
         {
-            hash_directory_setup(settings.input, settings.hash_func, settings.decorator, settings.upper_case, "", false, true, settings.disable_threads, settings.max_num_of_threads);
+            hash_directory_setup(settings.input, settings.hash_func, settings.decorator, settings.upper_case, "", false, true, settings.disable_threads, false, settings.max_num_of_threads);
             return 0;
         }
         catch(const std::filesystem::filesystem_error&)
