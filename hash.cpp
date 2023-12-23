@@ -417,7 +417,7 @@ template <typename T> void hash_directory(const std::string& path, Settings::Has
                 }
                 else if (search.empty())
                 {
-                    print_hash(std::string(std::string(get_hash_function_name(func)) + ": ").c_str(), std::string(" [" + entry.path().string() + "] ").c_str(), hash.c_str(), decorator, upper_case, true);
+                    print_hash(std::string(std::string(get_hash_function_name(func)) + ": ").c_str(), std::string(" [" + entry.path().string() + "]").c_str(), hash.c_str(), decorator, upper_case, true);
                 }
             }
         }
