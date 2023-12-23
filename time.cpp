@@ -64,13 +64,13 @@ double get_conversion(uint64_t time)
 const char* get_conversion_format(double conversion)
 {
     if (conversion == 0.001)
-        return "mcs";
+        return "us";
     if (conversion == 0.000001)
         return "ms";
     if (conversion == 1.6666666666667E-11)
-        return "m";
+        return "min";
     if (conversion == 2.777777777E-13)
-        return "h";
+        return "hr";
     return "";
 }
 
