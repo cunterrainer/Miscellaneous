@@ -3154,33 +3154,6 @@ bool test(const char* name, size_t hash_ident, cpp_easy cppef, easy_fun ef, init
 }
 
 
-template <class easy_fun>
-bool test_sha3(const char* name, size_t hash_ident, cpp_easy cppef, easy_fun ef)
-{
-    size_t num = 1;
-    for (const HashPair& hp : hash_pairs)
-    {
-        const std::string c_hash = ef(hp.str.c_str());
-        const std::string cpp_hash = cppef(hp.str);
-
-        std::string real_hash;
-        switch (hash_ident)
-        {
-            case 6: real_hash = hp.sha3_224; break;
-            case 7: real_hash = hp.sha3_256; break;
-            case 8: real_hash = hp.sha3_384; break;
-            case 9: real_hash = hp.sha3_512; break;
-            default: break;
-        }
-
-        CHECK(c_hash, real_hash, name, num, hash_pairs.size(), 1);
-        CHECK(cpp_hash, real_hash, name, num, hash_pairs.size(), 2);
-        num++;
-    }
-    return true;
-}
-
-
 #define CHECK_TEST(cond) if (!cond) return 1;
 int main()
 {
