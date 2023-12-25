@@ -18,7 +18,7 @@
 
         hash_sha256_binary("Hello world", 11, buffer); // the binary function take the size of the string e.g. for binary files
 
-    or if you need to update the hash e.g. while reading chunks from a file (not supported for SHA3, Shake128 and Shake256
+    or if you need to update the hash e.g. while reading chunks from a file (not for Shake128 and Shake256)
 
         Hash_Sha256 s;
         hash_sha256_init(s);
@@ -33,7 +33,8 @@
         Hash::sha256("Hello world"); // returns std::string
         Hash::File::sha256("main.c", std::ios::binary);
 
-    or if you need to update the hash e.g. while reading chunks from a file (not supported for SHA3, Shake128 and Shake256)
+    or if you need to update the hash e.g. while reading chunks from a file (not for Shake128 and Shake256)
+    
         Hash::Sha256 s;
         s.Update("Hello world");
         s.Finalize();
@@ -42,10 +43,11 @@
 #define HASH_ENABLE_MD5    1 // md5
 #define HASH_ENABLE_SHA1   1 // sha1
 #define HASH_ENABLE_SHA2   1 // sha224, sha256, sha384, sha512, sha512/t
-#define HASH_ENABLE_KECCAK 1 // sha3-224, sha3-256, sha3-384, sha3-512, shake128 and shake256
+#define HASH_ENABLE_SHA3   1 // sha3-224, sha3-256, sha3-384, sha3-512
+#define HASH_ENABLE_SHAKE  1 // shake128 and shake256
 #define HASH_ENABLE_C_INTERFACE   1
 #define HASH_ENABLE_CPP_INTERFACE 1
-#define HASH_KECCAK_LITTLE_ENDIAN 1 // true for most systems (windows, linux, macos)
+#define HASH_KECCAK_LITTLE_ENDIAN 1 // true for most systems (e.g. windows, linux, macos)
 #define HASH_SHAKE_128_MALLOC_LIMIT 64 // if outsizeBytes is greater and no buffer is provided we will heap allocate
 #define HASH_SHAKE_256_MALLOC_LIMIT 64 // if outsizeBytes is greater and no buffer is provided we will heap allocate
 
@@ -175,6 +177,11 @@ HASH_INLINE uint64_t hash_util_right_rotate_u64(uint64_t n, unsigned int c)
 HASH_INLINE uint32_t hash_util_left_rotate_u32(uint32_t n, unsigned int c)
 {
     return (n << c) | (n >> (32 - c));
+}
+
+HASH_INLINE uint64_t hash_util_left_rotate_u64(uint64_t n, unsigned int c)
+{
+    return (n << c) | (n >> (64 - c));
 }
 // ================================Util====================================
 
@@ -1349,6 +1356,492 @@ HASH_INLINE const char* hash_md5_file_easy(const char* path, const char* mode)
 #undef HASH_PRIVATE_MD5_BLOCKSIZE
 // =================================Hash_MD5====================================
 #endif // HASH_ENABLE_MD5
+
+
+
+#ifdef HASH_ENABLE_SHA3
+// ================================Hash_Sha3====================================
+#define HASH_PRIVATE_KECCAK_SPONGE_WORDS (((1600)/8/*bits to byte*/)/sizeof(uint64_t))
+
+typedef struct
+{
+    uint64_t saved;       // the portion of the input message that we didn't consume yet
+    union {                     // Keccak's state
+        uint64_t s[HASH_PRIVATE_KECCAK_SPONGE_WORDS];
+        uint8_t sb[HASH_PRIVATE_KECCAK_SPONGE_WORDS * 8];
+    } u;
+    size_t byteIndex;      // 0..7--the next byte after the set one (starts from 0; 0--none are buffered)
+    size_t wordIndex;      // 0..24--the next word to integrate input (starts from 0)
+    size_t capacityWords;  // the double size of the hash output in words (e.g. 16 for Keccak 512)
+} Hash_Private_Sha3_Template;
+typedef Hash_Private_Sha3_Template Hash_Private_Sha3;
+
+
+HASH_INLINE size_t hash_private_sha3_cw(size_t x)
+{
+    static const size_t UseKeccakFlag = 0x80000000;
+    return (x) & (~UseKeccakFlag);
+}
+
+
+HASH_INLINE void hash_private_sha3_keccakf(uint64_t s[25])
+{
+    static const uint8_t keccakf_rotc[24] = {
+        1, 3, 6, 10, 15, 21, 28, 36, 45, 55, 2, 14, 27, 41, 56, 8, 25, 43, 62,
+        18, 39, 61, 20, 44
+    };
+
+    static const uint8_t keccakf_piln[24] = {
+        10, 7, 11, 17, 18, 3, 5, 16, 8, 21, 24, 4, 15, 23, 19, 13, 12, 2, 20,
+        14, 22, 9, 6, 1
+    };
+
+    static const uint64_t keccakf_rndc[24] = {
+        0x0000000000000001ULL, 0x0000000000008082ULL,
+        0x800000000000808aULL, 0x8000000080008000ULL,
+        0x000000000000808bULL, 0x0000000080000001ULL,
+        0x8000000080008081ULL, 0x8000000000008009ULL,
+        0x000000000000008aULL, 0x0000000000000088ULL,
+        0x0000000080008009ULL, 0x000000008000000aULL,
+        0x000000008000808bULL, 0x800000000000008bULL,
+        0x8000000000008089ULL, 0x8000000000008003ULL,
+        0x8000000000008002ULL, 0x8000000000000080ULL,
+        0x000000000000800aULL, 0x800000008000000aULL,
+        0x8000000080008081ULL, 0x8000000000008080ULL,
+        0x0000000080000001ULL, 0x8000000080008008ULL
+    };
+
+
+    uint64_t bc[5];
+    constexpr uint8_t KeccakRounds = 24;
+
+    for(uint8_t round = 0; round < KeccakRounds; round++)
+    {
+
+        /* Theta */
+        for(uint8_t i = 0; i < 5; i++)
+            bc[i] = s[i] ^ s[i + 5] ^ s[i + 10] ^ s[i + 15] ^ s[i + 20];
+
+        for(uint8_t i = 0; i < 5; i++)
+        {
+            uint64_t t = bc[(i + 4) % 5] ^ hash_util_left_rotate_u64(bc[(i + 1) % 5], 1);
+            for(uint8_t j = 0; j < 25; j += 5)
+                s[j + i] ^= t;
+        }
+
+        /* Rho Pi */
+        uint64_t t = s[1];
+        for(uint8_t i = 0; i < 24; i++)
+        {
+            uint8_t j = keccakf_piln[i];
+            bc[0] = s[j];
+            s[j] = hash_util_left_rotate_u64(t, keccakf_rotc[i]);
+            t = bc[0];
+        }
+
+        /* Chi */
+        for(uint8_t j = 0; j < 25; j += 5)
+        {
+            for(uint8_t i = 0; i < 5; i++)
+                bc[i] = s[j + i];
+            for(uint8_t i = 0; i < 5; i++)
+                s[j + i] ^= (~bc[(i + 1) % 5]) & bc[(i + 2) % 5];
+        }
+
+        /* Iota */
+        s[0] ^= keccakf_rndc[round];
+    }
+}
+
+
+HASH_INLINE void hash_private_sha3_init(Hash_Private_Sha3* s, size_t bitlen)
+{
+    s->saved = 0;
+    s->byteIndex = 0;
+    s->wordIndex = 0;
+    s->capacityWords = 2 * bitlen / (8 * sizeof(uint64_t));
+    memset((void*)s->u.sb, 0, HASH_PRIVATE_KECCAK_SPONGE_WORDS*8*sizeof(uint8_t));
+}
+
+
+HASH_INLINE void hash_private_sha3_update(Hash_Private_Sha3* s, const uint8_t *data, size_t size)
+{
+    /* 0...7 -- how much is needed to have a word */
+    size_t old_tail = (8 - s->byteIndex) & 7;
+
+    if(size < old_tail)
+    {        /* have no complete word or haven't started 
+                                * the word yet */
+        /* endian-independent code follows: */
+        while (size--)
+            s->saved |= (uint64_t) (*(data++)) << ((s->byteIndex++) * 8);
+        return;
+    }
+
+    if(old_tail)
+    {              /* will have one word to process */
+        /* endian-independent code follows: */
+        size -= old_tail;
+        while (old_tail--)
+            s->saved |= (uint64_t) (*(data++)) << ((s->byteIndex++) * 8);
+
+        /* now ready to add saved to the sponge */
+        s->u.s[s->wordIndex] ^= s->saved;
+        s->byteIndex = 0;
+        s->saved = 0;
+        if(++s->wordIndex == (HASH_PRIVATE_KECCAK_SPONGE_WORDS - hash_private_sha3_cw(s->capacityWords)))
+        {
+            hash_private_sha3_keccakf(s->u.s);
+            s->wordIndex = 0;
+        }
+    }
+
+
+    size_t words = size / sizeof(uint64_t);
+    size_t tail = size - words * sizeof(uint64_t);
+
+    for(size_t i = 0; i < words; i++, data += sizeof(uint64_t))
+    {
+        const uint64_t t = (uint64_t) (data[0]) |
+                ((uint64_t) (data[1]) << 8 * 1) |
+                ((uint64_t) (data[2]) << 8 * 2) |
+                ((uint64_t) (data[3]) << 8 * 3) |
+                ((uint64_t) (data[4]) << 8 * 4) |
+                ((uint64_t) (data[5]) << 8 * 5) |
+                ((uint64_t) (data[6]) << 8 * 6) |
+                ((uint64_t) (data[7]) << 8 * 7);
+
+        s->u.s[s->wordIndex] ^= t;
+        if(++s->wordIndex == (HASH_PRIVATE_KECCAK_SPONGE_WORDS - hash_private_sha3_cw(s->capacityWords)))
+        {
+            hash_private_sha3_keccakf(s->u.s);
+            s->wordIndex = 0;
+        }
+    }
+
+
+    while (tail--)
+    {
+        s->saved |= (uint64_t) (*(data++)) << ((s->byteIndex++) * 8);
+    }
+}
+
+
+HASH_INLINE void hash_private_sha3_finalize(Hash_Private_Sha3* s)
+{
+    /* Append 2-bit suffix 01, per SHA-3 spec. Instead of 1 for padding we
+    * use 1<<2 below. The 0x02 below corresponds to the suffix 01.
+    * Overall, we feed 0, then 1, and finally 1 to start padding. Without
+    * M || 01, we would simply use 1 to start padding. */
+
+    uint64_t t;
+
+    //if(s->capacityWords & UseKeccakFlag)
+    //{
+    //    /* Keccak version */
+    //    t = (uint64_t)(((uint64_t) 1) << (s->byteIndex * 8));
+    //}
+    //else
+    //{
+        /* SHA3 version */
+        t = (uint64_t)(((uint64_t)(0x02 | (1 << 2))) << ((s->byteIndex) * 8));
+    //}
+
+    s->u.s[s->wordIndex] ^= s->saved ^ t;
+
+    s->u.s[HASH_PRIVATE_KECCAK_SPONGE_WORDS - hash_private_sha3_cw(s->capacityWords) - 1] ^= 0x8000000000000000ULL;
+    hash_private_sha3_keccakf(s->u.s);
+
+    // This conversion is not needed for little-endian platforms
+    #if defined(__BYTE_ORDER) && __BYTE_ORDER == __BIG_ENDIAN || defined(__BIG_ENDIAN__)
+        {
+            unsigned i;
+            for(i = 0; i < HASH_PRIVATE_KECCAK_SPONGE_WORDS; i++)
+            {
+                const unsigned t1 = (uint32_t) s->u.s[i];
+                const unsigned t2 = (uint32_t) ((s->u.s[i] >> 16) >> 16);
+                s->u.sb[i * 8 + 0] = (uint8_t) (t1);
+                s->u.sb[i * 8 + 1] = (uint8_t) (t1 >> 8);
+                s->u.sb[i * 8 + 2] = (uint8_t) (t1 >> 16);
+                s->u.sb[i * 8 + 3] = (uint8_t) (t1 >> 24);
+                s->u.sb[i * 8 + 4] = (uint8_t) (t2);
+                s->u.sb[i * 8 + 5] = (uint8_t) (t2 >> 8);
+                s->u.sb[i * 8 + 6] = (uint8_t) (t2 >> 16);
+                s->u.sb[i * 8 + 7] = (uint8_t) (t2 >> 24);
+            }
+        }
+    #endif
+}
+
+
+// ==============================Hash_Sha3_224==================================
+typedef Hash_Private_Sha3 Hash_Sha3_224[1];
+HASH_INLINE void hash_sha3_224_init(Hash_Sha3_224 s)
+{
+    hash_private_sha3_init(s, 224);
+}
+
+HASH_INLINE void hash_sha3_224_update_binary(Hash_Sha3_224 s, const char* data, size_t size)
+{
+    hash_private_sha3_update(s, (const uint8_t*)data, size);
+}
+
+HASH_INLINE void hash_sha3_224_update(Hash_Sha3_224 s, const char* data)
+{
+    hash_private_sha3_update(s, (const uint8_t*)data, strlen(data));
+}
+
+HASH_INLINE void hash_sha3_224_finalize(Hash_Sha3_224 s)
+{
+    hash_private_sha3_finalize(s);
+}
+
+// if buffer == NULL returns internal buffer, buffer size must be at least 41 (Null term char)
+HASH_INLINE const char* hash_sha3_224_hexdigest(const Hash_Sha3_224 s, char* buffer)
+{
+    static char hex[HASH_SHA3_224_BUFFER_SIZE+1];
+    char* buff = buffer == NULL ? hex : buffer;
+    for (size_t i = 0; i < HASH_SHA3_224_BUFFER_SIZE/2; i++)
+    {
+        sprintf(&buff[i*2], "%02" PRIx32, (uint32_t)((uint8_t*)s->u.s)[i]);
+    }
+    buff[HASH_SHA3_224_BUFFER_SIZE] = 0;
+    return buff;
+}
+
+// if buffer == NULL returns internal buffer, buffer size must be at least 41 (Null term char)
+HASH_INLINE const char* hash_sha3_224_binary(const char* str, size_t size, char* buffer)
+{
+    Hash_Sha3_224 s;
+    hash_sha3_224_init(s);
+    hash_sha3_224_update_binary(s, str, size);
+    hash_sha3_224_finalize(s);
+    return hash_sha3_224_hexdigest(s, buffer);
+}
+
+HASH_INLINE const char* hash_sha3_224(const char* str, char* buffer)
+{
+    return hash_sha3_224_binary(str, strlen(str), buffer);
+}
+
+HASH_INLINE const char* hash_sha3_224_file(const char* path, const char* mode, char* buffer)
+{
+    return hash_util_hash_file(path, mode, hash_sha3_224_binary, buffer);
+}
+
+HASH_INLINE const char* hash_sha3_224_easy(const char* str)
+{
+    return hash_sha3_224_binary(str, strlen(str), NULL);
+}
+
+HASH_INLINE const char* hash_sha3_224_file_easy(const char* path, const char* mode)
+{
+    return hash_util_hash_file(path, mode, hash_sha3_224_binary, NULL);
+}
+// ==============================Hash_Sha3_224==================================
+
+
+// ==============================Hash_Sha3_256==================================
+typedef Hash_Private_Sha3 Hash_Sha3_256[1];
+HASH_INLINE void hash_sha3_256_init(Hash_Sha3_256 s)
+{
+    hash_private_sha3_init(s, 256);
+}
+
+HASH_INLINE void hash_sha3_256_update_binary(Hash_Sha3_256 s, const char* data, size_t size)
+{
+    hash_private_sha3_update(s, (const uint8_t*)data, size);
+}
+
+HASH_INLINE void hash_sha3_256_update(Hash_Sha3_256 s, const char* data)
+{
+    hash_private_sha3_update(s, (const uint8_t*)data, strlen(data));
+}
+
+HASH_INLINE void hash_sha3_256_finalize(Hash_Sha3_256 s)
+{
+    hash_private_sha3_finalize(s);
+}
+
+// if buffer == NULL returns internal buffer, buffer size must be at least 41 (Null term char)
+HASH_INLINE const char* hash_sha3_256_hexdigest(const Hash_Sha3_256 s, char* buffer)
+{
+    static char hex[HASH_SHA3_256_BUFFER_SIZE+1];
+    char* buff = buffer == NULL ? hex : buffer;
+    for (size_t i = 0; i < HASH_SHA3_256_BUFFER_SIZE/2; i++)
+    {
+        sprintf(&buff[i*2], "%02" PRIx32, (uint32_t)((uint8_t*)s->u.s)[i]);
+    }
+    buff[HASH_SHA3_256_BUFFER_SIZE] = 0;
+    return buff;
+}
+
+// if buffer == NULL returns internal buffer, buffer size must be at least 41 (Null term char)
+HASH_INLINE const char* hash_sha3_256_binary(const char* str, size_t size, char* buffer)
+{
+    Hash_Sha3_256 s;
+    hash_sha3_256_init(s);
+    hash_sha3_256_update_binary(s, str, size);
+    hash_sha3_256_finalize(s);
+    return hash_sha3_256_hexdigest(s, buffer);
+}
+
+HASH_INLINE const char* hash_sha3_256(const char* str, char* buffer)
+{
+    return hash_sha3_256_binary(str, strlen(str), buffer);
+}
+
+HASH_INLINE const char* hash_sha3_256_file(const char* path, const char* mode, char* buffer)
+{
+    return hash_util_hash_file(path, mode, hash_sha3_256_binary, buffer);
+}
+
+HASH_INLINE const char* hash_sha3_256_easy(const char* str)
+{
+    return hash_sha3_256_binary(str, strlen(str), NULL);
+}
+
+HASH_INLINE const char* hash_sha3_256_file_easy(const char* path, const char* mode)
+{
+    return hash_util_hash_file(path, mode, hash_sha3_256_binary, NULL);
+}
+// ==============================Hash_Sha3_256==================================
+
+
+// ==============================Hash_Sha3_384==================================
+typedef Hash_Private_Sha3 Hash_Sha3_384[1];
+HASH_INLINE void hash_sha3_384_init(Hash_Sha3_384 s)
+{
+    hash_private_sha3_init(s, 384);
+}
+
+HASH_INLINE void hash_sha3_384_update_binary(Hash_Sha3_384 s, const char* data, size_t size)
+{
+    hash_private_sha3_update(s, (const uint8_t*)data, size);
+}
+
+HASH_INLINE void hash_sha3_384_update(Hash_Sha3_384 s, const char* data)
+{
+    hash_private_sha3_update(s, (const uint8_t*)data, strlen(data));
+}
+
+HASH_INLINE void hash_sha3_384_finalize(Hash_Sha3_384 s)
+{
+    hash_private_sha3_finalize(s);
+}
+
+// if buffer == NULL returns internal buffer, buffer size must be at least 41 (Null term char)
+HASH_INLINE const char* hash_sha3_384_hexdigest(const Hash_Sha3_384 s, char* buffer)
+{
+    static char hex[HASH_SHA3_384_BUFFER_SIZE+1];
+    char* buff = buffer == NULL ? hex : buffer;
+    for (size_t i = 0; i < HASH_SHA3_384_BUFFER_SIZE/2; i++)
+    {
+        sprintf(&buff[i*2], "%02" PRIx32, (uint32_t)((uint8_t*)s->u.s)[i]);
+    }
+    buff[HASH_SHA3_384_BUFFER_SIZE] = 0;
+    return buff;
+}
+
+// if buffer == NULL returns internal buffer, buffer size must be at least 41 (Null term char)
+HASH_INLINE const char* hash_sha3_384_binary(const char* str, size_t size, char* buffer)
+{
+    Hash_Sha3_384 s;
+    hash_sha3_384_init(s);
+    hash_sha3_384_update_binary(s, str, size);
+    hash_sha3_384_finalize(s);
+    return hash_sha3_384_hexdigest(s, buffer);
+}
+
+HASH_INLINE const char* hash_sha3_384(const char* str, char* buffer)
+{
+    return hash_sha3_384_binary(str, strlen(str), buffer);
+}
+
+HASH_INLINE const char* hash_sha3_384_file(const char* path, const char* mode, char* buffer)
+{
+    return hash_util_hash_file(path, mode, hash_sha3_384_binary, buffer);
+}
+
+HASH_INLINE const char* hash_sha3_384_easy(const char* str)
+{
+    return hash_sha3_384_binary(str, strlen(str), NULL);
+}
+
+HASH_INLINE const char* hash_sha3_384_file_easy(const char* path, const char* mode)
+{
+    return hash_util_hash_file(path, mode, hash_sha3_384_binary, NULL);
+}
+// ==============================Hash_Sha3_256==================================
+
+
+// ==============================Hash_Sha3_384==================================
+typedef Hash_Private_Sha3 Hash_Sha3_512[1];
+HASH_INLINE void hash_sha3_512_init(Hash_Sha3_512 s)
+{
+    hash_private_sha3_init(s, 512);
+}
+
+HASH_INLINE void hash_sha3_512_update_binary(Hash_Sha3_512 s, const char* data, size_t size)
+{
+    hash_private_sha3_update(s, (const uint8_t*)data, size);
+}
+
+HASH_INLINE void hash_sha3_512_update(Hash_Sha3_512 s, const char* data)
+{
+    hash_private_sha3_update(s, (const uint8_t*)data, strlen(data));
+}
+
+HASH_INLINE void hash_sha3_512_finalize(Hash_Sha3_512 s)
+{
+    hash_private_sha3_finalize(s);
+}
+
+// if buffer == NULL returns internal buffer, buffer size must be at least 41 (Null term char)
+HASH_INLINE const char* hash_sha3_512_hexdigest(const Hash_Sha3_512 s, char* buffer)
+{
+    static char hex[HASH_SHA3_512_BUFFER_SIZE+1];
+    char* buff = buffer == NULL ? hex : buffer;
+    for (size_t i = 0; i < HASH_SHA3_512_BUFFER_SIZE/2; i++)
+    {
+        sprintf(&buff[i*2], "%02" PRIx32, (uint32_t)((uint8_t*)s->u.s)[i]);
+    }
+    buff[HASH_SHA3_512_BUFFER_SIZE] = 0;
+    return buff;
+}
+
+// if buffer == NULL returns internal buffer, buffer size must be at least 41 (Null term char)
+HASH_INLINE const char* hash_sha3_512_binary(const char* str, size_t size, char* buffer)
+{
+    Hash_Sha3_512 s;
+    hash_sha3_512_init(s);
+    hash_sha3_512_update_binary(s, str, size);
+    hash_sha3_512_finalize(s);
+    return hash_sha3_512_hexdigest(s, buffer);
+}
+
+HASH_INLINE const char* hash_sha3_512(const char* str, char* buffer)
+{
+    return hash_sha3_512_binary(str, strlen(str), buffer);
+}
+
+HASH_INLINE const char* hash_sha3_512_file(const char* path, const char* mode, char* buffer)
+{
+    return hash_util_hash_file(path, mode, hash_sha3_512_binary, buffer);
+}
+
+HASH_INLINE const char* hash_sha3_512_easy(const char* str)
+{
+    return hash_sha3_512_binary(str, strlen(str), NULL);
+}
+
+HASH_INLINE const char* hash_sha3_512_file_easy(const char* path, const char* mode)
+{
+    return hash_util_hash_file(path, mode, hash_sha3_512_binary, NULL);
+}
+// ==============================Hash_Sha3_256==================================
+// ================================Hash_Sha3====================================
+#endif // HASH_ENABLE_SHA3
 #endif // HASH_ENABLE_C_INTERFACE
 
 
@@ -2625,10 +3118,301 @@ namespace Hash
     }
     //=============================================================================
 #endif // HASH_ENABLE_MD5
+
+
+#if HASH_ENABLE_SHA3
+    namespace Private
+    {
+        template <size_t BitSize>
+        struct Sha3
+        {
+            static_assert(BitSize == 224 || BitSize == 256 || BitSize == 384 || BitSize == 512, "BitSize must be 224, 256, 384 or 512");
+        public:
+            static constexpr size_t Size = BitSize / 4;
+        private:
+            static constexpr size_t UseKeccakFlag = 0x80000000;
+            static constexpr size_t KeccakSpongeWords = (((1600)/8/*bits to byte*/)/sizeof(uint64_t));
+        private:
+            uint64_t m_Saved = 0;       // the portion of the input message that we didn't consume yet
+            union {                     // Keccak's state
+                uint64_t s[KeccakSpongeWords];
+                uint8_t sb[KeccakSpongeWords * 8] = {0};
+            } u;
+            size_t m_ByteIndex = 0;      // 0..7--the next byte after the set one (starts from 0; 0--none are buffered)
+            size_t m_WordIndex = 0;      // 0..24--the next word to integrate input (starts from 0)
+            size_t m_CapacityWords = 2 * BitSize / (8 * sizeof(uint64_t));  // the double size of the hash output in words (e.g. 16 for Keccak 512)
+        private:
+            inline size_t CW(size_t x) const noexcept
+            {
+                return (x) & (~UseKeccakFlag);
+            }
+
+            void keccakf(uint64_t s[25]) const noexcept
+            {
+                static constexpr uint8_t keccakf_rotc[24] = {
+                    1, 3, 6, 10, 15, 21, 28, 36, 45, 55, 2, 14, 27, 41, 56, 8, 25, 43, 62,
+                    18, 39, 61, 20, 44
+                };
+
+                static constexpr uint8_t keccakf_piln[24] = {
+                    10, 7, 11, 17, 18, 3, 5, 16, 8, 21, 24, 4, 15, 23, 19, 13, 12, 2, 20,
+                    14, 22, 9, 6, 1
+                };
+
+                static constexpr uint64_t keccakf_rndc[24] = {
+                    0x0000000000000001ULL, 0x0000000000008082ULL,
+                    0x800000000000808aULL, 0x8000000080008000ULL,
+                    0x000000000000808bULL, 0x0000000080000001ULL,
+                    0x8000000080008081ULL, 0x8000000000008009ULL,
+                    0x000000000000008aULL, 0x0000000000000088ULL,
+                    0x0000000080008009ULL, 0x000000008000000aULL,
+                    0x000000008000808bULL, 0x800000000000008bULL,
+                    0x8000000000008089ULL, 0x8000000000008003ULL,
+                    0x8000000000008002ULL, 0x8000000000000080ULL,
+                    0x000000000000800aULL, 0x800000008000000aULL,
+                    0x8000000080008081ULL, 0x8000000000008080ULL,
+                    0x0000000080000001ULL, 0x8000000080008008ULL
+                };
+
+
+                uint64_t bc[5];
+                constexpr uint8_t KeccakRounds = 24;
+
+                for(uint8_t round = 0; round < KeccakRounds; round++)
+                {
+
+                    /* Theta */
+                    for(uint8_t i = 0; i < 5; i++)
+                        bc[i] = s[i] ^ s[i + 5] ^ s[i + 10] ^ s[i + 15] ^ s[i + 20];
+
+                    for(uint8_t i = 0; i < 5; i++)
+                    {
+                        uint64_t t = bc[(i + 4) % 5] ^ Hash::Util::LeftRotate<uint64_t>(bc[(i + 1) % 5], 1);
+                        for(uint8_t j = 0; j < 25; j += 5)
+                            s[j + i] ^= t;
+                    }
+
+                    /* Rho Pi */
+                    uint64_t t = s[1];
+                    for(uint8_t i = 0; i < 24; i++)
+                    {
+                        uint8_t j = keccakf_piln[i];
+                        bc[0] = s[j];
+                        s[j] = Hash::Util::LeftRotate<uint64_t>(t, keccakf_rotc[i]);
+                        t = bc[0];
+                    }
+
+                    /* Chi */
+                    for(uint8_t j = 0; j < 25; j += 5)
+                    {
+                        for(uint8_t i = 0; i < 5; i++)
+                            bc[i] = s[j + i];
+                        for(uint8_t i = 0; i < 5; i++)
+                            s[j + i] ^= (~bc[(i + 1) % 5]) & bc[(i + 2) % 5];
+                    }
+
+                    /* Iota */
+                    s[0] ^= keccakf_rndc[round];
+                }
+            }
+        public:
+            void Update(const uint8_t *data, std::size_t size) noexcept
+            {
+                /* 0...7 -- how much is needed to have a word */
+                size_t old_tail = (8 - m_ByteIndex) & 7;
+
+                if(size < old_tail)
+                {        /* have no complete word or haven't started 
+                                            * the word yet */
+                    /* endian-independent code follows: */
+                    while (size--)
+                        m_Saved |= (uint64_t) (*(data++)) << ((m_ByteIndex++) * 8);
+                    return;
+                }
+
+                if(old_tail)
+                {              /* will have one word to process */
+                    /* endian-independent code follows: */
+                    size -= old_tail;
+                    while (old_tail--)
+                        m_Saved |= (uint64_t) (*(data++)) << ((m_ByteIndex++) * 8);
+
+                    /* now ready to add saved to the sponge */
+                    u.s[m_WordIndex] ^= m_Saved;
+                    m_ByteIndex = 0;
+                    m_Saved = 0;
+                    if(++m_WordIndex == (KeccakSpongeWords - CW(m_CapacityWords)))
+                    {
+                        keccakf(u.s);
+                        m_WordIndex = 0;
+                    }
+                }
+
+
+                size_t words = size / sizeof(uint64_t);
+                size_t tail = size - words * sizeof(uint64_t);
+
+                for(size_t i = 0; i < words; i++, data += sizeof(uint64_t))
+                {
+                    const uint64_t t = (uint64_t) (data[0]) |
+                            ((uint64_t) (data[1]) << 8 * 1) |
+                            ((uint64_t) (data[2]) << 8 * 2) |
+                            ((uint64_t) (data[3]) << 8 * 3) |
+                            ((uint64_t) (data[4]) << 8 * 4) |
+                            ((uint64_t) (data[5]) << 8 * 5) |
+                            ((uint64_t) (data[6]) << 8 * 6) |
+                            ((uint64_t) (data[7]) << 8 * 7);
+
+                    u.s[m_WordIndex] ^= t;
+                    if(++m_WordIndex == (KeccakSpongeWords - CW(m_CapacityWords)))
+                    {
+                        keccakf(u.s);
+                        m_WordIndex = 0;
+                    }
+                }
+
+
+                while (tail--)
+                {
+                    m_Saved |= (uint64_t) (*(data++)) << ((m_ByteIndex++) * 8);
+                }
+            }
+
+
+            inline void Update(const char* data, std::size_t size) noexcept
+            {
+                Update((const uint8_t*)data, size);
+            }
+
+
+            inline void Update(std::string_view data) noexcept
+            {
+                Update((const uint8_t*)data.data(), data.size());
+            }
+
+
+            inline void Finalize() noexcept
+            {
+                /* Append 2-bit suffix 01, per SHA-3 spec. Instead of 1 for padding we
+                * use 1<<2 below. The 0x02 below corresponds to the suffix 01.
+                * Overall, we feed 0, then 1, and finally 1 to start padding. Without
+                * M || 01, we would simply use 1 to start padding. */
+
+                uint64_t t;
+
+                //if(m_CapacityWords & UseKeccakFlag)
+                //{
+                //    /* Keccak version */
+                //    t = (uint64_t)(((uint64_t) 1) << (m_ByteIndex * 8));
+                //}
+                //else
+                //{
+                    /* SHA3 version */
+                    t = (uint64_t)(((uint64_t)(0x02 | (1 << 2))) << ((m_ByteIndex) * 8));
+                //}
+
+                u.s[m_WordIndex] ^= m_Saved ^ t;
+
+                u.s[KeccakSpongeWords - CW(m_CapacityWords) - 1] ^= 0x8000000000000000ULL;
+                keccakf(u.s);
+
+                // This conversion is not needed for little-endian platforms
+                #if defined(__BYTE_ORDER) && __BYTE_ORDER == __BIG_ENDIAN || defined(__BIG_ENDIAN__) || !HASH_KECCAK_LITTLE_ENDIAN
+                    {
+                        unsigned i;
+                        for(i = 0; i < KeccakSpongeWords; i++)
+                        {
+                            const unsigned t1 = (uint32_t) u.s[i];
+                            const unsigned t2 = (uint32_t) ((u.s[i] >> 16) >> 16);
+                            u.sb[i * 8 + 0] = (uint8_t) (t1);
+                            u.sb[i * 8 + 1] = (uint8_t) (t1 >> 8);
+                            u.sb[i * 8 + 2] = (uint8_t) (t1 >> 16);
+                            u.sb[i * 8 + 3] = (uint8_t) (t1 >> 24);
+                            u.sb[i * 8 + 4] = (uint8_t) (t2);
+                            u.sb[i * 8 + 5] = (uint8_t) (t2 >> 8);
+                            u.sb[i * 8 + 6] = (uint8_t) (t2 >> 16);
+                            u.sb[i * 8 + 7] = (uint8_t) (t2 >> 24);
+                        }
+                    }
+                #endif
+            }
+
+
+            inline std::string Hexdigest() const
+            {
+                std::stringstream stream;
+                stream << std::hex << std::setfill('0');
+                for(size_t i = 0; i < BitSize / 8; ++i)
+                    stream << std::setw(2) << (uint32_t)((unsigned char*)u.s)[i];
+                return stream.str();
+            }
+        };
+    } // namespace Private
+    using Sha3_224 = Private::Sha3<224>;
+    using Sha3_256 = Private::Sha3<256>;
+    using Sha3_384 = Private::Sha3<384>;
+    using Sha3_512 = Private::Sha3<512>;
+
+
+    inline std::string sha3_224(const unsigned char* data, size_t size)
+    {
+        Sha3_224 s;
+        s.Update(data, size);
+        s.Finalize();
+        return s.Hexdigest();
+    }
+
+    inline std::string sha3_256(const unsigned char* data, size_t size)
+    {
+        Sha3_256 s;
+        s.Update(data, size);
+        s.Finalize();
+        return s.Hexdigest();
+    }
+
+    inline std::string sha3_384(const unsigned char* data, size_t size)
+    {
+        Sha3_384 s;
+        s.Update(data, size);
+        s.Finalize();
+        return s.Hexdigest();
+    }
+
+    inline std::string sha3_512(const unsigned char* data, size_t size)
+    {
+        Sha3_512 s;
+        s.Update(data, size);
+        s.Finalize();
+        return s.Hexdigest();
+    }
+
+    inline std::string sha3_224(const char* data, size_t size) { return sha3_224((const unsigned char*)data, size); }
+    inline std::string sha3_256(const char* data, size_t size) { return sha3_256((const unsigned char*)data, size); }
+    inline std::string sha3_384(const char* data, size_t size) { return sha3_384((const unsigned char*)data, size); }
+    inline std::string sha3_512(const char* data, size_t size) { return sha3_512((const unsigned char*)data, size); }
+
+    inline std::string sha3_224(std::string_view data) { return sha3_224(data.data(), data.size()); }
+    inline std::string sha3_256(std::string_view data) { return sha3_256(data.data(), data.size()); }
+    inline std::string sha3_384(std::string_view data) { return sha3_384(data.data(), data.size()); }
+    inline std::string sha3_512(std::string_view data) { return sha3_512(data.data(), data.size()); }
+
+
+    namespace File
+    {
+        inline std::string sha3_224(const char* path,      std::ios::openmode flag = std::ios::binary) { return Hash::sha3_224(Util::LoadFile(path,        flag)); }
+        inline std::string sha3_224(std::string_view path, std::ios::openmode flag = std::ios::binary) { return Hash::sha3_224(Util::LoadFile(path.data(), flag)); }
+        inline std::string sha3_256(const char* path,      std::ios::openmode flag = std::ios::binary) { return Hash::sha3_256(Util::LoadFile(path,        flag)); }
+        inline std::string sha3_256(std::string_view path, std::ios::openmode flag = std::ios::binary) { return Hash::sha3_256(Util::LoadFile(path.data(), flag)); }
+        inline std::string sha3_384(const char* path,      std::ios::openmode flag = std::ios::binary) { return Hash::sha3_384(Util::LoadFile(path,        flag)); }
+        inline std::string sha3_384(std::string_view path, std::ios::openmode flag = std::ios::binary) { return Hash::sha3_384(Util::LoadFile(path.data(), flag)); }
+        inline std::string sha3_512(const char* path,      std::ios::openmode flag = std::ios::binary) { return Hash::sha3_512(Util::LoadFile(path,        flag)); }
+        inline std::string sha3_512(std::string_view path, std::ios::openmode flag = std::ios::binary) { return Hash::sha3_512(Util::LoadFile(path.data(), flag)); }
+    }
+#endif // HASH_ENABLE_SHA3
 } // namespace Hash
 
 
-#if HASH_ENABLE_KECCAK == 1
+#if HASH_ENABLE_SHAKE == 1
     //=============================================================================
     // source: https://github.com/XKCP/XKCP/blob/master/Standalone/CompactFIPS202/C/Keccak-readable-and-compact.c
     /*
@@ -2785,96 +3569,12 @@ namespace Hash
         inline std::string Hash(const char* data, size_t size, size_t outsize)          const noexcept { return shake256(data, size, outsize); }
         inline std::string Hash(const unsigned char* data, size_t size, size_t outsize) const noexcept { return shake256(data, size, outsize); }
     };
-
-
-
-    inline std::string sha3_224(const unsigned char* data, size_t size)
-    {
-        unsigned char buff[28];
-        hash_private_keccak_Keccak(1152, 448, data, size, 0x06, buff, 28);
-        return Util::CharArrayToHexString(buff, 28);
-    }
-
-    inline std::string sha3_256(const unsigned char* data, size_t size)
-    {
-        unsigned char buff[32];
-        hash_private_keccak_Keccak(1088, 512, data, size, 0x06, buff, 32);
-        return Util::CharArrayToHexString(buff, 32);
-    }
-
-    inline std::string sha3_384(const unsigned char* data, size_t size)
-    {
-        unsigned char buff[48];
-        hash_private_keccak_Keccak(832, 768, data, size, 0x06, buff, 48);
-        return Util::CharArrayToHexString(buff, 48);
-    }
-
-    inline std::string sha3_512(const unsigned char* data, size_t size)
-    {
-        unsigned char buff[64];
-        hash_private_keccak_Keccak(576, 1024, data, size, 0x06, buff, 64);
-        return Util::CharArrayToHexString(buff, 64);
-    }
-
-    inline std::string sha3_224(const char* data, size_t size) { return sha3_224((const unsigned char*)data, size); }
-    inline std::string sha3_256(const char* data, size_t size) { return sha3_256((const unsigned char*)data, size); }
-    inline std::string sha3_384(const char* data, size_t size) { return sha3_384((const unsigned char*)data, size); }
-    inline std::string sha3_512(const char* data, size_t size) { return sha3_512((const unsigned char*)data, size); }
-
-    inline std::string sha3_224(std::string_view data) { return sha3_224(data.data(), data.size()); }
-    inline std::string sha3_256(std::string_view data) { return sha3_256(data.data(), data.size()); }
-    inline std::string sha3_384(std::string_view data) { return sha3_384(data.data(), data.size()); }
-    inline std::string sha3_512(std::string_view data) { return sha3_512(data.data(), data.size()); }
-
-
-    namespace File
-    {
-        inline std::string sha3_224(const char* path,      std::ios::openmode flag = std::ios::binary) { return Hash::sha3_224(Util::LoadFile(path,        flag)); }
-        inline std::string sha3_224(std::string_view path, std::ios::openmode flag = std::ios::binary) { return Hash::sha3_224(Util::LoadFile(path.data(), flag)); }
-        inline std::string sha3_256(const char* path,      std::ios::openmode flag = std::ios::binary) { return Hash::sha3_256(Util::LoadFile(path,        flag)); }
-        inline std::string sha3_256(std::string_view path, std::ios::openmode flag = std::ios::binary) { return Hash::sha3_256(Util::LoadFile(path.data(), flag)); }
-        inline std::string sha3_384(const char* path,      std::ios::openmode flag = std::ios::binary) { return Hash::sha3_384(Util::LoadFile(path,        flag)); }
-        inline std::string sha3_384(std::string_view path, std::ios::openmode flag = std::ios::binary) { return Hash::sha3_384(Util::LoadFile(path.data(), flag)); }
-        inline std::string sha3_512(const char* path,      std::ios::openmode flag = std::ios::binary) { return Hash::sha3_512(Util::LoadFile(path,        flag)); }
-        inline std::string sha3_512(std::string_view path, std::ios::openmode flag = std::ios::binary) { return Hash::sha3_512(Util::LoadFile(path.data(), flag)); }
-    }
-
-
-    struct Sha3_224
-    {
-        static constexpr std::size_t Size = 56;
-        inline std::string Hash(std::string_view data)                  const noexcept { return sha3_224(data);       }
-        inline std::string Hash(const char* data, size_t size)          const noexcept { return sha3_224(data, size); }
-        inline std::string Hash(const unsigned char* data, size_t size) const noexcept { return sha3_224(data, size); }
-    };
-
-    struct Sha3_256
-    {
-        static constexpr std::size_t Size = 64;
-        inline std::string Hash(std::string_view data)                  const noexcept { return sha3_256(data);       }
-        inline std::string Hash(const char* data, size_t size)          const noexcept { return sha3_256(data, size); }
-        inline std::string Hash(const unsigned char* data, size_t size) const noexcept { return sha3_256(data, size); }
-    };
-
-    struct Sha3_384
-    {
-        static constexpr std::size_t Size = 96;
-        inline std::string Hash(std::string_view data)                  const noexcept { return sha3_384(data);       }
-        inline std::string Hash(const char* data, size_t size)          const noexcept { return sha3_384(data, size); }
-        inline std::string Hash(const unsigned char* data, size_t size) const noexcept { return sha3_384(data, size); }
-    };
-
-    struct Sha3_512
-    {
-        static constexpr std::size_t Size = 128;
-        inline std::string Hash(std::string_view data)                  const noexcept { return sha3_512(data);       }
-        inline std::string Hash(const char* data, size_t size)          const noexcept { return sha3_512(data, size); }
-        inline std::string Hash(const unsigned char* data, size_t size) const noexcept { return sha3_512(data, size); }
-    };
 }
-#endif // HASH_ENABLE_KECCAK
+#endif // HASH_ENABLE_SHAKE
 #endif // defined(__cplusplus) && HASH_ENABLE_CPP_INTERFACE
-#if HASH_ENABLE_KECCAK == 1
+
+
+#if HASH_ENABLE_SHAKE == 1
 #if HASH_ENABLE_C_INTERFACE == 1
 HASH_INLINE void hash_private_keccak_Keccak(unsigned int rate, unsigned int capacity, const unsigned char* input, unsigned long long int inputByteLen, unsigned char delimitedSuffix, unsigned char* output, unsigned long long int outputByteLen);
 
@@ -2958,69 +3658,6 @@ HASH_INLINE const char* hash_shake256_file(const char* path, const char* mode, s
 
 HASH_INLINE const char* hash_shake128_file_easy(const char* path, const char* mode, size_t outsizeBytes) { return hash_shake128_file(path, mode, outsizeBytes, NULL); }
 HASH_INLINE const char* hash_shake256_file_easy(const char* path, const char* mode, size_t outsizeBytes) { return hash_shake256_file(path, mode, outsizeBytes, NULL); }
-
-
-
-
-HASH_INLINE const char* hash_sha3_224_binary(const char* data, size_t size, char* buffer /*57 chars*/)
-{
-    static char hex[HASH_SHA3_224_BUFFER_SIZE+1];
-    unsigned char buff[28];
-    char* out = buffer == NULL ? hex : buffer;
-    hash_private_keccak_Keccak(1152, 448, (const unsigned char*)data, size, 0x06, buff, 28);
-    hash_util_char_array_to_hex_string(buff, 28, out);
-    return out;
-}
-
-HASH_INLINE const char* hash_sha3_256_binary(const char* data, size_t size, char* buffer /*65 chars*/)
-{
-    static char hex[HASH_SHA3_256_BUFFER_SIZE+1];
-    unsigned char buff[32];
-    char* out = buffer == NULL ? hex : buffer;
-    hash_private_keccak_Keccak(1088, 512, (const unsigned char*)data, size, 0x06, buff, 32);
-    hash_util_char_array_to_hex_string(buff, 32, out);
-    return out;
-}
-
-HASH_INLINE const char* hash_sha3_384_binary(const char* data, size_t size, char* buffer /*97 chars*/)
-{
-    static char hex[HASH_SHA3_384_BUFFER_SIZE+1];
-    unsigned char buff[48];
-    char* out = buffer == NULL ? hex : buffer;
-    hash_private_keccak_Keccak(832, 768, (const unsigned char*)data, size, 0x06, buff, 48);
-    hash_util_char_array_to_hex_string(buff, 48, out);
-    return out;
-}
-
-HASH_INLINE const char* hash_sha3_512_binary(const char* data, size_t size, char* buffer /*129 chars*/)
-{
-    static char hex[HASH_SHA3_512_BUFFER_SIZE+1];
-    unsigned char buff[64];
-    char* out = buffer == NULL ? hex : buffer;
-    hash_private_keccak_Keccak(576, 1024, (const unsigned char*)data, size, 0x06, buff, 64);
-    hash_util_char_array_to_hex_string(buff, 64, out);
-    return out;
-}
-
-HASH_INLINE const char* hash_sha3_224(const char* data, char* buffer) { return hash_sha3_224_binary(data, strlen(data), buffer); }
-HASH_INLINE const char* hash_sha3_256(const char* data, char* buffer) { return hash_sha3_256_binary(data, strlen(data), buffer); }
-HASH_INLINE const char* hash_sha3_384(const char* data, char* buffer) { return hash_sha3_384_binary(data, strlen(data), buffer); }
-HASH_INLINE const char* hash_sha3_512(const char* data, char* buffer) { return hash_sha3_512_binary(data, strlen(data), buffer); }
-
-HASH_INLINE const char* hash_sha3_224_easy(const char* data) { return hash_sha3_224_binary(data, strlen(data), NULL); }
-HASH_INLINE const char* hash_sha3_256_easy(const char* data) { return hash_sha3_256_binary(data, strlen(data), NULL); }
-HASH_INLINE const char* hash_sha3_384_easy(const char* data) { return hash_sha3_384_binary(data, strlen(data), NULL); }
-HASH_INLINE const char* hash_sha3_512_easy(const char* data) { return hash_sha3_512_binary(data, strlen(data), NULL); }
-
-HASH_INLINE const char* hash_sha3_224_file(const char* path, const char* mode, char* buffer) { return hash_util_hash_file(path, mode, hash_sha3_224_binary, buffer); }
-HASH_INLINE const char* hash_sha3_256_file(const char* path, const char* mode, char* buffer) { return hash_util_hash_file(path, mode, hash_sha3_256_binary, buffer); }
-HASH_INLINE const char* hash_sha3_384_file(const char* path, const char* mode, char* buffer) { return hash_util_hash_file(path, mode, hash_sha3_384_binary, buffer); }
-HASH_INLINE const char* hash_sha3_512_file(const char* path, const char* mode, char* buffer) { return hash_util_hash_file(path, mode, hash_sha3_512_binary, buffer); }
-
-HASH_INLINE const char* hash_sha3_224_file_easy(const char* path, const char* mode) { return hash_util_hash_file(path, mode, hash_sha3_224_binary, NULL); }
-HASH_INLINE const char* hash_sha3_256_file_easy(const char* path, const char* mode) { return hash_util_hash_file(path, mode, hash_sha3_256_binary, NULL); }
-HASH_INLINE const char* hash_sha3_384_file_easy(const char* path, const char* mode) { return hash_util_hash_file(path, mode, hash_sha3_384_binary, NULL); }
-HASH_INLINE const char* hash_sha3_512_file_easy(const char* path, const char* mode) { return hash_util_hash_file(path, mode, hash_sha3_512_binary, NULL); }
 #endif // HASH_ENABLE_C_INTERFACE
 
 /*
@@ -3038,7 +3675,8 @@ HASH_INLINE uint64_t hash_private_keccak_load64(const uint8_t* x)
     int i;
     uint64_t u = 0;
 
-    for (i = 7; i >= 0; --i) {
+    for (i = 7; i >= 0; --i)
+    {
         u <<= 8;
         u |= x[i];
     }
@@ -3052,7 +3690,8 @@ HASH_INLINE void hash_private_keccak_store64(uint8_t* x, uint64_t u)
 {
     unsigned int i;
 
-    for (i = 0; i < 8; ++i) {
+    for (i = 0; i < 8; ++i)
+    {
         x[i] = (uint8_t)u;
         u >>= 8;
     }
@@ -3065,7 +3704,8 @@ HASH_INLINE void hash_private_keccak_xor64(uint8_t* x, uint64_t u)
 {
     unsigned int i;
 
-    for (i = 0; i < 8; ++i) {
+    for (i = 0; i < 8; ++i)
+    {
         x[i] ^= u;
         u >>= 8;
     }
@@ -3110,14 +3750,16 @@ HASH_INLINE void hash_private_keccak_KeccakF1600_StatePermute(void* state)
     unsigned int round, x, y, j, t;
     uint8_t LFSRstate = 0x01;
 
-    for (round = 0; round < 24; round++) {
+    for (round = 0; round < 24; round++)
+    {
         {   /* === θ step (see [Keccak Reference, Section 2.3.2]) === */
             uint64_t C[5], D;
 
             /* Compute the parity of the columns */
             for (x = 0; x < 5; x++)
                 C[x] = HASH_PRIVATE_KECCAK_READLANE(x, 0) ^ HASH_PRIVATE_KECCAK_READLANE(x, 1) ^ HASH_PRIVATE_KECCAK_READLANE(x, 2) ^ HASH_PRIVATE_KECCAK_READLANE(x, 3) ^ HASH_PRIVATE_KECCAK_READLANE(x, 4);
-            for (x = 0; x < 5; x++) {
+            for (x = 0; x < 5; x++)
+            {
                 /* Compute the θ effect for a given column */
                 D = C[(x + 4) % 5] ^ HASH_PRIVATE_KECCAK_ROL64(C[(x + 1) % 5], 1);
                 /* Add the θ effect to the whole column */
@@ -3132,7 +3774,8 @@ HASH_INLINE void hash_private_keccak_KeccakF1600_StatePermute(void* state)
             x = 1; y = 0;
             current = HASH_PRIVATE_KECCAK_READLANE(x, y);
             /* Iterate over ((0 1)(2 3))^t * (1 0) for 0 ≤ t ≤ 23 */
-            for (t = 0; t < 24; t++) {
+            for (t = 0; t < 24; t++)
+            {
                 /* Compute the rotation constant r = (t+1)(t+2)/2 */
                 unsigned int r = ((t + 1) * (t + 2) / 2) % 64;
                 /* Compute ((0 1)(2 3)) * (x y) */
@@ -3146,7 +3789,8 @@ HASH_INLINE void hash_private_keccak_KeccakF1600_StatePermute(void* state)
 
         {   /* === χ step (see [Keccak Reference, Section 2.3.1]) === */
             uint64_t temp[5];
-            for (y = 0; y < 5; y++) {
+            for (y = 0; y < 5; y++)
+            {
                 /* Take a copy of the plane */
                 for (x = 0; x < 5; x++)
                     temp[x] = HASH_PRIVATE_KECCAK_READLANE(x, y);
@@ -3157,7 +3801,8 @@ HASH_INLINE void hash_private_keccak_KeccakF1600_StatePermute(void* state)
         }
 
         {   /* === ι step (see [Keccak Reference, Section 2.3.5]) === */
-            for (j = 0; j < 7; j++) {
+            for (j = 0; j < 7; j++)
+            {
                 unsigned int bitPosition = (1 << j) - 1; /* 2^j-1 */
                 if (hash_private_keccak_LFSR86540(&LFSRstate))
                     hash_private_keccak_XORLANE(0, 0, (uint64_t)1 << bitPosition);
@@ -3188,14 +3833,16 @@ HASH_INLINE void hash_private_keccak_Keccak(unsigned int rate, unsigned int capa
     memset(state, 0, sizeof(state));
 
     /* === Absorb all the input blocks === */
-    while (inputByteLen > 0) {
+    while (inputByteLen > 0)
+    {
         blockSize = (unsigned int)HASH_PRIVATE_KECCAK_MIN(inputByteLen, rateInBytes);
         for (i = 0; i < blockSize; i++)
             state[i] ^= input[i];
         input += blockSize;
         inputByteLen -= blockSize;
 
-        if (blockSize == rateInBytes) {
+        if (blockSize == rateInBytes)
+        {
             hash_private_keccak_KeccakF1600_StatePermute(state);
             blockSize = 0;
         }
@@ -3213,7 +3860,8 @@ HASH_INLINE void hash_private_keccak_Keccak(unsigned int rate, unsigned int capa
     hash_private_keccak_KeccakF1600_StatePermute(state);
 
     /* === Squeeze out all the output blocks === */
-    while (outputByteLen > 0) {
+    while (outputByteLen > 0)
+    {
         blockSize = (unsigned int)HASH_PRIVATE_KECCAK_MIN(outputByteLen, rateInBytes);
         memcpy(output, state, blockSize);
         output += blockSize;
@@ -3230,20 +3878,22 @@ HASH_INLINE void hash_private_keccak_Keccak(unsigned int rate, unsigned int capa
 #undef HASH_PRIVATE_KECCAK_READLANE
 #undef hash_private_keccak_WRITELANE
 //=============================================================================
-#endif // HASH_ENABLE_KECCAK
+#endif // HASH_ENABLE_SHAKE
 #endif // HASH_H
 
+#undef HASH_INLINE
 #undef HASH_ENABLE_MD5
 #undef HASH_ENABLE_SHA1
 #undef HASH_ENABLE_SHA2
-#undef HASH_ENABLE_KECCAK
+#undef HASH_ENABLE_SHA3
+#undef HASH_ENABLE_SHAKE
 #undef HASH_ENABLE_C_INTERFACE
 #undef HASH_ENABLE_CPP_INTERFACE
 #undef HASH_KECCAK_LITTLE_ENDIAN
 #undef HASH_SHAKE_128_MALLOC_LIMIT
 #undef HASH_SHAKE_256_MALLOC_LIMIT
-#undef HASH_INLINE
 #undef HASH_DEFINE_UTIL_SWAP_ENDIAN
+#undef HASH_PRIVATE_KECCAK_SPONGE_WORDS
 
 #ifdef _MSC_VER
 #pragma warning( pop ) // 4996
