@@ -53,7 +53,7 @@ void print_help(const char* path)
     printf("        -nt | --no-threads      Don't use multiple threads when hashing folders\n");
     printf("        -nd | --no-decorator    Just print the hash without information and new line (e.g. for piping)\n");
     printf("              --threads         Next argument is the max number of threads allowed to use (actuall size can be less)\n");
-    printf("Supported functions are: md5, sha1, sha224, sha256, sha384, sha512, sha512-224, sha512-256, sha3-224, sha3-256, sha3-384, sha3-512 (sha3 should only be used for smaller files)\n");
+    printf("Supported functions are: md5, sha1, sha224, sha256, sha384, sha512, sha512-224, sha512-256, sha3-224, sha3-256, sha3-384, sha3-512\n");
     printf("If neither the '-f', '-t' nor '-d' options are specified, the program will try to hash a directory, then a file; otherwise, it will be treated as a string.\n");
 }
 
@@ -137,18 +137,18 @@ constexpr size_t get_hash_size(Settings::HashFunction func) noexcept
 {
     switch (func)
     {
-        case Settings::HashFunction::MD5:        return HASH_MD5_BUFFER_SIZE;
-        case Settings::HashFunction::Sha1:       return HASH_SHA1_BUFFER_SIZE;
-        case Settings::HashFunction::Sha224:     return HASH_SHA224_BUFFER_SIZE;
-        case Settings::HashFunction::Sha256:     return HASH_SHA256_BUFFER_SIZE;
-        case Settings::HashFunction::Sha384:     return HASH_SHA384_BUFFER_SIZE;
-        case Settings::HashFunction::Sha512:     return HASH_SHA512_BUFFER_SIZE;
-        case Settings::HashFunction::Sha512_224: return HASH_SHA224_BUFFER_SIZE;
-        case Settings::HashFunction::Sha512_256: return HASH_SHA256_BUFFER_SIZE;
-        case Settings::HashFunction::Sha3_224:   return HASH_SHA3_224_BUFFER_SIZE;
-        case Settings::HashFunction::Sha3_256:   return HASH_SHA3_256_BUFFER_SIZE;
-        case Settings::HashFunction::Sha3_384:   return HASH_SHA3_384_BUFFER_SIZE;
-        case Settings::HashFunction::Sha3_512:   return HASH_SHA3_512_BUFFER_SIZE;
+        case Settings::HashFunction::MD5:        return HASH_MD5_SIZE;
+        case Settings::HashFunction::Sha1:       return HASH_SHA1_SIZE;
+        case Settings::HashFunction::Sha224:     return HASH_SHA224_SIZE;
+        case Settings::HashFunction::Sha256:     return HASH_SHA256_SIZE;
+        case Settings::HashFunction::Sha384:     return HASH_SHA384_SIZE;
+        case Settings::HashFunction::Sha512:     return HASH_SHA512_SIZE;
+        case Settings::HashFunction::Sha512_224: return HASH_SHA224_SIZE;
+        case Settings::HashFunction::Sha512_256: return HASH_SHA256_SIZE;
+        case Settings::HashFunction::Sha3_224:   return HASH_SHA3_224_SIZE;
+        case Settings::HashFunction::Sha3_256:   return HASH_SHA3_256_SIZE;
+        case Settings::HashFunction::Sha3_384:   return HASH_SHA3_384_SIZE;
+        case Settings::HashFunction::Sha3_512:   return HASH_SHA3_512_SIZE;
     }
     return 0;
 }
@@ -371,18 +371,18 @@ std::string hash_file(const char* path, Settings::HashFunction func)
 {
     switch (func)
     {
-        case Settings::HashFunction::MD5:        return hash_file_impl<Hash::MD5>(path);
-        case Settings::HashFunction::Sha1:       return hash_file_impl<Hash::Sha1>(path);
-        case Settings::HashFunction::Sha224:     return hash_file_impl<Hash::Sha224>(path);
-        case Settings::HashFunction::Sha256:     return hash_file_impl<Hash::Sha256>(path);
-        case Settings::HashFunction::Sha384:     return hash_file_impl<Hash::Sha384>(path);
-        case Settings::HashFunction::Sha512:     return hash_file_impl<Hash::Sha512>(path);
-        case Settings::HashFunction::Sha512_224: return hash_file_impl<Hash::Sha512_T<224>>(path);
-        case Settings::HashFunction::Sha512_256: return hash_file_impl<Hash::Sha512_T<256>>(path);
-        case Settings::HashFunction::Sha3_224:   return Hash::File::sha3_224(path);
-        case Settings::HashFunction::Sha3_256:   return Hash::File::sha3_256(path);
-        case Settings::HashFunction::Sha3_384:   return Hash::File::sha3_384(path);
-        case Settings::HashFunction::Sha3_512:   return Hash::File::sha3_512(path);
+        case Settings::HashFunction::MD5:        return Hash::File::HashFile<Hash::MD5>(path);
+        case Settings::HashFunction::Sha1:       return Hash::File::HashFile<Hash::Sha1>(path);
+        case Settings::HashFunction::Sha224:     return Hash::File::HashFile<Hash::Sha224>(path);
+        case Settings::HashFunction::Sha256:     return Hash::File::HashFile<Hash::Sha256>(path);
+        case Settings::HashFunction::Sha384:     return Hash::File::HashFile<Hash::Sha384>(path);
+        case Settings::HashFunction::Sha512:     return Hash::File::HashFile<Hash::Sha512>(path);
+        case Settings::HashFunction::Sha512_224: return Hash::File::HashFile<Hash::Sha512_T<224>>(path);
+        case Settings::HashFunction::Sha512_256: return Hash::File::HashFile<Hash::Sha512_T<256>>(path);
+        case Settings::HashFunction::Sha3_224:   return Hash::File::HashFile<Hash::Sha3_224>(path);
+        case Settings::HashFunction::Sha3_256:   return Hash::File::HashFile<Hash::Sha3_256>(path);
+        case Settings::HashFunction::Sha3_384:   return Hash::File::HashFile<Hash::Sha3_384>(path);
+        case Settings::HashFunction::Sha3_512:   return Hash::File::HashFile<Hash::Sha3_512>(path);
     }
     return "";
 }

@@ -11,7 +11,7 @@
     either use the provided functions, all have the same scheme:
 
         hash_sha256("Hello world", buffer); // returns a const char* (internal buffer if buffer == NULL)
-        hash_sha256_file("main.c", "rb", buffer); // a user provided buffer must hold atleast HASH_SHA256_BUFFER_SIZE chars, warning user provided buffer not null terminated
+        hash_sha256_file("main.c", "rb", buffer); // a user provided buffer must hold at least HASH_SHA256_BUFFER_SIZE+1 chars, always get null terminated
 
         hash_sha256_easy("Hello world"); // returns internal buffer
         hash_sha256_file_easy("main.c", "rb"); // buffered file hash (Shake128, Shake256 and Sha512t are not buffered)
@@ -40,7 +40,6 @@
         s.Finalize();
         std::string hash = s.Hexdigest();
 */
-#include <iostream>
 #define HASH_ENABLE_MD5    1 // md5
 #define HASH_ENABLE_SHA1   1 // sha1
 #define HASH_ENABLE_SHA2   1 // sha224, sha256, sha384, sha512, sha512/t
@@ -49,14 +48,14 @@
 #define HASH_ENABLE_C_INTERFACE   1
 #define HASH_ENABLE_CPP_INTERFACE 1
 #define HASH_KECCAK_LITTLE_ENDIAN 1 // true for most systems (e.g. windows, linux, macos)
+#define HASH_FILE_READ_BUFFER_SIZE 4069
 #define HASH_SHAKE_128_MALLOC_LIMIT 64 // if outsizeBytes is greater and no buffer is provided we will heap allocate
 #define HASH_SHAKE_256_MALLOC_LIMIT 64 // if outsizeBytes is greater and no buffer is provided we will heap allocate
 
 #ifdef _MSC_VER
 #pragma warning( push )
-#pragma warning( disable : 4996) // sprintf is deprecated
+#pragma warning( disable : 4996) // fopen is deprecated
 #endif
-
 
 #if defined(__cplusplus) && HASH_ENABLE_CPP_INTERFACE == 1
 #include <ios>
@@ -83,21 +82,22 @@
 #include <assert.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stddef.h>
 #include <inttypes.h>
 #define HASH_INLINE static
 #endif // __cplusplus && HASH_ENABLE_CPP_INTERFACE
 
 #if HASH_ENABLE_C_INTERFACE == 1
-#define HASH_MD5_BUFFER_SIZE 32
-#define HASH_SHA1_BUFFER_SIZE 40
-#define HASH_SHA224_BUFFER_SIZE 56
-#define HASH_SHA256_BUFFER_SIZE 64
-#define HASH_SHA384_BUFFER_SIZE 96
-#define HASH_SHA512_BUFFER_SIZE 128
-#define HASH_SHA3_224_BUFFER_SIZE 56
-#define HASH_SHA3_256_BUFFER_SIZE 64
-#define HASH_SHA3_384_BUFFER_SIZE 96
-#define HASH_SHA3_512_BUFFER_SIZE 128
+#define HASH_MD5_SIZE 32
+#define HASH_SHA1_SIZE 40
+#define HASH_SHA224_SIZE 56
+#define HASH_SHA256_SIZE 64
+#define HASH_SHA384_SIZE 96
+#define HASH_SHA512_SIZE 128
+#define HASH_SHA3_224_SIZE 56
+#define HASH_SHA3_256_SIZE 64
+#define HASH_SHA3_384_SIZE 96
+#define HASH_SHA3_512_SIZE 128
 // ================================Util====================================
 HASH_INLINE void hash_util_char_array_to_hex_string(unsigned char* data, size_t size, char* out)
 {
@@ -123,7 +123,7 @@ HASH_INLINE const char* hash_util_hash_file(const char* path, const char* mode, 
     if (fp == NULL)
         return "";
     
-    char buffer[4096];
+    char buffer[HASH_FILE_READ_BUFFER_SIZE];
     size_t bytes_read = 0;
     init_fn(hasher);
 
@@ -181,22 +181,22 @@ HASH_INLINE int hash_util_is_little_endian()
     return *(char*)&num == 1;
 }
 
-HASH_INLINE uint32_t hash_util_right_rotate_u32(uint32_t n, unsigned int c)
+HASH_INLINE uint32_t hash_util_right_rotate_u32(uint32_t n, size_t c)
 {
     return (n >> c) | (n << (32 - c));
 }
 
-HASH_INLINE uint64_t hash_util_right_rotate_u64(uint64_t n, unsigned int c)
+HASH_INLINE uint64_t hash_util_right_rotate_u64(uint64_t n, size_t c)
 {
     return (n >> c) | (n << (64 - c));
 }
 
-HASH_INLINE uint32_t hash_util_left_rotate_u32(uint32_t n, unsigned int c)
+HASH_INLINE uint32_t hash_util_left_rotate_u32(uint32_t n, size_t c)
 {
     return (n << c) | (n >> (32 - c));
 }
 
-HASH_INLINE uint64_t hash_util_left_rotate_u64(uint64_t n, unsigned int c)
+HASH_INLINE uint64_t hash_util_left_rotate_u64(uint64_t n, size_t c)
 {
     return (n << c) | (n >> (64 - c));
 }
@@ -219,14 +219,14 @@ HASH_INLINE void hash_private_sha256_compress(Hash_Sha256 s, const uint32_t* con
 {
     static const uint32_t k[64] =
     {
-        0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
-        0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
-        0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
-        0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
-        0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
-        0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
-        0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
-        0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+        UINT32_C(0x428a2f98), UINT32_C(0x71374491), UINT32_C(0xb5c0fbcf), UINT32_C(0xe9b5dba5), UINT32_C(0x3956c25b), UINT32_C(0x59f111f1), UINT32_C(0x923f82a4), UINT32_C(0xab1c5ed5),
+        UINT32_C(0xd807aa98), UINT32_C(0x12835b01), UINT32_C(0x243185be), UINT32_C(0x550c7dc3), UINT32_C(0x72be5d74), UINT32_C(0x80deb1fe), UINT32_C(0x9bdc06a7), UINT32_C(0xc19bf174),
+        UINT32_C(0xe49b69c1), UINT32_C(0xefbe4786), UINT32_C(0x0fc19dc6), UINT32_C(0x240ca1cc), UINT32_C(0x2de92c6f), UINT32_C(0x4a7484aa), UINT32_C(0x5cb0a9dc), UINT32_C(0x76f988da),
+        UINT32_C(0x983e5152), UINT32_C(0xa831c66d), UINT32_C(0xb00327c8), UINT32_C(0xbf597fc7), UINT32_C(0xc6e00bf3), UINT32_C(0xd5a79147), UINT32_C(0x06ca6351), UINT32_C(0x14292967),
+        UINT32_C(0x27b70a85), UINT32_C(0x2e1b2138), UINT32_C(0x4d2c6dfc), UINT32_C(0x53380d13), UINT32_C(0x650a7354), UINT32_C(0x766a0abb), UINT32_C(0x81c2c92e), UINT32_C(0x92722c85),
+        UINT32_C(0xa2bfe8a1), UINT32_C(0xa81a664b), UINT32_C(0xc24b8b70), UINT32_C(0xc76c51a3), UINT32_C(0xd192e819), UINT32_C(0xd6990624), UINT32_C(0xf40e3585), UINT32_C(0x106aa070),
+        UINT32_C(0x19a4c116), UINT32_C(0x1e376c08), UINT32_C(0x2748774c), UINT32_C(0x34b0bcb5), UINT32_C(0x391c0cb3), UINT32_C(0x4ed8aa4a), UINT32_C(0x5b9cca4f), UINT32_C(0x682e6ff3),
+        UINT32_C(0x748f82ee), UINT32_C(0x78a5636f), UINT32_C(0x84c87814), UINT32_C(0x8cc70208), UINT32_C(0x90befffa), UINT32_C(0xa4506ceb), UINT32_C(0xbef9a3f7), UINT32_C(0xc67178f2)
     };
 
     uint32_t a = s->h[0];
@@ -294,14 +294,14 @@ HASH_INLINE void hash_sha256_init(Hash_Sha256 s)
 {
     s->bitlen = 0;
     s->bufferSize = 0;
-    s->h[0] = 0x6a09e667;
-    s->h[1] = 0xbb67ae85;
-    s->h[2] = 0x3c6ef372;
-    s->h[3] = 0xa54ff53a;
-    s->h[4] = 0x510e527f;
-    s->h[5] = 0x9b05688c;
-    s->h[6] = 0x1f83d9ab;
-    s->h[7] = 0x5be0cd19;
+    s->h[0] = UINT32_C(0x6a09e667);
+    s->h[1] = UINT32_C(0xbb67ae85);
+    s->h[2] = UINT32_C(0x3c6ef372);
+    s->h[3] = UINT32_C(0xa54ff53a);
+    s->h[4] = UINT32_C(0x510e527f);
+    s->h[5] = UINT32_C(0x9b05688c);
+    s->h[6] = UINT32_C(0x1f83d9ab);
+    s->h[7] = UINT32_C(0x5be0cd19);
 };
 
 
@@ -320,10 +320,12 @@ HASH_INLINE void hash_sha256_update_binary(Hash_Sha256 s, const char* data, size
     }
 }
 
+
 HASH_INLINE void hash_sha256_update(Hash_Sha256 s, const char* data)
 {
     hash_sha256_update_binary(s, data, strlen(data));
 }
+
 
 HASH_INLINE void hash_sha256_finalize(Hash_Sha256 s)
 {
@@ -346,21 +348,19 @@ HASH_INLINE void hash_sha256_finalize(Hash_Sha256 s)
 }
 
 
-// if buffer == NULL returns internal buffer (null terminated), buffer size must be at least 64 (warning user buffer not null terminated)
+// if buffer == NULL returns internal buffer, buffer size must be at least 65
 HASH_INLINE const char* hash_sha256_hexdigest(const Hash_Sha256 s, char* buffer)
 {
-    static char hex[HASH_SHA256_BUFFER_SIZE+1];
+    static char hex[HASH_SHA256_SIZE+1];
     char* buff = buffer == NULL ? hex : buffer;
     for (size_t i = 0; i < 8; ++i)
     {
-        sprintf(&buff[i * 8], "%08" PRIx32, s->h[i]);
+        snprintf(&buff[i * 8], HASH_SHA256_SIZE+1, "%08" PRIx32, s->h[i]);
     }
-    if (buffer == NULL)
-        buff[HASH_SHA256_BUFFER_SIZE] = 0;
     return buff;
 }
 
-// if buffer == NULL returns internal buffer (null terminated), buffer size must be at least 64 (warning user buffer not null terminated)
+// if buffer == NULL returns internal buffer, buffer size must be at least 65
 HASH_INLINE const char* hash_sha256_binary(const char* str, size_t size, char* buffer)
 {
     Hash_Sha256 s;
@@ -400,14 +400,14 @@ HASH_INLINE void hash_sha224_init(Hash_Sha224 s)
 {
     s->bitlen = 0;
     s->bufferSize = 0;
-    s->h[0] = 0xC1059ED8;
-    s->h[1] = 0x367CD507;
-    s->h[2] = 0x3070DD17;
-    s->h[3] = 0xF70E5939;
-    s->h[4] = 0xFFC00B31;
-    s->h[5] = 0x68581511;
-    s->h[6] = 0x64F98FA7;
-    s->h[7] = 0xBEFA4FA4;
+    s->h[0] = UINT32_C(0xC1059ED8);
+    s->h[1] = UINT32_C(0x367CD507);
+    s->h[2] = UINT32_C(0x3070DD17);
+    s->h[3] = UINT32_C(0xF70E5939);
+    s->h[4] = UINT32_C(0xFFC00B31);
+    s->h[5] = UINT32_C(0x68581511);
+    s->h[6] = UINT32_C(0x64F98FA7);
+    s->h[7] = UINT32_C(0xBEFA4FA4);
 };
 
 
@@ -427,21 +427,19 @@ HASH_INLINE void hash_sha224_finalize(Hash_Sha224 s)
 }
 
 
-// if buffer == NULL returns internal buffer (null terminated), buffer size must be at least 56 (warning user buffer not null terminated)
+// if buffer == NULL returns internal buffer, buffer size must be at least 57
 HASH_INLINE const char* hash_sha224_hexdigest(const Hash_Sha224 s, char* buffer)
 {
-    static char hex[HASH_SHA224_BUFFER_SIZE+1];
+    static char hex[HASH_SHA224_SIZE+1];
     char* buff = buffer == NULL ? hex : buffer;
     for (size_t i = 0; i < 7; ++i)
     {
-        sprintf(&buff[i * 8], "%08" PRIx32, s->h[i]);
+        snprintf(&buff[i * 8], HASH_SHA224_SIZE+1, "%08" PRIx32, s->h[i]);
     }
-    if (buffer == NULL)
-        buff[HASH_SHA224_BUFFER_SIZE] = 0;
     return buff;
 }
 
-// if buffer == NULL returns internal buffer (null terminated), buffer size must be at least 56 (warning user buffer not null terminated)
+// if buffer == NULL returns internal buffer, buffer size must be at least 57
 HASH_INLINE const char* hash_sha224_binary(const char* str, size_t size, char* buffer)
 {
     Hash_Sha224 s;
@@ -490,22 +488,22 @@ HASH_INLINE void hash_private_sha512_compress(Hash_Sha512 s, const uint64_t* con
 {
     static const uint64_t k[80] =
     {
-        0x428a2f98d728ae22, 0x7137449123ef65cd, 0xb5c0fbcfec4d3b2f, 0xe9b5dba58189dbbc, 0x3956c25bf348b538,
-        0x59f111f1b605d019, 0x923f82a4af194f9b, 0xab1c5ed5da6d8118, 0xd807aa98a3030242, 0x12835b0145706fbe,
-        0x243185be4ee4b28c, 0x550c7dc3d5ffb4e2, 0x72be5d74f27b896f, 0x80deb1fe3b1696b1, 0x9bdc06a725c71235,
-        0xc19bf174cf692694, 0xe49b69c19ef14ad2, 0xefbe4786384f25e3, 0x0fc19dc68b8cd5b5, 0x240ca1cc77ac9c65,
-        0x2de92c6f592b0275, 0x4a7484aa6ea6e483, 0x5cb0a9dcbd41fbd4, 0x76f988da831153b5, 0x983e5152ee66dfab,
-        0xa831c66d2db43210, 0xb00327c898fb213f, 0xbf597fc7beef0ee4, 0xc6e00bf33da88fc2, 0xd5a79147930aa725,
-        0x06ca6351e003826f, 0x142929670a0e6e70, 0x27b70a8546d22ffc, 0x2e1b21385c26c926, 0x4d2c6dfc5ac42aed,
-        0x53380d139d95b3df, 0x650a73548baf63de, 0x766a0abb3c77b2a8, 0x81c2c92e47edaee6, 0x92722c851482353b,
-        0xa2bfe8a14cf10364, 0xa81a664bbc423001, 0xc24b8b70d0f89791, 0xc76c51a30654be30, 0xd192e819d6ef5218,
-        0xd69906245565a910, 0xf40e35855771202a, 0x106aa07032bbd1b8, 0x19a4c116b8d2d0c8, 0x1e376c085141ab53,
-        0x2748774cdf8eeb99, 0x34b0bcb5e19b48a8, 0x391c0cb3c5c95a63, 0x4ed8aa4ae3418acb, 0x5b9cca4f7763e373,
-        0x682e6ff3d6b2b8a3, 0x748f82ee5defb2fc, 0x78a5636f43172f60, 0x84c87814a1f0ab72, 0x8cc702081a6439ec,
-        0x90befffa23631e28, 0xa4506cebde82bde9, 0xbef9a3f7b2c67915, 0xc67178f2e372532b, 0xca273eceea26619c,
-        0xd186b8c721c0c207, 0xeada7dd6cde0eb1e, 0xf57d4f7fee6ed178, 0x06f067aa72176fba, 0x0a637dc5a2c898a6,
-        0x113f9804bef90dae, 0x1b710b35131c471b, 0x28db77f523047d84, 0x32caab7b40c72493, 0x3c9ebe0a15c9bebc,
-        0x431d67c49c100d4c, 0x4cc5d4becb3e42b6, 0x597f299cfc657e2a, 0x5fcb6fab3ad6faec, 0x6c44198c4a475817
+       UINT64_C(0x428a2f98d728ae22), UINT64_C(0x7137449123ef65cd), UINT64_C(0xb5c0fbcfec4d3b2f), UINT64_C(0xe9b5dba58189dbbc), UINT64_C(0x3956c25bf348b538),
+       UINT64_C(0x59f111f1b605d019), UINT64_C(0x923f82a4af194f9b), UINT64_C(0xab1c5ed5da6d8118), UINT64_C(0xd807aa98a3030242), UINT64_C(0x12835b0145706fbe),
+       UINT64_C(0x243185be4ee4b28c), UINT64_C(0x550c7dc3d5ffb4e2), UINT64_C(0x72be5d74f27b896f), UINT64_C(0x80deb1fe3b1696b1), UINT64_C(0x9bdc06a725c71235),
+       UINT64_C(0xc19bf174cf692694), UINT64_C(0xe49b69c19ef14ad2), UINT64_C(0xefbe4786384f25e3), UINT64_C(0x0fc19dc68b8cd5b5), UINT64_C(0x240ca1cc77ac9c65),
+       UINT64_C(0x2de92c6f592b0275), UINT64_C(0x4a7484aa6ea6e483), UINT64_C(0x5cb0a9dcbd41fbd4), UINT64_C(0x76f988da831153b5), UINT64_C(0x983e5152ee66dfab),
+       UINT64_C(0xa831c66d2db43210), UINT64_C(0xb00327c898fb213f), UINT64_C(0xbf597fc7beef0ee4), UINT64_C(0xc6e00bf33da88fc2), UINT64_C(0xd5a79147930aa725),
+       UINT64_C(0x06ca6351e003826f), UINT64_C(0x142929670a0e6e70), UINT64_C(0x27b70a8546d22ffc), UINT64_C(0x2e1b21385c26c926), UINT64_C(0x4d2c6dfc5ac42aed),
+       UINT64_C(0x53380d139d95b3df), UINT64_C(0x650a73548baf63de), UINT64_C(0x766a0abb3c77b2a8), UINT64_C(0x81c2c92e47edaee6), UINT64_C(0x92722c851482353b),
+       UINT64_C(0xa2bfe8a14cf10364), UINT64_C(0xa81a664bbc423001), UINT64_C(0xc24b8b70d0f89791), UINT64_C(0xc76c51a30654be30), UINT64_C(0xd192e819d6ef5218),
+       UINT64_C(0xd69906245565a910), UINT64_C(0xf40e35855771202a), UINT64_C(0x106aa07032bbd1b8), UINT64_C(0x19a4c116b8d2d0c8), UINT64_C(0x1e376c085141ab53),
+       UINT64_C(0x2748774cdf8eeb99), UINT64_C(0x34b0bcb5e19b48a8), UINT64_C(0x391c0cb3c5c95a63), UINT64_C(0x4ed8aa4ae3418acb), UINT64_C(0x5b9cca4f7763e373),
+       UINT64_C(0x682e6ff3d6b2b8a3), UINT64_C(0x748f82ee5defb2fc), UINT64_C(0x78a5636f43172f60), UINT64_C(0x84c87814a1f0ab72), UINT64_C(0x8cc702081a6439ec),
+       UINT64_C(0x90befffa23631e28), UINT64_C(0xa4506cebde82bde9), UINT64_C(0xbef9a3f7b2c67915), UINT64_C(0xc67178f2e372532b), UINT64_C(0xca273eceea26619c),
+       UINT64_C(0xd186b8c721c0c207), UINT64_C(0xeada7dd6cde0eb1e), UINT64_C(0xf57d4f7fee6ed178), UINT64_C(0x06f067aa72176fba), UINT64_C(0x0a637dc5a2c898a6),
+       UINT64_C(0x113f9804bef90dae), UINT64_C(0x1b710b35131c471b), UINT64_C(0x28db77f523047d84), UINT64_C(0x32caab7b40c72493), UINT64_C(0x3c9ebe0a15c9bebc),
+       UINT64_C(0x431d67c49c100d4c), UINT64_C(0x4cc5d4becb3e42b6), UINT64_C(0x597f299cfc657e2a), UINT64_C(0x5fcb6fab3ad6faec), UINT64_C(0x6c44198c4a475817)
     };
 
     uint64_t a = s->h[0];
@@ -577,14 +575,14 @@ HASH_INLINE void hash_sha512_init(Hash_Sha512 s)
 {
     s->bitlen = 0;
     s->bufferSize = 0;
-    s->h[0] = 0x6a09e667f3bcc908;
-    s->h[1] = 0xbb67ae8584caa73b;
-    s->h[2] = 0x3c6ef372fe94f82b;
-    s->h[3] = 0xa54ff53a5f1d36f1;
-    s->h[4] = 0x510e527fade682d1;
-    s->h[5] = 0x9b05688c2b3e6c1f;
-    s->h[6] = 0x1f83d9abfb41bd6b;
-    s->h[7] = 0x5be0cd19137e2179;
+    s->h[0] = UINT64_C(0x6a09e667f3bcc908);
+    s->h[1] = UINT64_C(0xbb67ae8584caa73b);
+    s->h[2] = UINT64_C(0x3c6ef372fe94f82b);
+    s->h[3] = UINT64_C(0xa54ff53a5f1d36f1);
+    s->h[4] = UINT64_C(0x510e527fade682d1);
+    s->h[5] = UINT64_C(0x9b05688c2b3e6c1f);
+    s->h[6] = UINT64_C(0x1f83d9abfb41bd6b);
+    s->h[7] = UINT64_C(0x5be0cd19137e2179);
 };
 
 HASH_INLINE void hash_sha512_reset(Hash_Sha512 s)
@@ -634,21 +632,19 @@ HASH_INLINE void hash_sha512_finalize(Hash_Sha512 s)
 }
 
 
-// if buffer == NULL returns internal buffer (null terminated), buffer size must be at least 128 (warning user buffer not null terminated)
+// if buffer == NULL returns internal buffer, buffer size must be at least 129
 HASH_INLINE const char* hash_sha512_hexdigest(const Hash_Sha512 s, char* buffer)
 {
-    static char hex[HASH_SHA512_BUFFER_SIZE+1];
+    static char hex[HASH_SHA512_SIZE+1];
     char* buff = buffer == NULL ? hex : buffer;
     for (size_t i = 0; i < 8; ++i)
     {
-        sprintf(&buff[i * 16], "%016" PRIx64, s->h[i]);
+        snprintf(&buff[i * 16], HASH_SHA512_SIZE+1, "%016" PRIx64, s->h[i]);
     }
-    if (buffer == NULL)
-        buff[HASH_SHA512_BUFFER_SIZE] = 0;
     return buff;
 }
 
-// if buffer == NULL returns internal buffer (null terminated), buffer size must be at least 128 (warning user buffer not null terminated)
+// if buffer == NULL returns internal buffer, buffer size must be at least 129
 HASH_INLINE const char* hash_sha512_binary(const char* str, size_t size, char* buffer)
 {
     Hash_Sha512 s;
@@ -689,19 +685,19 @@ HASH_INLINE void hash_sha512t_init(Hash_Sha512T s, size_t t)
     assert(t >= 4 && t <= 2048 && "t must satisfy t >= 4 && t <= 2048!");
     s->bitlen = 0;
     s->bufferSize = 0;
-    s->h[0] = 0xcfac43c256196cad;
-    s->h[1] = 0x1ec20b20216f029e;
-    s->h[2] = 0x99cb56d75b315d8e;
-    s->h[3] = 0x00ea509ffab89354;
-    s->h[4] = 0xf4abf7da08432774;
-    s->h[5] = 0x3ea0cd298e9bc9ba;
-    s->h[6] = 0xba267c0e5ee418ce;
-    s->h[7] = 0xfe4568bcb6db84dc;
+    s->h[0] = UINT64_C(0xcfac43c256196cad);
+    s->h[1] = UINT64_C(0x1ec20b20216f029e);
+    s->h[2] = UINT64_C(0x99cb56d75b315d8e);
+    s->h[3] = UINT64_C(0x00ea509ffab89354);
+    s->h[4] = UINT64_C(0xf4abf7da08432774);
+    s->h[5] = UINT64_C(0x3ea0cd298e9bc9ba);
+    s->h[6] = UINT64_C(0xba267c0e5ee418ce);
+    s->h[7] = UINT64_C(0xfe4568bcb6db84dc);
     s->t = t;
 
     char str[13], buff[129];
     memset(str, 0, 13);
-    sprintf(str, "SHA-512/%u", (unsigned int)t);
+    snprintf(str, 13, "SHA-512/%u", (unsigned int)t);
 
     hash_sha512_update(s, str);
     hash_sha512_finalize(s);
@@ -735,21 +731,20 @@ HASH_INLINE void hash_sha512t_finalize(Hash_Sha512T s)
 }
 
 
-// if buffer == NULL returns internal buffer (null terminated), buffer size must be at least t/4 (warning user buffer not null terminated)
+// if buffer == NULL returns internal buffer, buffer size must be at least (t/4)+1
 HASH_INLINE const char* hash_sha512t_hexdigest(const Hash_Sha512T s, char* buffer)
 {
     static char hex[513]; // use max allowed size to avoid memory allocation
     char* buff = buffer == NULL ? hex : buffer;
     for (size_t i = 0; i < 8; ++i)
     {
-        sprintf(&buff[i * 16], "%016" PRIx64, s->h[i]);
+        snprintf(&buff[i * 16], 513, "%016" PRIx64, s->h[i]);
     }
-    if (buffer == NULL)
-        buff[s->t / 4] = 0;
+    buff[s->t / 4] = 0;
     return buff;
 }
 
-// if buffer == NULL returns internal buffer (null terminated), buffer size must be at least t/4 (warning user buffer not null terminated)
+// if buffer == NULL returns internal buffer, buffer size must be at least (t/4)+1
 HASH_INLINE const char* hash_sha512t_binary(size_t t, const char* str, size_t size, char* buffer)
 {
     Hash_Sha512T s;
@@ -795,14 +790,14 @@ HASH_INLINE void hash_sha384_init(Hash_Sha384 s)
 {
     s->bitlen = 0;
     s->bufferSize = 0;
-    s->h[0] = 0xcbbb9d5dc1059ed8;
-    s->h[1] = 0x629a292a367cd507;
-    s->h[2] = 0x9159015a3070dd17;
-    s->h[3] = 0x152fecd8f70e5939;
-    s->h[4] = 0x67332667ffc00b31;
-    s->h[5] = 0x8eb44a8768581511;
-    s->h[6] = 0xdb0c2e0d64f98fa7;
-    s->h[7] = 0x47b5481dbefa4fa4;
+    s->h[0] = UINT64_C(0xcbbb9d5dc1059ed8);
+    s->h[1] = UINT64_C(0x629a292a367cd507);
+    s->h[2] = UINT64_C(0x9159015a3070dd17);
+    s->h[3] = UINT64_C(0x152fecd8f70e5939);
+    s->h[4] = UINT64_C(0x67332667ffc00b31);
+    s->h[5] = UINT64_C(0x8eb44a8768581511);
+    s->h[6] = UINT64_C(0xdb0c2e0d64f98fa7);
+    s->h[7] = UINT64_C(0x47b5481dbefa4fa4);
 };
 
 
@@ -822,21 +817,19 @@ HASH_INLINE void hash_sha384_finalize(Hash_Sha384 s)
 }
 
 
-// if buffer == NULL returns internal buffer (null terminated), buffer size must be at least 96 (warning user buffer not null terminated)
+// if buffer == NULL returns internal buffer, buffer size must be at least 97
 HASH_INLINE const char* hash_sha384_hexdigest(const Hash_Sha384 s, char* buffer)
 {
-    static char hex[HASH_SHA384_BUFFER_SIZE+1]; // use max allowed size to avoid memory allocation
+    static char hex[HASH_SHA384_SIZE+1]; // use max allowed size to avoid memory allocation
     char* buff = buffer == NULL ? hex : buffer;
     for (size_t i = 0; i < 6; ++i)
     {
-        sprintf(&buff[i * 16], "%016" PRIx64, s->h[i]);
+        snprintf(&buff[i * 16], HASH_SHA384_SIZE+1, "%016" PRIx64, s->h[i]);
     }
-    if (buffer == NULL)
-        buff[HASH_SHA384_BUFFER_SIZE] = 0;
     return buff;
 }
 
-// if buffer == NULL returns internal buffer (null terminated), buffer size must be at least 96 (warning user buffer not null terminated)
+// if buffer == NULL returns internal buffer, buffer size must be at least 97
 HASH_INLINE const char* hash_sha384_binary(const char* str, size_t size, char* buffer)
 {
     Hash_Sha384 s;
@@ -912,22 +905,22 @@ HASH_INLINE void hash_private_hash_sha1_transform(Hash_Sha1 s)
         if (i <= 19)
         {
             f = (b & c) | ((~b) & d);
-            k = 0x5A827999;
+            k = UINT32_C(0x5A827999);
         }
         else if (i >= 20 && i <= 39)
         {
             f = b ^ c ^ d;
-            k = 0x6ED9EBA1;
+            k = UINT32_C(0x6ED9EBA1);
         }
         else if (i >= 40 && i <= 59)
         {
             f = (b & c) | (b & d) | (c & d);
-            k = 0x8F1BBCDC;
+            k = UINT32_C(0x8F1BBCDC);
         }
         else
         {
             f = b ^ c ^ d;
-            k = 0xCA62C1D6;
+            k = UINT32_C(0xCA62C1D6);
         }
 
         const uint32_t tmp = hash_util_left_rotate_u32(a, 5) + f + e + k + w[i];
@@ -952,11 +945,11 @@ HASH_INLINE void hash_sha1_init(Hash_Sha1 s)
 {
     s->bitlen = 0;
     s->bufferSize = 0;
-    s->h[0] = 0x67452301;
-    s->h[1] = 0xEFCDAB89;
-    s->h[2] = 0x98BADCFE;
-    s->h[3] = 0x10325476;
-    s->h[4] = 0xC3D2E1F0;
+    s->h[0] = UINT32_C(0x67452301);
+    s->h[1] = UINT32_C(0xEFCDAB89);
+    s->h[2] = UINT32_C(0x98BADCFE);
+    s->h[3] = UINT32_C(0x10325476);
+    s->h[4] = UINT32_C(0xC3D2E1F0);
 }
 
 
@@ -1003,21 +996,19 @@ HASH_INLINE void hash_sha1_finalize(Hash_Sha1 s)
 }
 
 
-// if buffer == NULL returns internal buffer (null terminated), buffer size must be at least 40 (warning user buffer not null terminated)
+// if buffer == NULL returns internal buffer, buffer size must be at least 41
 HASH_INLINE const char* hash_sha1_hexdigest(const Hash_Sha1 s, char* buffer)
 {
-    static char hex[HASH_SHA1_BUFFER_SIZE+1]; // use max allowed size to avoid memory allocation
+    static char hex[HASH_SHA1_SIZE+1]; // use max allowed size to avoid memory allocation
     char* buff = buffer == NULL ? hex : buffer;
     for (size_t i = 0; i < 5; ++i)
     {
-        sprintf(&buff[i * 8], "%08" PRIx32, s->h[i]);
+        snprintf(&buff[i * 8], HASH_SHA1_SIZE+1, "%08" PRIx32, s->h[i]);
     }
-    if (buffer == NULL)
-        buff[HASH_SHA1_BUFFER_SIZE] = 0;
     return buff;
 }
 
-// if buffer == NULL returns internal buffer (null terminated), buffer size must be at least 40 (warning user buffer not null terminated)
+// if buffer == NULL returns internal buffer, buffer size must be at least 41
 HASH_INLINE const char* hash_sha1_binary(const char* str, size_t size, char* buffer)
 {
     Hash_Sha1 s;
@@ -1056,7 +1047,6 @@ HASH_INLINE const char* hash_sha1_file_easy(const char* path, const char* mode)
 #define HASH_PRIVATE_MD5_BLOCKSIZE 64
 typedef struct
 {
-    int finalized;
     uint8_t buffer[HASH_PRIVATE_MD5_BLOCKSIZE]; // bytes that didn't fit in last 64 byte chunk
     uint32_t count[2];   // 64bit counter for number of bits (lo, hi)
     uint32_t state[4];   // digest so far
@@ -1068,43 +1058,52 @@ typedef Hash_Private_MD5 Hash_MD5[1];
 // low level logic operations
 ///////////////////////////////////////////////
 // F, G, H and I are basic Hash_MD5 functions.
-HASH_INLINE uint32_t hash_private_md5_F(uint32_t x, uint32_t y, uint32_t z) {
+HASH_INLINE uint32_t hash_private_md5_F(uint32_t x, uint32_t y, uint32_t z)
+{
     return (x & y) | (~x & z);
 }
 
-HASH_INLINE uint32_t hash_private_md5_G(uint32_t x, uint32_t y, uint32_t z) {
+HASH_INLINE uint32_t hash_private_md5_G(uint32_t x, uint32_t y, uint32_t z)
+{
     return (x & z) | (y & ~z);
 }
 
-HASH_INLINE uint32_t hash_private_md5_H(uint32_t x, uint32_t y, uint32_t z) {
+HASH_INLINE uint32_t hash_private_md5_H(uint32_t x, uint32_t y, uint32_t z)
+{
     return x ^ y ^ z;
 }
 
-HASH_INLINE uint32_t hash_private_md5_I(uint32_t x, uint32_t y, uint32_t z) {
+HASH_INLINE uint32_t hash_private_md5_I(uint32_t x, uint32_t y, uint32_t z)
+{
     return y ^ (x | ~z);
 }
 
 // rotate_left rotates x left n bits.
-HASH_INLINE uint32_t hash_private_md5_rotate_left(uint32_t x, int n) {
+HASH_INLINE uint32_t hash_private_md5_rotate_left(uint32_t x, int n)
+{
     return (x << n) | (x >> (32 - n));
 }
 
 
 // FF, GG, HH, and II transformations for rounds 1, 2, 3, and 4.
 // Rotation is separate from addition to prevent recomputation.
-HASH_INLINE uint32_t hash_private_md5_FF(uint32_t a, uint32_t b, uint32_t c, uint32_t d, uint32_t x, uint32_t s, uint32_t ac) {
+HASH_INLINE uint32_t hash_private_md5_FF(uint32_t a, uint32_t b, uint32_t c, uint32_t d, uint32_t x, uint32_t s, uint32_t ac)
+{
     return hash_private_md5_rotate_left(a + hash_private_md5_F(b, c, d) + x + ac, s) + b;
 }
 
-HASH_INLINE uint32_t hash_private_md5_GG(uint32_t a, uint32_t b, uint32_t c, uint32_t d, uint32_t x, uint32_t s, uint32_t ac) {
+HASH_INLINE uint32_t hash_private_md5_GG(uint32_t a, uint32_t b, uint32_t c, uint32_t d, uint32_t x, uint32_t s, uint32_t ac)
+{
     return hash_private_md5_rotate_left(a + hash_private_md5_G(b, c, d) + x + ac, s) + b;
 }
 
-HASH_INLINE uint32_t hash_private_md5_HH(uint32_t a, uint32_t b, uint32_t c, uint32_t d, uint32_t x, uint32_t s, uint32_t ac) {
+HASH_INLINE uint32_t hash_private_md5_HH(uint32_t a, uint32_t b, uint32_t c, uint32_t d, uint32_t x, uint32_t s, uint32_t ac)
+{
     return hash_private_md5_rotate_left(a + hash_private_md5_H(b, c, d) + x + ac, s) + b;
 }
 
-HASH_INLINE uint32_t hash_private_md5_II(uint32_t a, uint32_t b, uint32_t c, uint32_t d, uint32_t x, uint32_t s, uint32_t ac) {
+HASH_INLINE uint32_t hash_private_md5_II(uint32_t a, uint32_t b, uint32_t c, uint32_t d, uint32_t x, uint32_t s, uint32_t ac)
+{
     return hash_private_md5_rotate_left(a + hash_private_md5_I(b, c, d) + x + ac, s) + b;
 }
 
@@ -1123,7 +1122,8 @@ HASH_INLINE void hash_private_md5_decode(uint32_t output[], const uint8_t input[
 // a multiple of 4.
 HASH_INLINE void hash_private_md5_encode(uint8_t output[], const uint32_t input[], uint32_t len)
 {
-    for (uint32_t i = 0, j = 0; j < len; i++, j += 4) {
+    for (uint32_t i = 0, j = 0; j < len; i++, j += 4)
+    {
         output[j] = input[i] & 0xff;
         output[j + 1] = (input[i] >> 8) & 0xff;
         output[j + 2] = (input[i] >> 16) & 0xff;
@@ -1157,76 +1157,76 @@ HASH_INLINE void hash_private_md5_transform(Hash_MD5 m, const uint8_t block[HASH
     hash_private_md5_decode(x, block, HASH_PRIVATE_MD5_BLOCKSIZE);
 
     /* Round 1 */
-    a = hash_private_md5_FF(a, b, c, d, x[0], S11, 0xd76aa478); /* 1 */
-    d = hash_private_md5_FF(d, a, b, c, x[1], S12, 0xe8c7b756); /* 2 */
-    c = hash_private_md5_FF(c, d, a, b, x[2], S13, 0x242070db); /* 3 */
-    b = hash_private_md5_FF(b, c, d, a, x[3], S14, 0xc1bdceee); /* 4 */
-    a = hash_private_md5_FF(a, b, c, d, x[4], S11, 0xf57c0faf); /* 5 */
-    d = hash_private_md5_FF(d, a, b, c, x[5], S12, 0x4787c62a); /* 6 */
-    c = hash_private_md5_FF(c, d, a, b, x[6], S13, 0xa8304613); /* 7 */
-    b = hash_private_md5_FF(b, c, d, a, x[7], S14, 0xfd469501); /* 8 */
-    a = hash_private_md5_FF(a, b, c, d, x[8], S11, 0x698098d8); /* 9 */
-    d = hash_private_md5_FF(d, a, b, c, x[9], S12, 0x8b44f7af); /* 10 */
-    c = hash_private_md5_FF(c, d, a, b, x[10], S13, 0xffff5bb1); /* 11 */
-    b = hash_private_md5_FF(b, c, d, a, x[11], S14, 0x895cd7be); /* 12 */
-    a = hash_private_md5_FF(a, b, c, d, x[12], S11, 0x6b901122); /* 13 */
-    d = hash_private_md5_FF(d, a, b, c, x[13], S12, 0xfd987193); /* 14 */
-    c = hash_private_md5_FF(c, d, a, b, x[14], S13, 0xa679438e); /* 15 */
-    b = hash_private_md5_FF(b, c, d, a, x[15], S14, 0x49b40821); /* 16 */
+    a = hash_private_md5_FF(a, b, c, d, x[0],  S11, UINT32_C(0xd76aa478)); /* 1 */
+    d = hash_private_md5_FF(d, a, b, c, x[1],  S12, UINT32_C(0xe8c7b756)); /* 2 */
+    c = hash_private_md5_FF(c, d, a, b, x[2],  S13, UINT32_C(0x242070db)); /* 3 */
+    b = hash_private_md5_FF(b, c, d, a, x[3],  S14, UINT32_C(0xc1bdceee)); /* 4 */
+    a = hash_private_md5_FF(a, b, c, d, x[4],  S11, UINT32_C(0xf57c0faf)); /* 5 */
+    d = hash_private_md5_FF(d, a, b, c, x[5],  S12, UINT32_C(0x4787c62a)); /* 6 */
+    c = hash_private_md5_FF(c, d, a, b, x[6],  S13, UINT32_C(0xa8304613)); /* 7 */
+    b = hash_private_md5_FF(b, c, d, a, x[7],  S14, UINT32_C(0xfd469501)); /* 8 */
+    a = hash_private_md5_FF(a, b, c, d, x[8],  S11, UINT32_C(0x698098d8)); /* 9 */
+    d = hash_private_md5_FF(d, a, b, c, x[9],  S12, UINT32_C(0x8b44f7af)); /* 10 */
+    c = hash_private_md5_FF(c, d, a, b, x[10], S13, UINT32_C(0xffff5bb1)); /* 11 */
+    b = hash_private_md5_FF(b, c, d, a, x[11], S14, UINT32_C(0x895cd7be)); /* 12 */
+    a = hash_private_md5_FF(a, b, c, d, x[12], S11, UINT32_C(0x6b901122)); /* 13 */
+    d = hash_private_md5_FF(d, a, b, c, x[13], S12, UINT32_C(0xfd987193)); /* 14 */
+    c = hash_private_md5_FF(c, d, a, b, x[14], S13, UINT32_C(0xa679438e)); /* 15 */
+    b = hash_private_md5_FF(b, c, d, a, x[15], S14, UINT32_C(0x49b40821)); /* 16 */
 
     /* Round 2 */
-    a = hash_private_md5_GG(a, b, c, d, x[1], S21, 0xf61e2562); /* 17 */
-    d = hash_private_md5_GG(d, a, b, c, x[6], S22, 0xc040b340); /* 18 */
-    c = hash_private_md5_GG(c, d, a, b, x[11], S23, 0x265e5a51); /* 19 */
-    b = hash_private_md5_GG(b, c, d, a, x[0], S24, 0xe9b6c7aa); /* 20 */
-    a = hash_private_md5_GG(a, b, c, d, x[5], S21, 0xd62f105d); /* 21 */
-    d = hash_private_md5_GG(d, a, b, c, x[10], S22, 0x2441453); /* 22 */
-    c = hash_private_md5_GG(c, d, a, b, x[15], S23, 0xd8a1e681); /* 23 */
-    b = hash_private_md5_GG(b, c, d, a, x[4], S24, 0xe7d3fbc8); /* 24 */
-    a = hash_private_md5_GG(a, b, c, d, x[9], S21, 0x21e1cde6); /* 25 */
-    d = hash_private_md5_GG(d, a, b, c, x[14], S22, 0xc33707d6); /* 26 */
-    c = hash_private_md5_GG(c, d, a, b, x[3], S23, 0xf4d50d87); /* 27 */
-    b = hash_private_md5_GG(b, c, d, a, x[8], S24, 0x455a14ed); /* 28 */
-    a = hash_private_md5_GG(a, b, c, d, x[13], S21, 0xa9e3e905); /* 29 */
-    d = hash_private_md5_GG(d, a, b, c, x[2], S22, 0xfcefa3f8); /* 30 */
-    c = hash_private_md5_GG(c, d, a, b, x[7], S23, 0x676f02d9); /* 31 */
-    b = hash_private_md5_GG(b, c, d, a, x[12], S24, 0x8d2a4c8a); /* 32 */
+    a = hash_private_md5_GG(a, b, c, d, x[1],  S21, UINT32_C(0xf61e2562)); /* 17 */
+    d = hash_private_md5_GG(d, a, b, c, x[6],  S22, UINT32_C(0xc040b340)); /* 18 */
+    c = hash_private_md5_GG(c, d, a, b, x[11], S23, UINT32_C(0x265e5a51)); /* 19 */
+    b = hash_private_md5_GG(b, c, d, a, x[0],  S24, UINT32_C(0xe9b6c7aa)); /* 20 */
+    a = hash_private_md5_GG(a, b, c, d, x[5],  S21, UINT32_C(0xd62f105d)); /* 21 */
+    d = hash_private_md5_GG(d, a, b, c, x[10], S22, UINT32_C(0x02441453)); /* 22 */
+    c = hash_private_md5_GG(c, d, a, b, x[15], S23, UINT32_C(0xd8a1e681)); /* 23 */
+    b = hash_private_md5_GG(b, c, d, a, x[4],  S24, UINT32_C(0xe7d3fbc8)); /* 24 */
+    a = hash_private_md5_GG(a, b, c, d, x[9],  S21, UINT32_C(0x21e1cde6)); /* 25 */
+    d = hash_private_md5_GG(d, a, b, c, x[14], S22, UINT32_C(0xc33707d6)); /* 26 */
+    c = hash_private_md5_GG(c, d, a, b, x[3],  S23, UINT32_C(0xf4d50d87)); /* 27 */
+    b = hash_private_md5_GG(b, c, d, a, x[8],  S24, UINT32_C(0x455a14ed)); /* 28 */
+    a = hash_private_md5_GG(a, b, c, d, x[13], S21, UINT32_C(0xa9e3e905)); /* 29 */
+    d = hash_private_md5_GG(d, a, b, c, x[2],  S22, UINT32_C(0xfcefa3f8)); /* 30 */
+    c = hash_private_md5_GG(c, d, a, b, x[7],  S23, UINT32_C(0x676f02d9)); /* 31 */
+    b = hash_private_md5_GG(b, c, d, a, x[12], S24, UINT32_C(0x8d2a4c8a)); /* 32 */
 
     /* Round 3 */
-    a = hash_private_md5_HH(a, b, c, d, x[5], S31, 0xfffa3942); /* 33 */
-    d = hash_private_md5_HH(d, a, b, c, x[8], S32, 0x8771f681); /* 34 */
-    c = hash_private_md5_HH(c, d, a, b, x[11], S33, 0x6d9d6122); /* 35 */
-    b = hash_private_md5_HH(b, c, d, a, x[14], S34, 0xfde5380c); /* 36 */
-    a = hash_private_md5_HH(a, b, c, d, x[1], S31, 0xa4beea44); /* 37 */
-    d = hash_private_md5_HH(d, a, b, c, x[4], S32, 0x4bdecfa9); /* 38 */
-    c = hash_private_md5_HH(c, d, a, b, x[7], S33, 0xf6bb4b60); /* 39 */
-    b = hash_private_md5_HH(b, c, d, a, x[10], S34, 0xbebfbc70); /* 40 */
-    a = hash_private_md5_HH(a, b, c, d, x[13], S31, 0x289b7ec6); /* 41 */
-    d = hash_private_md5_HH(d, a, b, c, x[0], S32, 0xeaa127fa); /* 42 */
-    c = hash_private_md5_HH(c, d, a, b, x[3], S33, 0xd4ef3085); /* 43 */
-    b = hash_private_md5_HH(b, c, d, a, x[6], S34, 0x4881d05); /* 44 */
-    a = hash_private_md5_HH(a, b, c, d, x[9], S31, 0xd9d4d039); /* 45 */
-    d = hash_private_md5_HH(d, a, b, c, x[12], S32, 0xe6db99e5); /* 46 */
-    c = hash_private_md5_HH(c, d, a, b, x[15], S33, 0x1fa27cf8); /* 47 */
-    b = hash_private_md5_HH(b, c, d, a, x[2], S34, 0xc4ac5665); /* 48 */
+    a = hash_private_md5_HH(a, b, c, d, x[5],  S31, UINT32_C(0xfffa3942)); /* 33 */
+    d = hash_private_md5_HH(d, a, b, c, x[8],  S32, UINT32_C(0x8771f681)); /* 34 */
+    c = hash_private_md5_HH(c, d, a, b, x[11], S33, UINT32_C(0x6d9d6122)); /* 35 */
+    b = hash_private_md5_HH(b, c, d, a, x[14], S34, UINT32_C(0xfde5380c)); /* 36 */
+    a = hash_private_md5_HH(a, b, c, d, x[1],  S31, UINT32_C(0xa4beea44)); /* 37 */
+    d = hash_private_md5_HH(d, a, b, c, x[4],  S32, UINT32_C(0x4bdecfa9)); /* 38 */
+    c = hash_private_md5_HH(c, d, a, b, x[7],  S33, UINT32_C(0xf6bb4b60)); /* 39 */
+    b = hash_private_md5_HH(b, c, d, a, x[10], S34, UINT32_C(0xbebfbc70)); /* 40 */
+    a = hash_private_md5_HH(a, b, c, d, x[13], S31, UINT32_C(0x289b7ec6)); /* 41 */
+    d = hash_private_md5_HH(d, a, b, c, x[0],  S32, UINT32_C(0xeaa127fa)); /* 42 */
+    c = hash_private_md5_HH(c, d, a, b, x[3],  S33, UINT32_C(0xd4ef3085)); /* 43 */
+    b = hash_private_md5_HH(b, c, d, a, x[6],  S34, UINT32_C(0x04881d05)); /* 44 */
+    a = hash_private_md5_HH(a, b, c, d, x[9],  S31, UINT32_C(0xd9d4d039)); /* 45 */
+    d = hash_private_md5_HH(d, a, b, c, x[12], S32, UINT32_C(0xe6db99e5)); /* 46 */
+    c = hash_private_md5_HH(c, d, a, b, x[15], S33, UINT32_C(0x1fa27cf8)); /* 47 */
+    b = hash_private_md5_HH(b, c, d, a, x[2],  S34, UINT32_C(0xc4ac5665)); /* 48 */
 
     /* Round 4 */
-    a = hash_private_md5_II(a, b, c, d, x[0], S41, 0xf4292244); /* 49 */
-    d = hash_private_md5_II(d, a, b, c, x[7], S42, 0x432aff97); /* 50 */
-    c = hash_private_md5_II(c, d, a, b, x[14], S43, 0xab9423a7); /* 51 */
-    b = hash_private_md5_II(b, c, d, a, x[5], S44, 0xfc93a039); /* 52 */
-    a = hash_private_md5_II(a, b, c, d, x[12], S41, 0x655b59c3); /* 53 */
-    d = hash_private_md5_II(d, a, b, c, x[3], S42, 0x8f0ccc92); /* 54 */
-    c = hash_private_md5_II(c, d, a, b, x[10], S43, 0xffeff47d); /* 55 */
-    b = hash_private_md5_II(b, c, d, a, x[1], S44, 0x85845dd1); /* 56 */
-    a = hash_private_md5_II(a, b, c, d, x[8], S41, 0x6fa87e4f); /* 57 */
-    d = hash_private_md5_II(d, a, b, c, x[15], S42, 0xfe2ce6e0); /* 58 */
-    c = hash_private_md5_II(c, d, a, b, x[6], S43, 0xa3014314); /* 59 */
-    b = hash_private_md5_II(b, c, d, a, x[13], S44, 0x4e0811a1); /* 60 */
-    a = hash_private_md5_II(a, b, c, d, x[4], S41, 0xf7537e82); /* 61 */
-    d = hash_private_md5_II(d, a, b, c, x[11], S42, 0xbd3af235); /* 62 */
-    c = hash_private_md5_II(c, d, a, b, x[2], S43, 0x2ad7d2bb); /* 63 */
-    b = hash_private_md5_II(b, c, d, a, x[9], S44, 0xeb86d391); /* 64 */
+    a = hash_private_md5_II(a, b, c, d, x[0],  S41, UINT32_C(0xf4292244)); /* 49 */
+    d = hash_private_md5_II(d, a, b, c, x[7],  S42, UINT32_C(0x432aff97)); /* 50 */
+    c = hash_private_md5_II(c, d, a, b, x[14], S43, UINT32_C(0xab9423a7)); /* 51 */
+    b = hash_private_md5_II(b, c, d, a, x[5],  S44, UINT32_C(0xfc93a039)); /* 52 */
+    a = hash_private_md5_II(a, b, c, d, x[12], S41, UINT32_C(0x655b59c3)); /* 53 */
+    d = hash_private_md5_II(d, a, b, c, x[3],  S42, UINT32_C(0x8f0ccc92)); /* 54 */
+    c = hash_private_md5_II(c, d, a, b, x[10], S43, UINT32_C(0xffeff47d)); /* 55 */
+    b = hash_private_md5_II(b, c, d, a, x[1],  S44, UINT32_C(0x85845dd1)); /* 56 */
+    a = hash_private_md5_II(a, b, c, d, x[8],  S41, UINT32_C(0x6fa87e4f)); /* 57 */
+    d = hash_private_md5_II(d, a, b, c, x[15], S42, UINT32_C(0xfe2ce6e0)); /* 58 */
+    c = hash_private_md5_II(c, d, a, b, x[6],  S43, UINT32_C(0xa3014314)); /* 59 */
+    b = hash_private_md5_II(b, c, d, a, x[13], S44, UINT32_C(0x4e0811a1)); /* 60 */
+    a = hash_private_md5_II(a, b, c, d, x[4],  S41, UINT32_C(0xf7537e82)); /* 61 */
+    d = hash_private_md5_II(d, a, b, c, x[11], S42, UINT32_C(0xbd3af235)); /* 62 */
+    c = hash_private_md5_II(c, d, a, b, x[2],  S43, UINT32_C(0x2ad7d2bb)); /* 63 */
+    b = hash_private_md5_II(b, c, d, a, x[9],  S44, UINT32_C(0xeb86d391)); /* 64 */
 
     m->state[0] += a;
     m->state[1] += b;
@@ -1278,15 +1278,14 @@ HASH_INLINE void hash_private_md5_update_binary(Hash_MD5 m, const unsigned char*
 
 HASH_INLINE void hash_md5_init(Hash_MD5 m)
 {
-    m->finalized = 0;
     m->count[0] = 0;
     m->count[1] = 0;
 
     // load magic initialization constants.
-    m->state[0] = 0x67452301;
-    m->state[1] = 0xefcdab89;
-    m->state[2] = 0x98badcfe;
-    m->state[3] = 0x10325476;
+    m->state[0] = UINT32_C(0x67452301);
+    m->state[1] = UINT32_C(0xefcdab89);
+    m->state[2] = UINT32_C(0x98badcfe);
+    m->state[3] = UINT32_C(0x10325476);
 }
 
 
@@ -1307,53 +1306,46 @@ HASH_INLINE void hash_md5_update(Hash_MD5 m, const char* data)
 HASH_INLINE void  hash_md5_finalize(Hash_MD5 m)
 {
     static const unsigned char padding[64] = {
-      0x80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+        0x80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
     };
 
-    if (!m->finalized) {
-        // Save number of bits
-        unsigned char bits[8];
-        hash_private_md5_encode(bits, m->count, 8);
+    // Save number of bits
+    unsigned char bits[8];
+    hash_private_md5_encode(bits, m->count, 8);
 
-        // pad out to 56 mod 64.
-        uint32_t index = m->count[0] / 8 % 64;
-        uint32_t padLen = (index < 56) ? (56 - index) : (120 - index);
-        hash_private_md5_update_binary(m, padding, padLen);
+    // pad out to 56 mod 64.
+    uint32_t index = m->count[0] / 8 % 64;
+    uint32_t padLen = (index < 56) ? (56 - index) : (120 - index);
+    hash_private_md5_update_binary(m, padding, padLen);
 
-        // Append length (before padding)
-        hash_private_md5_update_binary(m, bits, 8);
+    // Append length (before padding)
+    hash_private_md5_update_binary(m, bits, 8);
 
-        // Store state in digest
-        hash_private_md5_encode(m->digest, m->state, 16);
+    // Store state in digest
+    hash_private_md5_encode(m->digest, m->state, 16);
 
-        // Zeroize sensitive information.
-        memset(m->buffer, 0, sizeof m->buffer);
-        memset(m->count, 0, sizeof m->count);
-
-        m->finalized = 1;
-    }
+    // Zeroize sensitive information.
+    memset(m->buffer, 0, sizeof m->buffer);
+    memset(m->count, 0, sizeof m->count);
 }
 
 
-// if buffer == NULL returns internal buffer (null terminated), buffer size must be at least 32 (warning user buffer not null terminated)
+// if buffer == NULL returns internal buffer, buffer size must be at least 33
 HASH_INLINE const char* hash_md5_hexdigest(const Hash_MD5 m, char* buffer)
 {
-    if (!m->finalized)
-        return "";
-
-    static char hex[HASH_MD5_BUFFER_SIZE+1];
+    static char hex[HASH_MD5_SIZE+1];
     char* buf = buffer == NULL ? hex : buffer;
     for (int i = 0; i < 16; i++)
-        sprintf(buf + i * 2, "%02x", m->digest[i]);
-    if (buffer == NULL)
-        buf[HASH_MD5_BUFFER_SIZE] = 0;
+    {
+        snprintf(&buf[i * 2], HASH_MD5_SIZE+1, "%02x", m->digest[i]);
+    }
     return buf;
 }
 
 
-// if buffer == NULL returns internal buffer (null terminated), buffer size must be at least 32 (warning user buffer not null terminated)
+// if buffer == NULL returns internal buffer, buffer size must be at least 33
 HASH_INLINE const char* hash_md5_binary(const char* str, size_t size, char* buffer)
 {
     Hash_MD5 m;
@@ -1427,18 +1419,18 @@ HASH_INLINE void hash_private_sha3_keccakf(uint64_t s[25])
     };
 
     static const uint64_t keccakf_rndc[24] = {
-        0x0000000000000001ULL, 0x0000000000008082ULL,
-        0x800000000000808aULL, 0x8000000080008000ULL,
-        0x000000000000808bULL, 0x0000000080000001ULL,
-        0x8000000080008081ULL, 0x8000000000008009ULL,
-        0x000000000000008aULL, 0x0000000000000088ULL,
-        0x0000000080008009ULL, 0x000000008000000aULL,
-        0x000000008000808bULL, 0x800000000000008bULL,
-        0x8000000000008089ULL, 0x8000000000008003ULL,
-        0x8000000000008002ULL, 0x8000000000000080ULL,
-        0x000000000000800aULL, 0x800000008000000aULL,
-        0x8000000080008081ULL, 0x8000000000008080ULL,
-        0x0000000080000001ULL, 0x8000000080008008ULL
+       UINT64_C(0x0000000000000001), UINT64_C(0x0000000000008082),
+       UINT64_C(0x800000000000808a), UINT64_C(0x8000000080008000),
+       UINT64_C(0x000000000000808b), UINT64_C(0x0000000080000001),
+       UINT64_C(0x8000000080008081), UINT64_C(0x8000000000008009),
+       UINT64_C(0x000000000000008a), UINT64_C(0x0000000000000088),
+       UINT64_C(0x0000000080008009), UINT64_C(0x000000008000000a),
+       UINT64_C(0x000000008000808b), UINT64_C(0x800000000000008b),
+       UINT64_C(0x8000000000008089), UINT64_C(0x8000000000008003),
+       UINT64_C(0x8000000000008002), UINT64_C(0x8000000000000080),
+       UINT64_C(0x000000000000800a), UINT64_C(0x800000008000000a),
+       UINT64_C(0x8000000080008081), UINT64_C(0x8000000000008080),
+       UINT64_C(0x0000000080000001), UINT64_C(0x8000000080008008)
     };
 
 
@@ -1579,28 +1571,27 @@ HASH_INLINE void hash_private_sha3_finalize(Hash_Private_Sha3* s)
 
     s->u.s[s->wordIndex] ^= s->saved ^ t;
 
-    s->u.s[HASH_PRIVATE_KECCAK_SPONGE_WORDS - hash_private_sha3_cw(s->capacityWords) - 1] ^= 0x8000000000000000ULL;
+    s->u.s[HASH_PRIVATE_KECCAK_SPONGE_WORDS - hash_private_sha3_cw(s->capacityWords) - 1] ^= UINT64_C(0x8000000000000000);
     hash_private_sha3_keccakf(s->u.s);
 
     // This conversion is not needed for little-endian platforms
-    #if defined(__BYTE_ORDER) && __BYTE_ORDER == __BIG_ENDIAN || defined(__BIG_ENDIAN__)
+    if (!hash_util_is_little_endian())
+    {
+        uint32_t i;
+        for(i = 0; i < HASH_PRIVATE_KECCAK_SPONGE_WORDS; i++)
         {
-            unsigned i;
-            for(i = 0; i < HASH_PRIVATE_KECCAK_SPONGE_WORDS; i++)
-            {
-                const unsigned t1 = (uint32_t) s->u.s[i];
-                const unsigned t2 = (uint32_t) ((s->u.s[i] >> 16) >> 16);
-                s->u.sb[i * 8 + 0] = (uint8_t) (t1);
-                s->u.sb[i * 8 + 1] = (uint8_t) (t1 >> 8);
-                s->u.sb[i * 8 + 2] = (uint8_t) (t1 >> 16);
-                s->u.sb[i * 8 + 3] = (uint8_t) (t1 >> 24);
-                s->u.sb[i * 8 + 4] = (uint8_t) (t2);
-                s->u.sb[i * 8 + 5] = (uint8_t) (t2 >> 8);
-                s->u.sb[i * 8 + 6] = (uint8_t) (t2 >> 16);
-                s->u.sb[i * 8 + 7] = (uint8_t) (t2 >> 24);
-            }
+            const uint32_t t1 = (uint32_t) s->u.s[i];
+            const uint32_t t2 = (uint32_t) ((s->u.s[i] >> 16) >> 16);
+            s->u.sb[i * 8 + 0] = (uint8_t) (t1);
+            s->u.sb[i * 8 + 1] = (uint8_t) (t1 >> 8);
+            s->u.sb[i * 8 + 2] = (uint8_t) (t1 >> 16);
+            s->u.sb[i * 8 + 3] = (uint8_t) (t1 >> 24);
+            s->u.sb[i * 8 + 4] = (uint8_t) (t2);
+            s->u.sb[i * 8 + 5] = (uint8_t) (t2 >> 8);
+            s->u.sb[i * 8 + 6] = (uint8_t) (t2 >> 16);
+            s->u.sb[i * 8 + 7] = (uint8_t) (t2 >> 24);
         }
-    #endif
+    }
 }
 
 
@@ -1626,21 +1617,19 @@ HASH_INLINE void hash_sha3_224_finalize(Hash_Sha3_224 s)
     hash_private_sha3_finalize(s);
 }
 
-// if buffer == NULL returns internal buffer (null terminated), buffer size must be at least 56 (warning user buffer not null terminated)
+// if buffer == NULL returns internal buffer, buffer size must be at least 57
 HASH_INLINE const char* hash_sha3_224_hexdigest(const Hash_Sha3_224 s, char* buffer)
 {
-    static char hex[HASH_SHA3_224_BUFFER_SIZE+1];
+    static char hex[HASH_SHA3_224_SIZE+1];
     char* buff = buffer == NULL ? hex : buffer;
-    for (size_t i = 0; i < HASH_SHA3_224_BUFFER_SIZE/2; i++)
+    for (size_t i = 0; i < HASH_SHA3_224_SIZE/2; i++)
     {
-        sprintf(&buff[i*2], "%02" PRIx32, (uint32_t)((uint8_t*)s->u.s)[i]);
+        snprintf(&buff[i*2], HASH_SHA3_224_SIZE+1, "%02" PRIx32, (uint32_t)((uint8_t*)s->u.s)[i]);
     }
-    if (buffer == NULL)
-        buff[HASH_SHA3_224_BUFFER_SIZE] = 0;
     return buff;
 }
 
-// if buffer == NULL returns internal buffer (null terminated), buffer size must be at least 56 (warning user buffer not null terminated)
+// if buffer == NULL returns internal buffer, buffer size must be at least 57
 HASH_INLINE const char* hash_sha3_224_binary(const char* str, size_t size, char* buffer)
 {
     Hash_Sha3_224 s;
@@ -1695,21 +1684,19 @@ HASH_INLINE void hash_sha3_256_finalize(Hash_Sha3_256 s)
     hash_private_sha3_finalize(s);
 }
 
-// if buffer == NULL returns internal buffer (null terminated), buffer size must be at least 64 (warning user buffer not null terminated)
+// if buffer == NULL returns internal buffer, buffer size must be at least 65
 HASH_INLINE const char* hash_sha3_256_hexdigest(const Hash_Sha3_256 s, char* buffer)
 {
-    static char hex[HASH_SHA3_256_BUFFER_SIZE+1];
+    static char hex[HASH_SHA3_256_SIZE+1];
     char* buff = buffer == NULL ? hex : buffer;
-    for (size_t i = 0; i < HASH_SHA3_256_BUFFER_SIZE/2; i++)
+    for (size_t i = 0; i < HASH_SHA3_256_SIZE/2; i++)
     {
-        sprintf(&buff[i*2], "%02" PRIx32, (uint32_t)((uint8_t*)s->u.s)[i]);
+        snprintf(&buff[i*2], HASH_SHA3_256_SIZE+1, "%02" PRIx32, (uint32_t)((uint8_t*)s->u.s)[i]);
     }
-    if (buffer == NULL)
-        buff[HASH_SHA3_256_BUFFER_SIZE] = 0;
     return buff;
 }
 
-// if buffer == NULL returns internal buffer (null terminated), buffer size must be at least 64 (warning user buffer not null terminated)
+// if buffer == NULL returns internal buffer, buffer size must be at least 65
 HASH_INLINE const char* hash_sha3_256_binary(const char* str, size_t size, char* buffer)
 {
     Hash_Sha3_256 s;
@@ -1764,21 +1751,19 @@ HASH_INLINE void hash_sha3_384_finalize(Hash_Sha3_384 s)
     hash_private_sha3_finalize(s);
 }
 
-// if buffer == NULL returns internal buffer (null terminated), buffer size must be at least 96 (warning user buffer not null terminated)
+// if buffer == NULL returns internal buffer, buffer size must be at least 97
 HASH_INLINE const char* hash_sha3_384_hexdigest(const Hash_Sha3_384 s, char* buffer)
 {
-    static char hex[HASH_SHA3_384_BUFFER_SIZE+1];
+    static char hex[HASH_SHA3_384_SIZE+1];
     char* buff = buffer == NULL ? hex : buffer;
-    for (size_t i = 0; i < HASH_SHA3_384_BUFFER_SIZE/2; i++)
+    for (size_t i = 0; i < HASH_SHA3_384_SIZE/2; i++)
     {
-        sprintf(&buff[i*2], "%02" PRIx32, (uint32_t)((uint8_t*)s->u.s)[i]);
+        snprintf(&buff[i*2], HASH_SHA3_384_SIZE+1, "%02" PRIx32, (uint32_t)((uint8_t*)s->u.s)[i]);
     }
-    if (buffer == NULL)
-        buff[HASH_SHA3_384_BUFFER_SIZE] = 0;
     return buff;
 }
 
-// if buffer == NULL returns internal buffer (null terminated), buffer size must be at least 96 (warning user buffer not null terminated)
+// if buffer == NULL returns internal buffer, buffer size must be at least 97
 HASH_INLINE const char* hash_sha3_384_binary(const char* str, size_t size, char* buffer)
 {
     Hash_Sha3_384 s;
@@ -1833,21 +1818,19 @@ HASH_INLINE void hash_sha3_512_finalize(Hash_Sha3_512 s)
     hash_private_sha3_finalize(s);
 }
 
-// if buffer == NULL returns internal buffer (null terminated), buffer size must be at least 128 (warning user buffer not null terminated)
+// if buffer == NULL returns internal buffer, buffer size must be at least 129
 HASH_INLINE const char* hash_sha3_512_hexdigest(const Hash_Sha3_512 s, char* buffer)
 {
-    static char hex[HASH_SHA3_512_BUFFER_SIZE+1];
+    static char hex[HASH_SHA3_512_SIZE+1];
     char* buff = buffer == NULL ? hex : buffer;
-    for (size_t i = 0; i < HASH_SHA3_512_BUFFER_SIZE/2; i++)
+    for (size_t i = 0; i < HASH_SHA3_512_SIZE/2; i++)
     {
-        sprintf(&buff[i*2], "%02" PRIx32, (uint32_t)((uint8_t*)s->u.s)[i]);
+        snprintf(&buff[i*2], HASH_SHA3_512_SIZE+1, "%02" PRIx32, (uint32_t)((uint8_t*)s->u.s)[i]);
     }
-    if (buffer == NULL)
-        buff[HASH_SHA3_512_BUFFER_SIZE] = 0;
     return buff;
 }
 
-// if buffer == NULL returns internal buffer (null terminated), buffer size must be at least 128 (warning user buffer not null terminated)
+// if buffer == NULL returns internal buffer, buffer size must be at least 129
 HASH_INLINE const char* hash_sha3_512_binary(const char* str, size_t size, char* buffer)
 {
     Hash_Sha3_512 s;
@@ -1933,11 +1916,11 @@ namespace Hash
                 return std::string();
 
             Hasher hasher;
-            char buffer[4096];
+            char buffer[HASH_FILE_READ_BUFFER_SIZE];
 
             do
             {
-                file.read(buffer, 4069);
+                file.read(buffer, HASH_FILE_READ_BUFFER_SIZE);
                 hasher.Update(buffer, file.gcount());
             } while (file.gcount() > 0);
 
@@ -2005,7 +1988,7 @@ namespace Hash
             return *(char*)&num == 1;
         }
 
-        template <typename T> constexpr T RightRotate(T n, unsigned int c)
+        template <typename T> constexpr T RightRotate(T n, std::size_t c)
         {
             //const unsigned int mask = (CHAR_BIT * sizeof(n) - 1); // doesn't loose bits
             //c &= mask;
@@ -2013,7 +1996,7 @@ namespace Hash
             return (n >> c) | (n << (std::numeric_limits<T>::digits - c));
         }
 
-        template <typename T> constexpr T LeftRotate(T n, unsigned int c)
+        template <typename T> constexpr T LeftRotate(T n, std::size_t c)
         {
             //const unsigned int mask = (CHAR_BIT * sizeof(n) - 1); // doesn't loose bits
             //c &= mask;
@@ -2035,27 +2018,27 @@ namespace Hash
         // FracPartsSqareRoots
         uint32_t m_H[8] =
         {
-            0x6a09e667,
-            0xbb67ae85,
-            0x3c6ef372,
-            0xa54ff53a,
-            0x510e527f,
-            0x9b05688c,
-            0x1f83d9ab,
-            0x5be0cd19
+           UINT32_C(0x6a09e667),
+           UINT32_C(0xbb67ae85),
+           UINT32_C(0x3c6ef372),
+           UINT32_C(0xa54ff53a),
+           UINT32_C(0x510e527f),
+           UINT32_C(0x9b05688c),
+           UINT32_C(0x1f83d9ab),
+           UINT32_C(0x5be0cd19)
         };
     private:
         // FracPartsCubeRoots
         static constexpr uint32_t s_K[64] =
         {
-            0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
-            0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
-            0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
-            0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
-            0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
-            0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
-            0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
-            0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+            UINT32_C(0x428a2f98), UINT32_C(0x71374491), UINT32_C(0xb5c0fbcf), UINT32_C(0xe9b5dba5), UINT32_C(0x3956c25b), UINT32_C(0x59f111f1), UINT32_C(0x923f82a4), UINT32_C(0xab1c5ed5),
+            UINT32_C(0xd807aa98), UINT32_C(0x12835b01), UINT32_C(0x243185be), UINT32_C(0x550c7dc3), UINT32_C(0x72be5d74), UINT32_C(0x80deb1fe), UINT32_C(0x9bdc06a7), UINT32_C(0xc19bf174),
+            UINT32_C(0xe49b69c1), UINT32_C(0xefbe4786), UINT32_C(0x0fc19dc6), UINT32_C(0x240ca1cc), UINT32_C(0x2de92c6f), UINT32_C(0x4a7484aa), UINT32_C(0x5cb0a9dc), UINT32_C(0x76f988da),
+            UINT32_C(0x983e5152), UINT32_C(0xa831c66d), UINT32_C(0xb00327c8), UINT32_C(0xbf597fc7), UINT32_C(0xc6e00bf3), UINT32_C(0xd5a79147), UINT32_C(0x06ca6351), UINT32_C(0x14292967),
+            UINT32_C(0x27b70a85), UINT32_C(0x2e1b2138), UINT32_C(0x4d2c6dfc), UINT32_C(0x53380d13), UINT32_C(0x650a7354), UINT32_C(0x766a0abb), UINT32_C(0x81c2c92e), UINT32_C(0x92722c85),
+            UINT32_C(0xa2bfe8a1), UINT32_C(0xa81a664b), UINT32_C(0xc24b8b70), UINT32_C(0xc76c51a3), UINT32_C(0xd192e819), UINT32_C(0xd6990624), UINT32_C(0xf40e3585), UINT32_C(0x106aa070),
+            UINT32_C(0x19a4c116), UINT32_C(0x1e376c08), UINT32_C(0x2748774c), UINT32_C(0x34b0bcb5), UINT32_C(0x391c0cb3), UINT32_C(0x4ed8aa4a), UINT32_C(0x5b9cca4f), UINT32_C(0x682e6ff3),
+            UINT32_C(0x748f82ee), UINT32_C(0x78a5636f), UINT32_C(0x84c87814), UINT32_C(0x8cc70208), UINT32_C(0x90befffa), UINT32_C(0xa4506ceb), UINT32_C(0xbef9a3f7), UINT32_C(0xc67178f2)
         };
     private:
         inline void Compress(const uint32_t* const w)
@@ -2170,9 +2153,12 @@ namespace Hash
 
         inline virtual std::string Hexdigest() const
         {
-            std::stringstream stream;
-            stream << std::hex << std::setfill('0') << std::setw(8) << m_H[0] << std::setw(8) << m_H[1] << std::setw(8) << m_H[2] << std::setw(8) << m_H[3] << std::setw(8) << m_H[4] << std::setw(8) << m_H[5] << std::setw(8) << m_H[6] << std::setw(8) << m_H[7];
-            return stream.str();
+            char buff[Size+1];
+            for (size_t i = 0; i < 8; ++i)
+            {
+                snprintf(&buff[i * 8], Size+1, "%08" PRIx32, m_H[i]);
+            }
+            return std::string(buff);
         }
     };
 
@@ -2199,12 +2185,15 @@ namespace Hash
     public:
         static constexpr size_t Size = 56;
     public:
-        Sha224() : Sha256(0xC1059ED8, 0x367CD507, 0x3070DD17, 0xF70E5939, 0xFFC00B31, 0x68581511, 0x64F98FA7, 0xBEFA4FA4) {}
+        Sha224() : Sha256(UINT32_C(0xC1059ED8), UINT32_C(0x367CD507), UINT32_C(0x3070DD17), UINT32_C(0xF70E5939), UINT32_C(0xFFC00B31), UINT32_C(0x68581511), UINT32_C(0x64F98FA7), UINT32_C(0xBEFA4FA4)) {}
         inline std::string Hexdigest() const override
         {
-            std::stringstream stream;
-            stream << std::hex << std::setfill('0') << std::setw(8) << m_H[0] << std::setw(8) << m_H[1] << std::setw(8) << m_H[2] << std::setw(8) << m_H[3] << std::setw(8) << m_H[4] << std::setw(8) << m_H[5] << std::setw(8) << m_H[6];
-            return stream.str();
+            char buff[Size+1];
+            for (size_t i = 0; i < 7; ++i)
+            {
+                snprintf(&buff[i * 8], Size+1, "%08" PRIx32, m_H[i]);
+            }
+            return std::string(buff);
         }
     };
 
@@ -2237,35 +2226,35 @@ namespace Hash
     protected:
         uint64_t m_H[8] =
         {
-            0x6a09e667f3bcc908,
-            0xbb67ae8584caa73b,
-            0x3c6ef372fe94f82b,
-            0xa54ff53a5f1d36f1,
-            0x510e527fade682d1,
-            0x9b05688c2b3e6c1f,
-            0x1f83d9abfb41bd6b,
-            0x5be0cd19137e2179
+            UINT64_C(0x6a09e667f3bcc908),
+            UINT64_C(0xbb67ae8584caa73b),
+            UINT64_C(0x3c6ef372fe94f82b),
+            UINT64_C(0xa54ff53a5f1d36f1),
+            UINT64_C(0x510e527fade682d1),
+            UINT64_C(0x9b05688c2b3e6c1f),
+            UINT64_C(0x1f83d9abfb41bd6b),
+            UINT64_C(0x5be0cd19137e2179)
         };
     private:
         // round constants
         static constexpr uint64_t s_K[80] =
         {
-            0x428a2f98d728ae22, 0x7137449123ef65cd, 0xb5c0fbcfec4d3b2f, 0xe9b5dba58189dbbc, 0x3956c25bf348b538,
-            0x59f111f1b605d019, 0x923f82a4af194f9b, 0xab1c5ed5da6d8118, 0xd807aa98a3030242, 0x12835b0145706fbe,
-            0x243185be4ee4b28c, 0x550c7dc3d5ffb4e2, 0x72be5d74f27b896f, 0x80deb1fe3b1696b1, 0x9bdc06a725c71235,
-            0xc19bf174cf692694, 0xe49b69c19ef14ad2, 0xefbe4786384f25e3, 0x0fc19dc68b8cd5b5, 0x240ca1cc77ac9c65,
-            0x2de92c6f592b0275, 0x4a7484aa6ea6e483, 0x5cb0a9dcbd41fbd4, 0x76f988da831153b5, 0x983e5152ee66dfab,
-            0xa831c66d2db43210, 0xb00327c898fb213f, 0xbf597fc7beef0ee4, 0xc6e00bf33da88fc2, 0xd5a79147930aa725,
-            0x06ca6351e003826f, 0x142929670a0e6e70, 0x27b70a8546d22ffc, 0x2e1b21385c26c926, 0x4d2c6dfc5ac42aed,
-            0x53380d139d95b3df, 0x650a73548baf63de, 0x766a0abb3c77b2a8, 0x81c2c92e47edaee6, 0x92722c851482353b,
-            0xa2bfe8a14cf10364, 0xa81a664bbc423001, 0xc24b8b70d0f89791, 0xc76c51a30654be30, 0xd192e819d6ef5218,
-            0xd69906245565a910, 0xf40e35855771202a, 0x106aa07032bbd1b8, 0x19a4c116b8d2d0c8, 0x1e376c085141ab53,
-            0x2748774cdf8eeb99, 0x34b0bcb5e19b48a8, 0x391c0cb3c5c95a63, 0x4ed8aa4ae3418acb, 0x5b9cca4f7763e373,
-            0x682e6ff3d6b2b8a3, 0x748f82ee5defb2fc, 0x78a5636f43172f60, 0x84c87814a1f0ab72, 0x8cc702081a6439ec,
-            0x90befffa23631e28, 0xa4506cebde82bde9, 0xbef9a3f7b2c67915, 0xc67178f2e372532b, 0xca273eceea26619c,
-            0xd186b8c721c0c207, 0xeada7dd6cde0eb1e, 0xf57d4f7fee6ed178, 0x06f067aa72176fba, 0x0a637dc5a2c898a6,
-            0x113f9804bef90dae, 0x1b710b35131c471b, 0x28db77f523047d84, 0x32caab7b40c72493, 0x3c9ebe0a15c9bebc,
-            0x431d67c49c100d4c, 0x4cc5d4becb3e42b6, 0x597f299cfc657e2a, 0x5fcb6fab3ad6faec, 0x6c44198c4a475817
+            UINT64_C(0x428a2f98d728ae22), UINT64_C(0x7137449123ef65cd), UINT64_C(0xb5c0fbcfec4d3b2f), UINT64_C(0xe9b5dba58189dbbc), UINT64_C(0x3956c25bf348b538),
+            UINT64_C(0x59f111f1b605d019), UINT64_C(0x923f82a4af194f9b), UINT64_C(0xab1c5ed5da6d8118), UINT64_C(0xd807aa98a3030242), UINT64_C(0x12835b0145706fbe),
+            UINT64_C(0x243185be4ee4b28c), UINT64_C(0x550c7dc3d5ffb4e2), UINT64_C(0x72be5d74f27b896f), UINT64_C(0x80deb1fe3b1696b1), UINT64_C(0x9bdc06a725c71235),
+            UINT64_C(0xc19bf174cf692694), UINT64_C(0xe49b69c19ef14ad2), UINT64_C(0xefbe4786384f25e3), UINT64_C(0x0fc19dc68b8cd5b5), UINT64_C(0x240ca1cc77ac9c65),
+            UINT64_C(0x2de92c6f592b0275), UINT64_C(0x4a7484aa6ea6e483), UINT64_C(0x5cb0a9dcbd41fbd4), UINT64_C(0x76f988da831153b5), UINT64_C(0x983e5152ee66dfab),
+            UINT64_C(0xa831c66d2db43210), UINT64_C(0xb00327c898fb213f), UINT64_C(0xbf597fc7beef0ee4), UINT64_C(0xc6e00bf33da88fc2), UINT64_C(0xd5a79147930aa725),
+            UINT64_C(0x06ca6351e003826f), UINT64_C(0x142929670a0e6e70), UINT64_C(0x27b70a8546d22ffc), UINT64_C(0x2e1b21385c26c926), UINT64_C(0x4d2c6dfc5ac42aed),
+            UINT64_C(0x53380d139d95b3df), UINT64_C(0x650a73548baf63de), UINT64_C(0x766a0abb3c77b2a8), UINT64_C(0x81c2c92e47edaee6), UINT64_C(0x92722c851482353b),
+            UINT64_C(0xa2bfe8a14cf10364), UINT64_C(0xa81a664bbc423001), UINT64_C(0xc24b8b70d0f89791), UINT64_C(0xc76c51a30654be30), UINT64_C(0xd192e819d6ef5218),
+            UINT64_C(0xd69906245565a910), UINT64_C(0xf40e35855771202a), UINT64_C(0x106aa07032bbd1b8), UINT64_C(0x19a4c116b8d2d0c8), UINT64_C(0x1e376c085141ab53),
+            UINT64_C(0x2748774cdf8eeb99), UINT64_C(0x34b0bcb5e19b48a8), UINT64_C(0x391c0cb3c5c95a63), UINT64_C(0x4ed8aa4ae3418acb), UINT64_C(0x5b9cca4f7763e373),
+            UINT64_C(0x682e6ff3d6b2b8a3), UINT64_C(0x748f82ee5defb2fc), UINT64_C(0x78a5636f43172f60), UINT64_C(0x84c87814a1f0ab72), UINT64_C(0x8cc702081a6439ec),
+            UINT64_C(0x90befffa23631e28), UINT64_C(0xa4506cebde82bde9), UINT64_C(0xbef9a3f7b2c67915), UINT64_C(0xc67178f2e372532b), UINT64_C(0xca273eceea26619c),
+            UINT64_C(0xd186b8c721c0c207), UINT64_C(0xeada7dd6cde0eb1e), UINT64_C(0xf57d4f7fee6ed178), UINT64_C(0x06f067aa72176fba), UINT64_C(0x0a637dc5a2c898a6),
+            UINT64_C(0x113f9804bef90dae), UINT64_C(0x1b710b35131c471b), UINT64_C(0x28db77f523047d84), UINT64_C(0x32caab7b40c72493), UINT64_C(0x3c9ebe0a15c9bebc),
+            UINT64_C(0x431d67c49c100d4c), UINT64_C(0x4cc5d4becb3e42b6), UINT64_C(0x597f299cfc657e2a), UINT64_C(0x5fcb6fab3ad6faec), UINT64_C(0x6c44198c4a475817)
         };
     private:
         inline void Compress(const uint64_t* const w)
@@ -2390,9 +2379,12 @@ namespace Hash
 
         inline virtual std::string Hexdigest() const
         {
-            std::stringstream stream;
-            stream << std::hex << std::setfill('0') << std::setw(16) << m_H[0] << std::setw(16) << m_H[1] << std::setw(16) << m_H[2] << std::setw(16) << m_H[3] << std::setw(16) << m_H[4] << std::setw(16) << m_H[5] << std::setw(16) << m_H[6] << std::setw(16) << m_H[7];
-            return stream.str();
+            char buff[Size+1];
+            for (size_t i = 0; i < 8; ++i)
+            {
+                snprintf(&buff[i * 16], Size+1, "%016" PRIx64, m_H[i]);
+            }
+            return std::string(buff);
         }
     };
 
@@ -2424,7 +2416,7 @@ namespace Hash
             return Sha512::Hexdigest();
         }
     public:
-        inline explicit Sha512T(size_t t) : Sha512(0xcfac43c256196cad, 0x1ec20b20216f029e, 0x99cb56d75b315d8e, 0x00ea509ffab89354, 0xf4abf7da08432774, 0x3ea0cd298e9bc9ba, 0xba267c0e5ee418ce, 0xfe4568bcb6db84dc), m_T(t)
+        inline explicit Sha512T(size_t t) : Sha512(UINT64_C(0xcfac43c256196cad), UINT64_C(0x1ec20b20216f029e), UINT64_C(0x99cb56d75b315d8e), UINT64_C(0x00ea509ffab89354), UINT64_C(0xf4abf7da08432774), UINT64_C(0x3ea0cd298e9bc9ba), UINT64_C(0xba267c0e5ee418ce), UINT64_C(0xfe4568bcb6db84dc)), m_T(t)
         {
             assert(t != 384 && "t = 384 is not allowed use Sha384 instead!");
             assert(t >= 4 && t <= 2048 && "t must satisfy t >= 4 && t <= 2048!");
@@ -2508,12 +2500,15 @@ namespace Hash
     public:
         static constexpr std::size_t Size = 96;
     public:
-        Sha384() : Sha512(0xcbbb9d5dc1059ed8, 0x629a292a367cd507, 0x9159015a3070dd17, 0x152fecd8f70e5939, 0x67332667ffc00b31, 0x8eb44a8768581511, 0xdb0c2e0d64f98fa7, 0x47b5481dbefa4fa4) {}
+        Sha384() : Sha512(UINT64_C(0xcbbb9d5dc1059ed8), UINT64_C(0x629a292a367cd507), UINT64_C(0x9159015a3070dd17), UINT64_C(0x152fecd8f70e5939), UINT64_C(0x67332667ffc00b31), UINT64_C(0x8eb44a8768581511), UINT64_C(0xdb0c2e0d64f98fa7), UINT64_C(0x47b5481dbefa4fa4)) {}
         inline std::string Hexdigest() const override
         {
-            std::stringstream stream;
-            stream << std::hex << std::setfill('0') << std::setw(16) << m_H[0] << std::setw(16) << m_H[1] << std::setw(16) << m_H[2] << std::setw(16) << m_H[3] << std::setw(16) << m_H[4] << std::setw(16) << m_H[5];
-            return stream.str();
+            char buff[Size+1];
+            for (size_t i = 0; i < 6; ++i)
+            {
+                snprintf(&buff[i * 16], Size+1, "%016" PRIx64, m_H[i]);
+            }
+            return std::string(buff);
         }
     };
 
@@ -2547,11 +2542,11 @@ namespace Hash
 
         uint32_t m_H[5] =
         {
-            0x67452301,
-            0xEFCDAB89,
-            0x98BADCFE,
-            0x10325476,
-            0xC3D2E1F0
+            UINT32_C(0x67452301),
+            UINT32_C(0xEFCDAB89),
+            UINT32_C(0x98BADCFE),
+            UINT32_C(0x10325476),
+            UINT32_C(0xC3D2E1F0)
         };
     private:
         inline void Transform()
@@ -2584,23 +2579,23 @@ namespace Hash
                 if (i <= 19)
                 {
                     f = (b & c) | ((~b) & d);
-                    k = 0x5A827999;
+                    k = UINT32_C(0x5A827999);
                 }
                 else if (i >= 20 && i <= 39)
                 {
                     f = b ^ c ^ d;
-                    k = 0x6ED9EBA1;
+                    k = UINT32_C(0x6ED9EBA1);
                 }
                 else if (i >= 40 && i <= 59)
                 {
                     f = (b & c) | (b & d) | (c & d);
-                    k = 0x8F1BBCDC;
+                    k = UINT32_C(0x8F1BBCDC);
                 }
                 else
                     //else if (i >= 60 && i <= 79)
                 {
                     f = b ^ c ^ d;
-                    k = 0xCA62C1D6;
+                    k = UINT32_C(0xCA62C1D6);
                 }
 
                 const uint32_t tmp = Util::LeftRotate(a, 5) + f + e + k + w[i];
@@ -2665,9 +2660,12 @@ namespace Hash
 
         inline std::string Hexdigest() const
         {
-            std::stringstream stream;
-            stream << std::hex << std::setfill('0') << std::setw(8) << m_H[0] << std::setw(8) << m_H[1] << std::setw(8) << m_H[2] << std::setw(8) << m_H[3] << std::setw(8) << m_H[4];
-            return stream.str();
+            char buff[Size+1];
+            for (size_t i = 0; i < 5; ++i)
+            {
+                snprintf(&buff[i * 8], Size+1, "%08" PRIx32, m_H[i]);
+            }
+            return std::string(buff);
         }
     };
 
@@ -2735,37 +2733,30 @@ namespace Hash
     public:
         static constexpr std::size_t Size = 32;
     private:
-        typedef unsigned int size_type; // must be 32bit
-        typedef unsigned char uint1; //  8bit
-        typedef unsigned int uint4;  // 32bit
-        enum { blocksize = 64 }; // VC6 won't eat a const static int here
+        static constexpr std::size_t BlockSize = 64;
 
-        bool finalized;
-        uint1 buffer[blocksize]; // bytes that didn't fit in last 64 byte chunk
-        uint4 count[2];   // 64bit counter for number of bits (lo, hi)
-        uint4 state[4];   // digest so far
-        uint1 digest[16]; // the result
-
-        static_assert(sizeof(size_type) == 4, "MD5 requires unsigned int's to be 32 bit (4 bytes), try disabling MD5");
-        static_assert(sizeof(uint1) == 1, "MD5 requires unsigned char's to be 8 bit (1 byte), try disabling MD5");
+        uint8_t buffer[BlockSize]; // bytes that didn't fit in last 64 byte chunk
+        uint32_t count[2];         // 64bit counter for number of bits (lo, hi)
+        uint32_t state[4];         // digest so far
+        uint8_t digest[16];        // the result
     private:
         // Constants for MD5 Transform routine.
-        static constexpr uint4 S11 = 7;
-        static constexpr uint4 S12 = 12;
-        static constexpr uint4 S13 = 17;
-        static constexpr uint4 S14 = 22;
-        static constexpr uint4 S21 = 5;
-        static constexpr uint4 S22 = 9;
-        static constexpr uint4 S23 = 14;
-        static constexpr uint4 S24 = 20;
-        static constexpr uint4 S31 = 4;
-        static constexpr uint4 S32 = 11;
-        static constexpr uint4 S33 = 16;
-        static constexpr uint4 S34 = 23;
-        static constexpr uint4 S41 = 6;
-        static constexpr uint4 S42 = 10;
-        static constexpr uint4 S43 = 15;
-        static constexpr uint4 S44 = 21;
+        static constexpr uint32_t S11 = 7;
+        static constexpr uint32_t S12 = 12;
+        static constexpr uint32_t S13 = 17;
+        static constexpr uint32_t S14 = 22;
+        static constexpr uint32_t S21 = 5;
+        static constexpr uint32_t S22 = 9;
+        static constexpr uint32_t S23 = 14;
+        static constexpr uint32_t S24 = 20;
+        static constexpr uint32_t S31 = 4;
+        static constexpr uint32_t S32 = 11;
+        static constexpr uint32_t S33 = 16;
+        static constexpr uint32_t S34 = 23;
+        static constexpr uint32_t S41 = 6;
+        static constexpr uint32_t S42 = 10;
+        static constexpr uint32_t S43 = 15;
+        static constexpr uint32_t S44 = 21;
     public:
         // default ctor, just initailize
         MD5()
@@ -2779,14 +2770,14 @@ namespace Hash
         MD5(const std::string& text)
         {
             Init();
-            Update(text.c_str(), (size_type)text.length());
+            Update(text.c_str(), (uint32_t)text.length());
             Finalize();
         }
 
         MD5(std::string_view text)
         {
             Init();
-            Update(text.data(), (size_type)text.length());
+            Update(text.data(), (uint32_t)text.length());
             Finalize();
         }
 
@@ -2794,10 +2785,10 @@ namespace Hash
 
         // MD5 block update operation. Continues an Hash_MD5 message-digest
         // operation, processing another message block
-        void Update(const unsigned char input[], size_type length)
+        void Update(const uint8_t input[], uint32_t length)
         {
             // compute number of bytes mod 64
-            size_type index = count[0] / 8 % blocksize;
+            uint32_t index = count[0] / 8 % BlockSize;
 
             // Update number of bits
             if ((count[0] += (length << 3)) < (length << 3))
@@ -2805,9 +2796,9 @@ namespace Hash
             count[1] += (length >> 29);
 
             // number of bytes we need to fill in buffer
-            size_type firstpart = 64 - index;
+            uint32_t firstpart = 64 - index;
 
-            size_type i;
+            uint32_t i;
 
             // transform as many times as possible.
             if (length >= firstpart)
@@ -2817,7 +2808,7 @@ namespace Hash
                 Transform(buffer);
 
                 // transform chunks of blocksize (64 bytes)
-                for (i = firstpart; i + blocksize <= length; i += blocksize)
+                for (i = firstpart; i + BlockSize <= length; i += BlockSize)
                     Transform(&input[i]);
 
                 index = 0;
@@ -2832,52 +2823,46 @@ namespace Hash
         //////////////////////////////
 
         // for convenience provide a verson with signed char
-        inline void Update(const char input[], size_type length)
+        inline void Update(const char input[], uint32_t length)
         {
-            Update((const unsigned char*)input, length);
+            Update((const uint8_t*)input, length);
         }
 
         inline void Update(std::string_view data)
         {
-            Update((const unsigned char*)data.data(), data.size());
+            Update((const uint8_t*)data.data(), static_cast<uint32_t>(data.size()));
         }
 
         //////////////////////////////
 
         // MD5 finalization. Ends an MD5 message-digest operation, writing the
         // the message digest and zeroizing the context.
-        MD5& Finalize()
+        void Finalize()
         {
-            static const unsigned char padding[64] = {
+            static const uint8_t padding[64] = {
               0x80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
               0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
               0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
             };
 
-            if (!finalized) {
-                // Save number of bits
-                unsigned char bits[8];
-                Encode(bits, count, 8);
+            // Save number of bits
+            uint8_t bits[8];
+            Encode(bits, count, 8);
 
-                // pad out to 56 mod 64.
-                size_type index = count[0] / 8 % 64;
-                size_type padLen = (index < 56) ? (56 - index) : (120 - index);
-                Update(padding, padLen);
+            // pad out to 56 mod 64.
+            uint32_t index = count[0] / 8 % 64;
+            uint32_t padLen = (index < 56) ? (56 - index) : (120 - index);
+            Update(padding, padLen);
 
-                // Append length (before padding)
-                Update(bits, 8);
+            // Append length (before padding)
+            Update(bits, 8);
 
-                // Store state in digest
-                Encode(digest, state, 16);
+            // Store state in digest
+            Encode(digest, state, 16);
 
-                // Zeroize sensitive information.
-                memset(buffer, 0, sizeof buffer);
-                memset(count, 0, sizeof count);
-
-                finalized = true;
-            }
-
-            return *this;
+            // Zeroize sensitive information.
+            memset(buffer, 0, sizeof buffer);
+            memset(count, 0, sizeof count);
         }
 
         //////////////////////////////
@@ -2885,14 +2870,11 @@ namespace Hash
         // return hex representation of digest as string
         std::string Hexdigest() const
         {
-            if (!finalized)
-                return "";
-
-            char buf[33];
+            char buf[Size+1];
             for (int i = 0; i < 16; i++)
-                sprintf(buf + i * 2, "%02x", digest[i]);
-            buf[32] = 0;
-
+            {
+                snprintf(buf + i * 2, Size+1, "%02x", digest[i]);
+            }
             return std::string(buf);
         }
 
@@ -2900,97 +2882,95 @@ namespace Hash
     private:
         void Init()
         {
-            finalized = false;
-
             count[0] = 0;
             count[1] = 0;
 
             // load magic initialization constants.
-            state[0] = 0x67452301;
-            state[1] = 0xefcdab89;
-            state[2] = 0x98badcfe;
-            state[3] = 0x10325476;
+            state[0] = UINT32_C(0x67452301);
+            state[1] = UINT32_C(0xefcdab89);
+            state[2] = UINT32_C(0x98badcfe);
+            state[3] = UINT32_C(0x10325476);
         }
 
         //////////////////////////////
 
         // apply MD5 algo on a block
-        void Transform(const uint1 block[blocksize])
+        void Transform(const uint8_t block[BlockSize])
         {
-            uint4 a = state[0], b = state[1], c = state[2], d = state[3], x[16];
-            Decode(x, block, blocksize);
+            uint32_t a = state[0], b = state[1], c = state[2], d = state[3], x[16];
+            Decode(x, block, BlockSize);
 
             /* Round 1 */
-            FF(a, b, c, d, x[0], S11, 0xd76aa478); /* 1 */
-            FF(d, a, b, c, x[1], S12, 0xe8c7b756); /* 2 */
-            FF(c, d, a, b, x[2], S13, 0x242070db); /* 3 */
-            FF(b, c, d, a, x[3], S14, 0xc1bdceee); /* 4 */
-            FF(a, b, c, d, x[4], S11, 0xf57c0faf); /* 5 */
-            FF(d, a, b, c, x[5], S12, 0x4787c62a); /* 6 */
-            FF(c, d, a, b, x[6], S13, 0xa8304613); /* 7 */
-            FF(b, c, d, a, x[7], S14, 0xfd469501); /* 8 */
-            FF(a, b, c, d, x[8], S11, 0x698098d8); /* 9 */
-            FF(d, a, b, c, x[9], S12, 0x8b44f7af); /* 10 */
-            FF(c, d, a, b, x[10], S13, 0xffff5bb1); /* 11 */
-            FF(b, c, d, a, x[11], S14, 0x895cd7be); /* 12 */
-            FF(a, b, c, d, x[12], S11, 0x6b901122); /* 13 */
-            FF(d, a, b, c, x[13], S12, 0xfd987193); /* 14 */
-            FF(c, d, a, b, x[14], S13, 0xa679438e); /* 15 */
-            FF(b, c, d, a, x[15], S14, 0x49b40821); /* 16 */
+            a = FF(a, b, c, d, x[0],  S11, UINT32_C(0xd76aa478)); /* 1 */
+            d = FF(d, a, b, c, x[1],  S12, UINT32_C(0xe8c7b756)); /* 2 */
+            c = FF(c, d, a, b, x[2],  S13, UINT32_C(0x242070db)); /* 3 */
+            b = FF(b, c, d, a, x[3],  S14, UINT32_C(0xc1bdceee)); /* 4 */
+            a = FF(a, b, c, d, x[4],  S11, UINT32_C(0xf57c0faf)); /* 5 */
+            d = FF(d, a, b, c, x[5],  S12, UINT32_C(0x4787c62a)); /* 6 */
+            c = FF(c, d, a, b, x[6],  S13, UINT32_C(0xa8304613)); /* 7 */
+            b = FF(b, c, d, a, x[7],  S14, UINT32_C(0xfd469501)); /* 8 */
+            a = FF(a, b, c, d, x[8],  S11, UINT32_C(0x698098d8)); /* 9 */
+            d = FF(d, a, b, c, x[9],  S12, UINT32_C(0x8b44f7af)); /* 10 */
+            c = FF(c, d, a, b, x[10], S13, UINT32_C(0xffff5bb1)); /* 11 */
+            b = FF(b, c, d, a, x[11], S14, UINT32_C(0x895cd7be)); /* 12 */
+            a = FF(a, b, c, d, x[12], S11, UINT32_C(0x6b901122)); /* 13 */
+            d = FF(d, a, b, c, x[13], S12, UINT32_C(0xfd987193)); /* 14 */
+            c = FF(c, d, a, b, x[14], S13, UINT32_C(0xa679438e)); /* 15 */
+            b = FF(b, c, d, a, x[15], S14, UINT32_C(0x49b40821)); /* 16 */
 
             /* Round 2 */
-            GG(a, b, c, d, x[1], S21, 0xf61e2562); /* 17 */
-            GG(d, a, b, c, x[6], S22, 0xc040b340); /* 18 */
-            GG(c, d, a, b, x[11], S23, 0x265e5a51); /* 19 */
-            GG(b, c, d, a, x[0], S24, 0xe9b6c7aa); /* 20 */
-            GG(a, b, c, d, x[5], S21, 0xd62f105d); /* 21 */
-            GG(d, a, b, c, x[10], S22, 0x2441453); /* 22 */
-            GG(c, d, a, b, x[15], S23, 0xd8a1e681); /* 23 */
-            GG(b, c, d, a, x[4], S24, 0xe7d3fbc8); /* 24 */
-            GG(a, b, c, d, x[9], S21, 0x21e1cde6); /* 25 */
-            GG(d, a, b, c, x[14], S22, 0xc33707d6); /* 26 */
-            GG(c, d, a, b, x[3], S23, 0xf4d50d87); /* 27 */
-            GG(b, c, d, a, x[8], S24, 0x455a14ed); /* 28 */
-            GG(a, b, c, d, x[13], S21, 0xa9e3e905); /* 29 */
-            GG(d, a, b, c, x[2], S22, 0xfcefa3f8); /* 30 */
-            GG(c, d, a, b, x[7], S23, 0x676f02d9); /* 31 */
-            GG(b, c, d, a, x[12], S24, 0x8d2a4c8a); /* 32 */
+            a = GG(a, b, c, d, x[1],  S21, UINT32_C(0xf61e2562)); /* 17 */
+            d = GG(d, a, b, c, x[6],  S22, UINT32_C(0xc040b340)); /* 18 */
+            c = GG(c, d, a, b, x[11], S23, UINT32_C(0x265e5a51)); /* 19 */
+            b = GG(b, c, d, a, x[0],  S24, UINT32_C(0xe9b6c7aa)); /* 20 */
+            a = GG(a, b, c, d, x[5],  S21, UINT32_C(0xd62f105d)); /* 21 */
+            d = GG(d, a, b, c, x[10], S22, UINT32_C(0x02441453)); /* 22 */
+            c = GG(c, d, a, b, x[15], S23, UINT32_C(0xd8a1e681)); /* 23 */
+            b = GG(b, c, d, a, x[4],  S24, UINT32_C(0xe7d3fbc8)); /* 24 */
+            a = GG(a, b, c, d, x[9],  S21, UINT32_C(0x21e1cde6)); /* 25 */
+            d = GG(d, a, b, c, x[14], S22, UINT32_C(0xc33707d6)); /* 26 */
+            c = GG(c, d, a, b, x[3],  S23, UINT32_C(0xf4d50d87)); /* 27 */
+            b = GG(b, c, d, a, x[8],  S24, UINT32_C(0x455a14ed)); /* 28 */
+            a = GG(a, b, c, d, x[13], S21, UINT32_C(0xa9e3e905)); /* 29 */
+            d = GG(d, a, b, c, x[2],  S22, UINT32_C(0xfcefa3f8)); /* 30 */
+            c = GG(c, d, a, b, x[7],  S23, UINT32_C(0x676f02d9)); /* 31 */
+            b = GG(b, c, d, a, x[12], S24, UINT32_C(0x8d2a4c8a)); /* 32 */
 
             /* Round 3 */
-            HH(a, b, c, d, x[5], S31, 0xfffa3942); /* 33 */
-            HH(d, a, b, c, x[8], S32, 0x8771f681); /* 34 */
-            HH(c, d, a, b, x[11], S33, 0x6d9d6122); /* 35 */
-            HH(b, c, d, a, x[14], S34, 0xfde5380c); /* 36 */
-            HH(a, b, c, d, x[1], S31, 0xa4beea44); /* 37 */
-            HH(d, a, b, c, x[4], S32, 0x4bdecfa9); /* 38 */
-            HH(c, d, a, b, x[7], S33, 0xf6bb4b60); /* 39 */
-            HH(b, c, d, a, x[10], S34, 0xbebfbc70); /* 40 */
-            HH(a, b, c, d, x[13], S31, 0x289b7ec6); /* 41 */
-            HH(d, a, b, c, x[0], S32, 0xeaa127fa); /* 42 */
-            HH(c, d, a, b, x[3], S33, 0xd4ef3085); /* 43 */
-            HH(b, c, d, a, x[6], S34, 0x4881d05); /* 44 */
-            HH(a, b, c, d, x[9], S31, 0xd9d4d039); /* 45 */
-            HH(d, a, b, c, x[12], S32, 0xe6db99e5); /* 46 */
-            HH(c, d, a, b, x[15], S33, 0x1fa27cf8); /* 47 */
-            HH(b, c, d, a, x[2], S34, 0xc4ac5665); /* 48 */
+            a = HH(a, b, c, d, x[5],  S31, UINT32_C(0xfffa3942)); /* 33 */
+            d = HH(d, a, b, c, x[8],  S32, UINT32_C(0x8771f681)); /* 34 */
+            c = HH(c, d, a, b, x[11], S33, UINT32_C(0x6d9d6122)); /* 35 */
+            b = HH(b, c, d, a, x[14], S34, UINT32_C(0xfde5380c)); /* 36 */
+            a = HH(a, b, c, d, x[1],  S31, UINT32_C(0xa4beea44)); /* 37 */
+            d = HH(d, a, b, c, x[4],  S32, UINT32_C(0x4bdecfa9)); /* 38 */
+            c = HH(c, d, a, b, x[7],  S33, UINT32_C(0xf6bb4b60)); /* 39 */
+            b = HH(b, c, d, a, x[10], S34, UINT32_C(0xbebfbc70)); /* 40 */
+            a = HH(a, b, c, d, x[13], S31, UINT32_C(0x289b7ec6)); /* 41 */
+            d = HH(d, a, b, c, x[0],  S32, UINT32_C(0xeaa127fa)); /* 42 */
+            c = HH(c, d, a, b, x[3],  S33, UINT32_C(0xd4ef3085)); /* 43 */
+            b = HH(b, c, d, a, x[6],  S34, UINT32_C(0x04881d05)); /* 44 */
+            a = HH(a, b, c, d, x[9],  S31, UINT32_C(0xd9d4d039)); /* 45 */
+            d = HH(d, a, b, c, x[12], S32, UINT32_C(0xe6db99e5)); /* 46 */
+            c = HH(c, d, a, b, x[15], S33, UINT32_C(0x1fa27cf8)); /* 47 */
+            b = HH(b, c, d, a, x[2],  S34, UINT32_C(0xc4ac5665)); /* 48 */
 
             /* Round 4 */
-            II(a, b, c, d, x[0], S41, 0xf4292244); /* 49 */
-            II(d, a, b, c, x[7], S42, 0x432aff97); /* 50 */
-            II(c, d, a, b, x[14], S43, 0xab9423a7); /* 51 */
-            II(b, c, d, a, x[5], S44, 0xfc93a039); /* 52 */
-            II(a, b, c, d, x[12], S41, 0x655b59c3); /* 53 */
-            II(d, a, b, c, x[3], S42, 0x8f0ccc92); /* 54 */
-            II(c, d, a, b, x[10], S43, 0xffeff47d); /* 55 */
-            II(b, c, d, a, x[1], S44, 0x85845dd1); /* 56 */
-            II(a, b, c, d, x[8], S41, 0x6fa87e4f); /* 57 */
-            II(d, a, b, c, x[15], S42, 0xfe2ce6e0); /* 58 */
-            II(c, d, a, b, x[6], S43, 0xa3014314); /* 59 */
-            II(b, c, d, a, x[13], S44, 0x4e0811a1); /* 60 */
-            II(a, b, c, d, x[4], S41, 0xf7537e82); /* 61 */
-            II(d, a, b, c, x[11], S42, 0xbd3af235); /* 62 */
-            II(c, d, a, b, x[2], S43, 0x2ad7d2bb); /* 63 */
-            II(b, c, d, a, x[9], S44, 0xeb86d391); /* 64 */
+            a = II(a, b, c, d, x[0],  S41, UINT32_C(0xf4292244)); /* 49 */
+            d = II(d, a, b, c, x[7],  S42, UINT32_C(0x432aff97)); /* 50 */
+            c = II(c, d, a, b, x[14], S43, UINT32_C(0xab9423a7)); /* 51 */
+            b = II(b, c, d, a, x[5],  S44, UINT32_C(0xfc93a039)); /* 52 */
+            a = II(a, b, c, d, x[12], S41, UINT32_C(0x655b59c3)); /* 53 */
+            d = II(d, a, b, c, x[3],  S42, UINT32_C(0x8f0ccc92)); /* 54 */
+            c = II(c, d, a, b, x[10], S43, UINT32_C(0xffeff47d)); /* 55 */
+            b = II(b, c, d, a, x[1],  S44, UINT32_C(0x85845dd1)); /* 56 */
+            a = II(a, b, c, d, x[8],  S41, UINT32_C(0x6fa87e4f)); /* 57 */
+            d = II(d, a, b, c, x[15], S42, UINT32_C(0xfe2ce6e0)); /* 58 */
+            c = II(c, d, a, b, x[6],  S43, UINT32_C(0xa3014314)); /* 59 */
+            b = II(b, c, d, a, x[13], S44, UINT32_C(0x4e0811a1)); /* 60 */
+            a = II(a, b, c, d, x[4],  S41, UINT32_C(0xf7537e82)); /* 61 */
+            d = II(d, a, b, c, x[11], S42, UINT32_C(0xbd3af235)); /* 62 */
+            c = II(c, d, a, b, x[2],  S43, UINT32_C(0x2ad7d2bb)); /* 63 */
+            b = II(b, c, d, a, x[9],  S44, UINT32_C(0xeb86d391)); /* 64 */
 
             state[0] += a;
             state[1] += b;
@@ -3004,20 +2984,21 @@ namespace Hash
         //////////////////////////////
 
         // decodes input (unsigned char) into output (uint4). Assumes len is a multiple of 4.
-        inline void Decode(uint4 output[], const uint1 input[], size_type len)
+        inline void Decode(uint32_t output[], const uint8_t input[], uint32_t len)
         {
-            for (unsigned int i = 0, j = 0; j < len; i++, j += 4)
-                output[i] = ((uint4)input[j]) | (((uint4)input[j + 1]) << 8) |
-                (((uint4)input[j + 2]) << 16) | (((uint4)input[j + 3]) << 24);
+            for (uint32_t i = 0, j = 0; j < len; i++, j += 4)
+                output[i] = ((uint32_t)input[j]) | (((uint32_t)input[j + 1]) << 8) |
+                (((uint32_t)input[j + 2]) << 16) | (((uint32_t)input[j + 3]) << 24);
         }
 
         //////////////////////////////
 
         // encodes input (uint4) into output (unsigned char). Assumes len is
         // a multiple of 4.
-        inline void Encode(uint1 output[], const uint4 input[], size_type len)
+        inline void Encode(uint8_t output[], const uint32_t input[], uint32_t len)
         {
-            for (size_type i = 0, j = 0; j < len; i++, j += 4) {
+            for (uint32_t i = 0, j = 0; j < len; i++, j += 4)
+            {
                 output[j] = input[i] & 0xff;
                 output[j + 1] = (input[i] >> 8) & 0xff;
                 output[j + 2] = (input[i] >> 16) & 0xff;
@@ -3030,44 +3011,47 @@ namespace Hash
         // low level logic operations
         ///////////////////////////////////////////////
         // F, G, H and I are basic Hash_MD5 functions.
-        inline uint4 F(uint4 x, uint4 y, uint4 z) {
+        inline uint32_t F(uint32_t x, uint32_t y, uint32_t z)
+        {
             return (x & y) | (~x & z);
         }
 
-        inline uint4 G(uint4 x, uint4 y, uint4 z) {
+        inline uint32_t G(uint32_t x, uint32_t y, uint32_t z)
+        {
             return (x & z) | (y & ~z);
         }
 
-        inline uint4 H(uint4 x, uint4 y, uint4 z) {
+        inline uint32_t H(uint32_t x, uint32_t y, uint32_t z)
+        {
             return x ^ y ^ z;
         }
 
-        inline uint4 I(uint4 x, uint4 y, uint4 z) {
+        inline uint32_t I(uint32_t x, uint32_t y, uint32_t z)
+        {
             return y ^ (x | ~z);
-        }
-
-        // rotate_left rotates x left n bits.
-        inline uint4 rotate_left(uint4 x, int n) {
-            return (x << n) | (x >> (32 - n));
         }
 
 
         // FF, GG, HH, and II transformations for rounds 1, 2, 3, and 4.
         // Rotation is separate from addition to prevent recomputation.
-        inline void FF(uint4& a, uint4 b, uint4 c, uint4 d, uint4 x, uint4 s, uint4 ac) {
-            a = rotate_left(a + F(b, c, d) + x + ac, s) + b;
+        inline uint32_t FF(uint32_t a, uint32_t b, uint32_t c, uint32_t d, uint32_t x, uint32_t s, uint32_t ac)
+        {
+            return Util::LeftRotate<uint32_t>(a + F(b, c, d) + x + ac, s) + b;
         }
 
-        inline void GG(uint4& a, uint4 b, uint4 c, uint4 d, uint4 x, uint4 s, uint4 ac) {
-            a = rotate_left(a + G(b, c, d) + x + ac, s) + b;
+        inline uint32_t GG(uint32_t a, uint32_t b, uint32_t c, uint32_t d, uint32_t x, uint32_t s, uint32_t ac)
+        {
+            return Util::LeftRotate<uint32_t>(a + G(b, c, d) + x + ac, s) + b;
         }
 
-        inline void HH(uint4& a, uint4 b, uint4 c, uint4 d, uint4 x, uint4 s, uint4 ac) {
-            a = rotate_left(a + H(b, c, d) + x + ac, s) + b;
+        inline uint32_t HH(uint32_t a, uint32_t b, uint32_t c, uint32_t d, uint32_t x, uint32_t s, uint32_t ac)
+        {
+            return Util::LeftRotate<uint32_t>(a + H(b, c, d) + x + ac, s) + b;
         }
 
-        inline void II(uint4& a, uint4 b, uint4 c, uint4 d, uint4 x, uint4 s, uint4 ac) {
-            a = rotate_left(a + I(b, c, d) + x + ac, s) + b;
+        inline uint32_t II(uint32_t a, uint32_t b, uint32_t c, uint32_t d, uint32_t x, uint32_t s, uint32_t ac)
+        {
+            return Util::LeftRotate<uint32_t>(a + I(b, c, d) + x + ac, s) + b;
         }
 
         //////////////////////////////////////////////
@@ -3089,7 +3073,7 @@ namespace Hash
     inline std::string md5(const char* str, std::size_t size)
     {
         MD5 md5;
-        md5.Update(str, size);
+        md5.Update(str, static_cast<uint32_t>(size));
         md5.Finalize();
         return md5.Hexdigest();
     }
@@ -3137,18 +3121,18 @@ namespace Hash
                 };
 
                 static constexpr uint64_t keccakf_rndc[24] = {
-                    0x0000000000000001ULL, 0x0000000000008082ULL,
-                    0x800000000000808aULL, 0x8000000080008000ULL,
-                    0x000000000000808bULL, 0x0000000080000001ULL,
-                    0x8000000080008081ULL, 0x8000000000008009ULL,
-                    0x000000000000008aULL, 0x0000000000000088ULL,
-                    0x0000000080008009ULL, 0x000000008000000aULL,
-                    0x000000008000808bULL, 0x800000000000008bULL,
-                    0x8000000000008089ULL, 0x8000000000008003ULL,
-                    0x8000000000008002ULL, 0x8000000000000080ULL,
-                    0x000000000000800aULL, 0x800000008000000aULL,
-                    0x8000000080008081ULL, 0x8000000000008080ULL,
-                    0x0000000080000001ULL, 0x8000000080008008ULL
+                    UINT64_C(0x0000000000000001), UINT64_C(0x0000000000008082),
+                    UINT64_C(0x800000000000808a), UINT64_C(0x8000000080008000),
+                    UINT64_C(0x000000000000808b), UINT64_C(0x0000000080000001),
+                    UINT64_C(0x8000000080008081), UINT64_C(0x8000000000008009),
+                    UINT64_C(0x000000000000008a), UINT64_C(0x0000000000000088),
+                    UINT64_C(0x0000000080008009), UINT64_C(0x000000008000000a),
+                    UINT64_C(0x000000008000808b), UINT64_C(0x800000000000008b),
+                    UINT64_C(0x8000000000008089), UINT64_C(0x8000000000008003),
+                    UINT64_C(0x8000000000008002), UINT64_C(0x8000000000000080),
+                    UINT64_C(0x000000000000800a), UINT64_C(0x800000008000000a),
+                    UINT64_C(0x8000000080008081), UINT64_C(0x8000000000008080),
+                    UINT64_C(0x0000000080000001), UINT64_C(0x8000000080008008)
                 };
 
 
@@ -3157,7 +3141,6 @@ namespace Hash
 
                 for(uint8_t round = 0; round < KeccakRounds; round++)
                 {
-
                     /* Theta */
                     for(uint8_t i = 0; i < 5; i++)
                         bc[i] = s[i] ^ s[i + 5] ^ s[i + 10] ^ s[i + 15] ^ s[i + 20];
@@ -3290,38 +3273,38 @@ namespace Hash
 
                 u.s[m_WordIndex] ^= m_Saved ^ t;
 
-                u.s[KeccakSpongeWords - CW(m_CapacityWords) - 1] ^= 0x8000000000000000ULL;
+                u.s[KeccakSpongeWords - CW(m_CapacityWords) - 1] ^= UINT64_C(0x8000000000000000);
                 keccakf(u.s);
 
                 // This conversion is not needed for little-endian platforms
-                #if defined(__BYTE_ORDER) && __BYTE_ORDER == __BIG_ENDIAN || defined(__BIG_ENDIAN__) || !HASH_KECCAK_LITTLE_ENDIAN
+                if (!Util::IsLittleEndian())
+                {
+                    uint32_t i;
+                    for(i = 0; i < KeccakSpongeWords; i++)
                     {
-                        unsigned i;
-                        for(i = 0; i < KeccakSpongeWords; i++)
-                        {
-                            const unsigned t1 = (uint32_t) u.s[i];
-                            const unsigned t2 = (uint32_t) ((u.s[i] >> 16) >> 16);
-                            u.sb[i * 8 + 0] = (uint8_t) (t1);
-                            u.sb[i * 8 + 1] = (uint8_t) (t1 >> 8);
-                            u.sb[i * 8 + 2] = (uint8_t) (t1 >> 16);
-                            u.sb[i * 8 + 3] = (uint8_t) (t1 >> 24);
-                            u.sb[i * 8 + 4] = (uint8_t) (t2);
-                            u.sb[i * 8 + 5] = (uint8_t) (t2 >> 8);
-                            u.sb[i * 8 + 6] = (uint8_t) (t2 >> 16);
-                            u.sb[i * 8 + 7] = (uint8_t) (t2 >> 24);
-                        }
+                        const uint32_t t1 = (uint32_t) u.s[i];
+                        const uint32_t t2 = (uint32_t) ((u.s[i] >> 16) >> 16);
+                        u.sb[i * 8 + 0] = (uint8_t) (t1);
+                        u.sb[i * 8 + 1] = (uint8_t) (t1 >> 8);
+                        u.sb[i * 8 + 2] = (uint8_t) (t1 >> 16);
+                        u.sb[i * 8 + 3] = (uint8_t) (t1 >> 24);
+                        u.sb[i * 8 + 4] = (uint8_t) (t2);
+                        u.sb[i * 8 + 5] = (uint8_t) (t2 >> 8);
+                        u.sb[i * 8 + 6] = (uint8_t) (t2 >> 16);
+                        u.sb[i * 8 + 7] = (uint8_t) (t2 >> 24);
                     }
-                #endif
+                }
             }
 
 
             inline std::string Hexdigest() const
             {
-                std::stringstream stream;
-                stream << std::hex << std::setfill('0');
-                for(size_t i = 0; i < BitSize / 8; ++i)
-                    stream << std::setw(2) << (uint32_t)((unsigned char*)u.s)[i];
-                return stream.str();
+                char buff[Size+1];
+                for (size_t i = 0; i < Size/2; i++)
+                {
+                    snprintf(&buff[i*2], Size+1, "%02" PRIx32, (uint32_t)((uint8_t*)u.s)[i]);
+                }
+                return std::string(buff);
             }
         };
     } // namespace Private
