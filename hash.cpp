@@ -347,26 +347,6 @@ int hash_string(std::string_view str, Settings::HashFunction func, bool decorato
 }
 
 
-template <typename T>
-std::string hash_file_impl(const char* path)
-{
-    FILE* fp = fopen(path, "rb");
-    if (fp == NULL) return std::string();
-    
-    char buffer[4096] = { 0 };
-    size_t bytes_read = 0;
-    T hasher;
-
-    while((bytes_read = fread(buffer, sizeof(char), sizeof(buffer)-1, fp)))
-    {
-        hasher.Update(buffer, bytes_read);
-    }
-    fclose(fp);
-    hasher.Finalize();
-    return hasher.Hexdigest();
-}
-
-
 std::string hash_file(const char* path, Settings::HashFunction func)
 {
     switch (func)
