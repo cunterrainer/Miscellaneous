@@ -31,7 +31,7 @@
     either use the provided functions, all have the same scheme:
 
         Hash::sha256("Hello world"); // returns std::string
-        Hash::File::sha256("main.c", std::ios::binary);
+        Hash::File::HashFile<Hash::Sha256>("main.c"); // buffered file hash using std::ios::binary (Shake128, Shake256 and Sha512t are not buffered, Sha512<T> is buffered)
 
     or if you need to update the hash e.g. while reading chunks from a file (not for Shake128 and Shake256)
 
@@ -40,6 +40,7 @@
         s.Finalize();
         std::string hash = s.Hexdigest();
 */
+#include <iostream>
 #define HASH_ENABLE_MD5    1 // md5
 #define HASH_ENABLE_SHA1   1 // sha1
 #define HASH_ENABLE_SHA2   1 // sha224, sha256, sha384, sha512, sha512/t
@@ -58,6 +59,7 @@
 
 
 #if defined(__cplusplus) && HASH_ENABLE_CPP_INTERFACE == 1
+#include <ios>
 #include <string>
 #include <locale>
 #include <cstdio>
@@ -110,6 +112,31 @@ HASH_INLINE void hash_util_char_array_to_hex_string(unsigned char* data, size_t 
     out[k] = 0;
 }
 
+
+typedef void (*hash_util_init_func)(void*);
+typedef void (*hash_util_update_func)(void*, const char*, size_t);
+typedef void (*hash_util_finalize_func)(void*);
+typedef const char* (*hash_util_hexdigest_func)(void*, char*);
+HASH_INLINE const char* hash_util_hash_file(const char* path, const char* mode, void* hasher, char* out_buff, hash_util_init_func init_fn, hash_util_update_func update_fn, hash_util_finalize_func final_fn, hash_util_hexdigest_func hex_fn)
+{
+    FILE* fp = fopen(path, mode);
+    if (fp == NULL)
+        return "";
+    
+    char buffer[4096];
+    size_t bytes_read = 0;
+    init_fn(hasher);
+
+    while((bytes_read = fread(buffer, sizeof(char), sizeof(buffer)-1, fp)))
+    {
+        update_fn(hasher, buffer, bytes_read);
+    }
+    fclose(fp);
+    final_fn(hasher);
+    return hex_fn(hasher, out_buff);
+}
+
+
 HASH_INLINE char* hash_util_load_file(const char* path, const char* mode, long* fsize)
 {
     FILE* f = fopen(path, mode);
@@ -126,16 +153,6 @@ HASH_INLINE char* hash_util_load_file(const char* path, const char* mode, long* 
     return string;
 }
 
-HASH_INLINE const char* hash_util_hash_file(const char* path, const char* mode, const char* (*hashfunc)(const char*, size_t, char*), char* buffer)
-{
-    long fsize;
-    char* content = hash_util_load_file(path, mode, &fsize);
-    if (content == NULL) return "";
-    const char* hash = hashfunc(content, fsize, buffer);
-    if (content != NULL)
-        free(content);
-    return hash;
-}
 
 #define HASH_DEFINE_UTIL_SWAP_ENDIAN(type) \
     HASH_INLINE type hash_util_swap_endian_##type(type u) \
@@ -360,7 +377,8 @@ HASH_INLINE const char* hash_sha256(const char* str, char* buffer)
 
 HASH_INLINE const char* hash_sha256_file(const char* path, const char* mode, char* buffer)
 {
-    return hash_util_hash_file(path, mode, hash_sha256_binary, buffer);
+    Hash_Sha256 s;
+    return hash_util_hash_file(path, mode, s, buffer, (hash_util_init_func)hash_sha256_init, (hash_util_update_func)hash_sha256_update_binary, (hash_util_finalize_func)hash_sha256_finalize, (hash_util_hexdigest_func)hash_sha256_hexdigest);
 }
 
 HASH_INLINE const char* hash_sha256_easy(const char* str)
@@ -370,7 +388,7 @@ HASH_INLINE const char* hash_sha256_easy(const char* str)
 
 HASH_INLINE const char* hash_sha256_file_easy(const char* path, const char* mode)
 {
-    return hash_util_hash_file(path, mode, hash_sha256_binary, NULL);
+    return hash_sha256_file(path, mode, NULL);
 }
 // ===============================Hash_Sha256===================================
 
@@ -440,7 +458,8 @@ HASH_INLINE const char* hash_sha224(const char* str, char* buffer)
 
 HASH_INLINE const char* hash_sha224_file(const char* path, const char* mode, char* buffer)
 {
-    return hash_util_hash_file(path, mode, hash_sha224_binary, buffer);
+    Hash_Sha224 s;
+    return hash_util_hash_file(path, mode, s, buffer, (hash_util_init_func)hash_sha224_init, (hash_util_update_func)hash_sha224_update_binary, (hash_util_finalize_func)hash_sha224_finalize, (hash_util_hexdigest_func)hash_sha224_hexdigest);
 }
 
 HASH_INLINE const char* hash_sha224_easy(const char* str)
@@ -450,7 +469,7 @@ HASH_INLINE const char* hash_sha224_easy(const char* str)
 
 HASH_INLINE const char* hash_sha224_file_easy(const char* path, const char* mode)
 {
-    return hash_util_hash_file(path, mode, hash_sha224_binary, NULL);
+    return hash_sha224_file(path, mode, NULL);
 }
 // ===============================Hash_Sha224===================================
 
@@ -646,7 +665,8 @@ HASH_INLINE const char* hash_sha512(const char* str, char* buffer)
 
 HASH_INLINE const char* hash_sha512_file(const char* path, const char* mode, char* buffer)
 {
-    return hash_util_hash_file(path, mode, hash_sha512_binary, buffer);
+    Hash_Sha512 s;
+    return hash_util_hash_file(path, mode, s, buffer, (hash_util_init_func)hash_sha512_init, (hash_util_update_func)hash_sha512_update_binary, (hash_util_finalize_func)hash_sha512_finalize, (hash_util_hexdigest_func)hash_sha512_hexdigest);
 }
 
 HASH_INLINE const char* hash_sha512_easy(const char* str)
@@ -656,7 +676,7 @@ HASH_INLINE const char* hash_sha512_easy(const char* str)
 
 HASH_INLINE const char* hash_sha512_file_easy(const char* path, const char* mode)
 {
-    return hash_util_hash_file(path, mode, hash_sha512_binary, NULL);
+    return hash_sha512_file(path, mode, NULL);
 }
 // ===============================Hash_Sha512===================================
 
@@ -757,7 +777,7 @@ HASH_INLINE const char* hash_sha512t_file(size_t t, const char* path, const char
     char* content = hash_util_load_file(path, mode, &fsize);
     if (content == NULL) return "";
     const char* hash = hash_sha512t_binary(t, content, fsize, buffer);
-    if (content != NULL) free(content);
+    free(content);
     return hash;
 }
 
@@ -833,7 +853,8 @@ HASH_INLINE const char* hash_sha384(const char* str, char* buffer)
 
 HASH_INLINE const char* hash_sha384_file(const char* path, const char* mode, char* buffer)
 {
-    return hash_util_hash_file(path, mode, hash_sha384_binary, buffer);
+    Hash_Sha384 s;
+    return hash_util_hash_file(path, mode, s, buffer, (hash_util_init_func)hash_sha384_init, (hash_util_update_func)hash_sha384_update_binary, (hash_util_finalize_func)hash_sha384_finalize, (hash_util_hexdigest_func)hash_sha384_hexdigest);
 }
 
 HASH_INLINE const char* hash_sha384_easy(const char* str)
@@ -843,7 +864,7 @@ HASH_INLINE const char* hash_sha384_easy(const char* str)
 
 HASH_INLINE const char* hash_sha384_file_easy(const char* path, const char* mode)
 {
-    return hash_util_hash_file(path, mode, hash_sha384_binary, NULL);
+    return hash_sha384_file(path, mode, NULL);
 }
 // ===============================Hash_Sha384===================================
 #endif // HASH_ENABLE_SHA2
@@ -1013,7 +1034,8 @@ HASH_INLINE const char* hash_sha1(const char* str, char* buffer)
 
 HASH_INLINE const char* hash_sha1_file(const char* path, const char* mode, char* buffer)
 {
-    return hash_util_hash_file(path, mode, hash_sha1_binary, buffer);
+    Hash_Sha1 s;
+    return hash_util_hash_file(path, mode, s, buffer, (hash_util_init_func)hash_sha1_init, (hash_util_update_func)hash_sha1_update_binary, (hash_util_finalize_func)hash_sha1_finalize, (hash_util_hexdigest_func)hash_sha1_hexdigest);
 }
 
 HASH_INLINE const char* hash_sha1_easy(const char* str)
@@ -1023,7 +1045,7 @@ HASH_INLINE const char* hash_sha1_easy(const char* str)
 
 HASH_INLINE const char* hash_sha1_file_easy(const char* path, const char* mode)
 {
-    return hash_util_hash_file(path, mode, hash_sha1_binary, NULL);
+    return hash_sha1_file(path, mode, NULL);
 }
 // ================================Hash_Sha1====================================
 #endif // HASH_ENABLE_SHA1
@@ -1348,7 +1370,8 @@ HASH_INLINE const char* hash_md5(const char* str, char* buffer)
 
 HASH_INLINE const char* hash_md5_file(const char* path, const char* mode, char* buffer)
 {
-    return hash_util_hash_file(path, mode, hash_md5_binary, buffer);
+    Hash_MD5 m;
+    return hash_util_hash_file(path, mode, m, buffer, (hash_util_init_func)hash_md5_init, (hash_util_update_func)hash_md5_update_binary, (hash_util_finalize_func)hash_md5_finalize, (hash_util_hexdigest_func)hash_md5_hexdigest);
 }
 
 HASH_INLINE const char* hash_md5_easy(const char* str)
@@ -1358,7 +1381,7 @@ HASH_INLINE const char* hash_md5_easy(const char* str)
 
 HASH_INLINE const char* hash_md5_file_easy(const char* path, const char* mode)
 {
-    return hash_util_hash_file(path, mode, hash_md5_binary, NULL);
+    return hash_md5_file(path, mode, NULL);
 }
 #undef HASH_PRIVATE_MD5_BLOCKSIZE
 // =================================Hash_MD5====================================
@@ -1634,7 +1657,8 @@ HASH_INLINE const char* hash_sha3_224(const char* str, char* buffer)
 
 HASH_INLINE const char* hash_sha3_224_file(const char* path, const char* mode, char* buffer)
 {
-    return hash_util_hash_file(path, mode, hash_sha3_224_binary, buffer);
+    Hash_Sha3_224 m;
+    return hash_util_hash_file(path, mode, m, buffer, (hash_util_init_func)hash_sha3_224_init, (hash_util_update_func)hash_sha3_224_update_binary, (hash_util_finalize_func)hash_sha3_224_finalize, (hash_util_hexdigest_func)hash_sha3_224_hexdigest);
 }
 
 HASH_INLINE const char* hash_sha3_224_easy(const char* str)
@@ -1644,7 +1668,7 @@ HASH_INLINE const char* hash_sha3_224_easy(const char* str)
 
 HASH_INLINE const char* hash_sha3_224_file_easy(const char* path, const char* mode)
 {
-    return hash_util_hash_file(path, mode, hash_sha3_224_binary, NULL);
+    return hash_sha3_224_file(path, mode, NULL);
 }
 // ==============================Hash_Sha3_224==================================
 
@@ -1702,7 +1726,8 @@ HASH_INLINE const char* hash_sha3_256(const char* str, char* buffer)
 
 HASH_INLINE const char* hash_sha3_256_file(const char* path, const char* mode, char* buffer)
 {
-    return hash_util_hash_file(path, mode, hash_sha3_256_binary, buffer);
+    Hash_Sha3_256 m;
+    return hash_util_hash_file(path, mode, m, buffer, (hash_util_init_func)hash_sha3_256_init, (hash_util_update_func)hash_sha3_256_update_binary, (hash_util_finalize_func)hash_sha3_256_finalize, (hash_util_hexdigest_func)hash_sha3_256_hexdigest);
 }
 
 HASH_INLINE const char* hash_sha3_256_easy(const char* str)
@@ -1712,7 +1737,7 @@ HASH_INLINE const char* hash_sha3_256_easy(const char* str)
 
 HASH_INLINE const char* hash_sha3_256_file_easy(const char* path, const char* mode)
 {
-    return hash_util_hash_file(path, mode, hash_sha3_256_binary, NULL);
+    return hash_sha3_256_file(path, mode, NULL);
 }
 // ==============================Hash_Sha3_256==================================
 
@@ -1770,7 +1795,8 @@ HASH_INLINE const char* hash_sha3_384(const char* str, char* buffer)
 
 HASH_INLINE const char* hash_sha3_384_file(const char* path, const char* mode, char* buffer)
 {
-    return hash_util_hash_file(path, mode, hash_sha3_384_binary, buffer);
+    Hash_Sha3_384 m;
+    return hash_util_hash_file(path, mode, m, buffer, (hash_util_init_func)hash_sha3_384_init, (hash_util_update_func)hash_sha3_384_update_binary, (hash_util_finalize_func)hash_sha3_384_finalize, (hash_util_hexdigest_func)hash_sha3_384_hexdigest);
 }
 
 HASH_INLINE const char* hash_sha3_384_easy(const char* str)
@@ -1780,12 +1806,12 @@ HASH_INLINE const char* hash_sha3_384_easy(const char* str)
 
 HASH_INLINE const char* hash_sha3_384_file_easy(const char* path, const char* mode)
 {
-    return hash_util_hash_file(path, mode, hash_sha3_384_binary, NULL);
+    return hash_sha3_384_file(path, mode, NULL);
 }
-// ==============================Hash_Sha3_256==================================
-
-
 // ==============================Hash_Sha3_384==================================
+
+
+// ==============================Hash_Sha3_512==================================
 typedef Hash_Private_Sha3 Hash_Sha3_512[1];
 HASH_INLINE void hash_sha3_512_init(Hash_Sha3_512 s)
 {
@@ -1838,7 +1864,8 @@ HASH_INLINE const char* hash_sha3_512(const char* str, char* buffer)
 
 HASH_INLINE const char* hash_sha3_512_file(const char* path, const char* mode, char* buffer)
 {
-    return hash_util_hash_file(path, mode, hash_sha3_512_binary, buffer);
+    Hash_Sha3_512 m;
+    return hash_util_hash_file(path, mode, m, buffer, (hash_util_init_func)hash_sha3_512_init, (hash_util_update_func)hash_sha3_512_update_binary, (hash_util_finalize_func)hash_sha3_512_finalize, (hash_util_hexdigest_func)hash_sha3_512_hexdigest);
 }
 
 HASH_INLINE const char* hash_sha3_512_easy(const char* str)
@@ -1848,9 +1875,9 @@ HASH_INLINE const char* hash_sha3_512_easy(const char* str)
 
 HASH_INLINE const char* hash_sha3_512_file_easy(const char* path, const char* mode)
 {
-    return hash_util_hash_file(path, mode, hash_sha3_512_binary, NULL);
+    return hash_sha3_512_file(path, mode, NULL);
 }
-// ==============================Hash_Sha3_256==================================
+// ==============================Hash_Sha3_512==================================
 // ================================Hash_Sha3====================================
 #endif // HASH_ENABLE_SHA3
 #endif // HASH_ENABLE_C_INTERFACE
@@ -1895,6 +1922,31 @@ namespace Hash
     }
 
 
+    namespace File
+    {
+        // buffered file hashing, returns empty string on failure
+        template <typename Hasher>
+        inline std::string HashFile(std::string_view path, std::ios::openmode flag = std::ios::binary)
+        {
+            std::ifstream file(path.data(), flag);
+            if (!file.is_open())
+                return std::string();
+
+            Hasher hasher;
+            char buffer[4096];
+
+            do
+            {
+                file.read(buffer, 4069);
+                hasher.Update(buffer, file.gcount());
+            } while (file.gcount() > 0);
+
+            hasher.Finalize();
+            return hasher.Hexdigest();
+        }
+    }
+
+
     namespace Util
     {
         inline std::string CharArrayToHexString(unsigned char* data, size_t size)
@@ -1912,7 +1964,7 @@ namespace Hash
         }
 
 
-        inline std::string LoadFile(const char* path, std::ios::openmode flag) // std::ios::binary | std::ios::binary
+        inline std::string LoadFile(const char* path, std::ios::openmode flag) // std::ios::binary
         {
             std::ifstream infile(path, flag);
             if (!infile.is_open())
@@ -2139,18 +2191,6 @@ namespace Hash
         return sha256(str.data(), str.size());
     }
 
-    namespace File
-    {
-        inline std::string sha256(const char* path, std::ios::openmode flag = std::ios::binary)
-        {
-            return Hash::sha256(Util::LoadFile(path, flag));
-        }
-
-        inline std::string sha256(std::string_view path, std::ios::openmode flag = std::ios::binary)
-        {
-            return Hash::sha256(Util::LoadFile(path.data(), flag));
-        }
-    }
 
 
 
@@ -2181,19 +2221,6 @@ namespace Hash
     inline std::string sha224(std::string_view str)
     {
         return sha224(str.data(), str.size());
-    }
-
-    namespace File
-    {
-        inline std::string sha224(const char* path, std::ios::openmode flag = std::ios::binary)
-        {
-            return Hash::sha224(Util::LoadFile(path, flag));
-        }
-
-        inline std::string sha224(std::string_view path, std::ios::openmode flag = std::ios::binary)
-        {
-            return Hash::sha224(Util::LoadFile(path.data(), flag));
-        }
     }
 
 
@@ -2384,20 +2411,6 @@ namespace Hash
         return sha512(str.data(), str.size());
     }
 
-    namespace File
-    {
-        inline std::string sha512(const char* path, std::ios::openmode flag = std::ios::binary)
-        {
-            return Hash::sha512(Util::LoadFile(path, flag));
-        }
-
-        inline std::string sha512(std::string_view path, std::ios::openmode flag = std::ios::binary)
-        {
-            return Hash::sha512(Util::LoadFile(path.data(), flag));
-        }
-    }
-
-
 
 
 
@@ -2485,15 +2498,7 @@ namespace Hash
     {
         inline std::string sha512t(size_t t, const char* path, std::ios::openmode flag = std::ios::binary) { return Hash::sha512t(t, Util::LoadFile(path, flag)); }
         inline std::string sha512t(size_t t, std::string_view path, std::ios::openmode flag = std::ios::binary) { return Hash::sha512t(t, Util::LoadFile(path.data(), flag)); }
-        template <size_t T> inline std::string sha512t(const char* path, std::ios::openmode flag = std::ios::binary) { return Hash::sha512t<T>(Util::LoadFile(path, flag)); }
-        template <size_t T> inline std::string sha512t(std::string_view path, std::ios::openmode flag = std::ios::binary) { return Hash::sha512t<T>(Util::LoadFile(path.data(), flag)); }
-
-        inline std::string sha512_224(const char* path, std::ios::openmode flag = std::ios::binary) { return sha512t<224>(path, flag); }
-        inline std::string sha512_256(const char* path, std::ios::openmode flag = std::ios::binary) { return sha512t<256>(path, flag); }
-        inline std::string sha512_224(std::string_view path, std::ios::openmode flag = std::ios::binary) { return sha512t<224>(path, flag); }
-        inline std::string sha512_256(std::string_view path, std::ios::openmode flag = std::ios::binary) { return sha512t<256>(path, flag); }
     }
-
 
 
 
@@ -2525,19 +2530,6 @@ namespace Hash
     inline std::string sha384(std::string_view str)
     {
         return sha384(str.data(), str.size());
-    }
-
-    namespace File
-    {
-        inline std::string sha384(const char* path, std::ios::openmode flag = std::ios::binary)
-        {
-            return Hash::sha384(Util::LoadFile(path, flag));
-        }
-
-        inline std::string sha384(std::string_view path, std::ios::openmode flag = std::ios::binary)
-        {
-            return Hash::sha384(Util::LoadFile(path.data(), flag));
-        }
     }
 #endif // HASH_ENABLE_SHA2
 
@@ -2690,19 +2682,6 @@ namespace Hash
     inline std::string sha1(std::string_view str)
     {
         return sha1(str.data(), str.size());
-    }
-
-    namespace File
-    {
-        inline std::string sha1(const char* path, std::ios::openmode flag = std::ios::binary)
-        {
-            return Hash::sha1(Util::LoadFile(path, flag));
-        }
-
-        inline std::string sha1(std::string_view path, std::ios::openmode flag = std::ios::binary)
-        {
-            return Hash::sha1(Util::LoadFile(path.data(), flag));
-        }
     }
 #endif // HASH_ENABLE_SHA1
 
@@ -3114,19 +3093,6 @@ namespace Hash
         md5.Finalize();
         return md5.Hexdigest();
     }
-
-    namespace File
-    {
-        inline std::string md5(const char* path, std::ios::openmode flag = std::ios::binary)
-        {
-            return Hash::md5(Util::LoadFile(path, flag));
-        }
-
-        inline std::string md5(std::string_view path, std::ios::openmode flag = std::ios::binary)
-        {
-            return Hash::md5(Util::LoadFile(path.data(), flag));
-        }
-    }
     //=============================================================================
 #endif // HASH_ENABLE_MD5
 
@@ -3406,19 +3372,6 @@ namespace Hash
     inline std::string sha3_256(std::string_view data) { return sha3_256(data.data(), data.size()); }
     inline std::string sha3_384(std::string_view data) { return sha3_384(data.data(), data.size()); }
     inline std::string sha3_512(std::string_view data) { return sha3_512(data.data(), data.size()); }
-
-
-    namespace File
-    {
-        inline std::string sha3_224(const char* path,      std::ios::openmode flag = std::ios::binary) { return Hash::sha3_224(Util::LoadFile(path,        flag)); }
-        inline std::string sha3_224(std::string_view path, std::ios::openmode flag = std::ios::binary) { return Hash::sha3_224(Util::LoadFile(path.data(), flag)); }
-        inline std::string sha3_256(const char* path,      std::ios::openmode flag = std::ios::binary) { return Hash::sha3_256(Util::LoadFile(path,        flag)); }
-        inline std::string sha3_256(std::string_view path, std::ios::openmode flag = std::ios::binary) { return Hash::sha3_256(Util::LoadFile(path.data(), flag)); }
-        inline std::string sha3_384(const char* path,      std::ios::openmode flag = std::ios::binary) { return Hash::sha3_384(Util::LoadFile(path,        flag)); }
-        inline std::string sha3_384(std::string_view path, std::ios::openmode flag = std::ios::binary) { return Hash::sha3_384(Util::LoadFile(path.data(), flag)); }
-        inline std::string sha3_512(const char* path,      std::ios::openmode flag = std::ios::binary) { return Hash::sha3_512(Util::LoadFile(path,        flag)); }
-        inline std::string sha3_512(std::string_view path, std::ios::openmode flag = std::ios::binary) { return Hash::sha3_512(Util::LoadFile(path.data(), flag)); }
-    }
 #endif // HASH_ENABLE_SHA3
 } // namespace Hash
 
@@ -3651,8 +3604,7 @@ HASH_INLINE const char* hash_shake128_file(const char* path, const char* mode, s
     char* content = hash_util_load_file(path, mode, &fsize);
     if (content == NULL) return "";
     const char* hash = hash_shake128_binary(content, fsize, outsizeBytes, buffer);
-    if (content != NULL)
-        free(content);
+    free(content);
     return hash;
 }
 
@@ -3662,8 +3614,7 @@ HASH_INLINE const char* hash_shake256_file(const char* path, const char* mode, s
     char* content = hash_util_load_file(path, mode, &fsize);
     if (content == NULL) return "";
     const char* hash = hash_shake256_binary(content, fsize, outsizeBytes, buffer);
-    if (content != NULL)
-        free(content);
+    free(content);
     return hash;
 }
 
