@@ -3107,7 +3107,7 @@ bool check_hash(const std::string& hash, const std::string& real_hash, const cha
     }
     else
     {
-        std::cout << "[Test " << test_num << '/' << test_max_num << "] Passed " << hash_name << std::endl;
+        std::cout << "[Test " << test_num << '/' << test_max_num << "]:" << test_identifier << " Passed " << hash_name << std::endl;
         return true;
     }
 }
@@ -3190,9 +3190,9 @@ int main()
     CHECK_TEST((test<Hash::Sha256, Hash_Sha256>("Sha256", 3, Hash::sha256, hash_sha256_easy, hash_sha256_init, hash_sha256_update_binary, hash_sha256_finalize, hash_sha256_hexdigest)))
     CHECK_TEST((test<Hash::Sha384, Hash_Sha384>("Sha384", 4, Hash::sha384, hash_sha384_easy, hash_sha384_init, hash_sha384_update_binary, hash_sha384_finalize, hash_sha384_hexdigest)))
     CHECK_TEST((test<Hash::Sha512, Hash_Sha512>("Sha512", 5, Hash::sha512, hash_sha512_easy, hash_sha512_init, hash_sha512_update_binary, hash_sha512_finalize, hash_sha512_hexdigest)))
-    CHECK_TEST((test_sha3("Sha3_224", 6, Hash::sha3_224, hash_sha3_224_easy)))
-    CHECK_TEST((test_sha3("Sha3_256", 7, Hash::sha3_256, hash_sha3_256_easy)))
-    CHECK_TEST((test_sha3("Sha3_384", 8, Hash::sha3_384, hash_sha3_384_easy)))
-    CHECK_TEST((test_sha3("Sha3_512", 9, Hash::sha3_512, hash_sha3_512_easy)))
+    CHECK_TEST((test<Hash::Sha3_224, Hash_Sha3_224>("Sha3_224", 6, Hash::sha3_224, hash_sha3_224_easy, hash_sha3_224_init, hash_sha3_224_update_binary, hash_sha3_224_finalize, hash_sha3_224_hexdigest)))
+    CHECK_TEST((test<Hash::Sha3_256, Hash_Sha3_256>("Sha3_256", 7, Hash::sha3_256, hash_sha3_256_easy, hash_sha3_256_init, hash_sha3_256_update_binary, hash_sha3_256_finalize, hash_sha3_256_hexdigest)))
+    CHECK_TEST((test<Hash::Sha3_384, Hash_Sha3_384>("Sha3_384", 8, Hash::sha3_384, hash_sha3_384_easy, hash_sha3_384_init, hash_sha3_384_update_binary, hash_sha3_384_finalize, hash_sha3_384_hexdigest)))
+    CHECK_TEST((test<Hash::Sha3_512, Hash_Sha3_512>("Sha3_512", 9, Hash::sha3_512, hash_sha3_512_easy, hash_sha3_512_init, hash_sha3_512_update_binary, hash_sha3_512_finalize, hash_sha3_512_hexdigest)))
     std::cout << "All tests passed" << std::endl;
 }
