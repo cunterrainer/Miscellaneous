@@ -11,7 +11,7 @@
     either use the provided functions, all have the same scheme:
 
         hash_sha256("Hello world", buffer); // returns a const char* (internal buffer if buffer == NULL)
-        hash_sha256_file("main.c", "rb", buffer); // a user provided buffer must hold atleast HASH_SHA256_BUFFER_SIZE + 1 (null term char)
+        hash_sha256_file("main.c", "rb", buffer); // a user provided buffer must hold atleast HASH_SHA256_BUFFER_SIZE chars, warning user provided buffer not null terminated
 
         hash_sha256_easy("Hello world"); // returns internal buffer
         hash_sha256_file_easy("main.c", "rb");
@@ -34,7 +34,7 @@
         Hash::File::sha256("main.c", std::ios::binary);
 
     or if you need to update the hash e.g. while reading chunks from a file (not for Shake128 and Shake256)
-    
+
         Hash::Sha256 s;
         s.Update("Hello world");
         s.Finalize();
@@ -329,7 +329,7 @@ HASH_INLINE void hash_sha256_finalize(Hash_Sha256 s)
 }
 
 
-// if buffer == NULL returns internal buffer, buffer size must be at least 65 (Null term char)
+// if buffer == NULL returns internal buffer (null terminated), buffer size must be at least 64 (warning user buffer not null terminated)
 HASH_INLINE const char* hash_sha256_hexdigest(const Hash_Sha256 s, char* buffer)
 {
     static char hex[HASH_SHA256_BUFFER_SIZE+1];
@@ -338,11 +338,12 @@ HASH_INLINE const char* hash_sha256_hexdigest(const Hash_Sha256 s, char* buffer)
     {
         sprintf(&buff[i * 8], "%08" PRIx32, s->h[i]);
     }
-    buff[HASH_SHA256_BUFFER_SIZE] = 0;
+    if (buffer == NULL)
+        buff[HASH_SHA256_BUFFER_SIZE] = 0;
     return buff;
 }
 
-// if buffer == NULL returns internal buffer, buffer size must be at least 65 (Null term char)
+// if buffer == NULL returns internal buffer (null terminated), buffer size must be at least 64 (warning user buffer not null terminated)
 HASH_INLINE const char* hash_sha256_binary(const char* str, size_t size, char* buffer)
 {
     Hash_Sha256 s;
@@ -408,7 +409,7 @@ HASH_INLINE void hash_sha224_finalize(Hash_Sha224 s)
 }
 
 
-// if buffer == NULL returns internal buffer, buffer size must be at least 57 (Null term char)
+// if buffer == NULL returns internal buffer (null terminated), buffer size must be at least 56 (warning user buffer not null terminated)
 HASH_INLINE const char* hash_sha224_hexdigest(const Hash_Sha224 s, char* buffer)
 {
     static char hex[HASH_SHA224_BUFFER_SIZE+1];
@@ -417,11 +418,12 @@ HASH_INLINE const char* hash_sha224_hexdigest(const Hash_Sha224 s, char* buffer)
     {
         sprintf(&buff[i * 8], "%08" PRIx32, s->h[i]);
     }
-    buff[HASH_SHA224_BUFFER_SIZE] = 0;
+    if (buffer == NULL)
+        buff[HASH_SHA224_BUFFER_SIZE] = 0;
     return buff;
 }
 
-// if buffer == NULL returns internal buffer, buffer size must be at least 65 (Null term char)
+// if buffer == NULL returns internal buffer (null terminated), buffer size must be at least 56 (warning user buffer not null terminated)
 HASH_INLINE const char* hash_sha224_binary(const char* str, size_t size, char* buffer)
 {
     Hash_Sha224 s;
@@ -613,7 +615,7 @@ HASH_INLINE void hash_sha512_finalize(Hash_Sha512 s)
 }
 
 
-// if buffer == NULL returns internal buffer, buffer size must be at least 129 (Null term char)
+// if buffer == NULL returns internal buffer (null terminated), buffer size must be at least 128 (warning user buffer not null terminated)
 HASH_INLINE const char* hash_sha512_hexdigest(const Hash_Sha512 s, char* buffer)
 {
     static char hex[HASH_SHA512_BUFFER_SIZE+1];
@@ -622,11 +624,12 @@ HASH_INLINE const char* hash_sha512_hexdigest(const Hash_Sha512 s, char* buffer)
     {
         sprintf(&buff[i * 16], "%016" PRIx64, s->h[i]);
     }
-    buff[HASH_SHA512_BUFFER_SIZE] = 0;
+    if (buffer == NULL)
+        buff[HASH_SHA512_BUFFER_SIZE] = 0;
     return buff;
 }
 
-// if buffer == NULL returns internal buffer, buffer size must be at least 129 (Null term char)
+// if buffer == NULL returns internal buffer (null terminated), buffer size must be at least 128 (warning user buffer not null terminated)
 HASH_INLINE const char* hash_sha512_binary(const char* str, size_t size, char* buffer)
 {
     Hash_Sha512 s;
@@ -712,7 +715,7 @@ HASH_INLINE void hash_sha512t_finalize(Hash_Sha512T s)
 }
 
 
-// if buffer == NULL returns internal buffer, buffer size must be at least (t/4)+1 (Null term char)
+// if buffer == NULL returns internal buffer (null terminated), buffer size must be at least t/4 (warning user buffer not null terminated)
 HASH_INLINE const char* hash_sha512t_hexdigest(const Hash_Sha512T s, char* buffer)
 {
     static char hex[513]; // use max allowed size to avoid memory allocation
@@ -721,11 +724,12 @@ HASH_INLINE const char* hash_sha512t_hexdigest(const Hash_Sha512T s, char* buffe
     {
         sprintf(&buff[i * 16], "%016" PRIx64, s->h[i]);
     }
-    buff[s->t / 4] = 0;
+    if (buffer == NULL)
+        buff[s->t / 4] = 0;
     return buff;
 }
 
-// if buffer == NULL returns internal buffer, buffer size must be at least (t/4)+1 (Null term char)
+// if buffer == NULL returns internal buffer (null terminated), buffer size must be at least t/4 (warning user buffer not null terminated)
 HASH_INLINE const char* hash_sha512t_binary(size_t t, const char* str, size_t size, char* buffer)
 {
     Hash_Sha512T s;
@@ -798,7 +802,7 @@ HASH_INLINE void hash_sha384_finalize(Hash_Sha384 s)
 }
 
 
-// if buffer == NULL returns internal buffer, buffer size must be at least 97 (Null term char)
+// if buffer == NULL returns internal buffer (null terminated), buffer size must be at least 96 (warning user buffer not null terminated)
 HASH_INLINE const char* hash_sha384_hexdigest(const Hash_Sha384 s, char* buffer)
 {
     static char hex[HASH_SHA384_BUFFER_SIZE+1]; // use max allowed size to avoid memory allocation
@@ -807,11 +811,12 @@ HASH_INLINE const char* hash_sha384_hexdigest(const Hash_Sha384 s, char* buffer)
     {
         sprintf(&buff[i * 16], "%016" PRIx64, s->h[i]);
     }
-    buff[HASH_SHA384_BUFFER_SIZE] = 0;
+    if (buffer == NULL)
+        buff[HASH_SHA384_BUFFER_SIZE] = 0;
     return buff;
 }
 
-// if buffer == NULL returns internal buffer, buffer size must be at least 97 (Null term char)
+// if buffer == NULL returns internal buffer (null terminated), buffer size must be at least 96 (warning user buffer not null terminated)
 HASH_INLINE const char* hash_sha384_binary(const char* str, size_t size, char* buffer)
 {
     Hash_Sha384 s;
@@ -977,7 +982,7 @@ HASH_INLINE void hash_sha1_finalize(Hash_Sha1 s)
 }
 
 
-// if buffer == NULL returns internal buffer, buffer size must be at least 41 (Null term char)
+// if buffer == NULL returns internal buffer (null terminated), buffer size must be at least 40 (warning user buffer not null terminated)
 HASH_INLINE const char* hash_sha1_hexdigest(const Hash_Sha1 s, char* buffer)
 {
     static char hex[HASH_SHA1_BUFFER_SIZE+1]; // use max allowed size to avoid memory allocation
@@ -986,11 +991,12 @@ HASH_INLINE const char* hash_sha1_hexdigest(const Hash_Sha1 s, char* buffer)
     {
         sprintf(&buff[i * 8], "%08" PRIx32, s->h[i]);
     }
-    buff[HASH_SHA1_BUFFER_SIZE] = 0;
+    if (buffer == NULL)
+        buff[HASH_SHA1_BUFFER_SIZE] = 0;
     return buff;
 }
 
-// if buffer == NULL returns internal buffer, buffer size must be at least 41 (Null term char)
+// if buffer == NULL returns internal buffer (null terminated), buffer size must be at least 40 (warning user buffer not null terminated)
 HASH_INLINE const char* hash_sha1_binary(const char* str, size_t size, char* buffer)
 {
     Hash_Sha1 s;
@@ -1309,7 +1315,7 @@ HASH_INLINE void  hash_md5_finalize(Hash_MD5 m)
 }
 
 
-// if buffer == NULL returns internal buffer, buffer size must be at least 33 (Null term char)
+// if buffer == NULL returns internal buffer (null terminated), buffer size must be at least 32 (warning user buffer not null terminated)
 HASH_INLINE const char* hash_md5_hexdigest(const Hash_MD5 m, char* buffer)
 {
     if (!m->finalized)
@@ -1319,12 +1325,13 @@ HASH_INLINE const char* hash_md5_hexdigest(const Hash_MD5 m, char* buffer)
     char* buf = buffer == NULL ? hex : buffer;
     for (int i = 0; i < 16; i++)
         sprintf(buf + i * 2, "%02x", m->digest[i]);
-    buf[HASH_MD5_BUFFER_SIZE] = 0;
+    if (buffer == NULL)
+        buf[HASH_MD5_BUFFER_SIZE] = 0;
     return buf;
 }
 
 
-// if buffer == NULL returns internal buffer, buffer size must be at least 33 (Null term char)
+// if buffer == NULL returns internal buffer (null terminated), buffer size must be at least 32 (warning user buffer not null terminated)
 HASH_INLINE const char* hash_md5_binary(const char* str, size_t size, char* buffer)
 {
     Hash_MD5 m;
@@ -1596,7 +1603,7 @@ HASH_INLINE void hash_sha3_224_finalize(Hash_Sha3_224 s)
     hash_private_sha3_finalize(s);
 }
 
-// if buffer == NULL returns internal buffer, buffer size must be at least 41 (Null term char)
+// if buffer == NULL returns internal buffer (null terminated), buffer size must be at least 56 (warning user buffer not null terminated)
 HASH_INLINE const char* hash_sha3_224_hexdigest(const Hash_Sha3_224 s, char* buffer)
 {
     static char hex[HASH_SHA3_224_BUFFER_SIZE+1];
@@ -1605,11 +1612,12 @@ HASH_INLINE const char* hash_sha3_224_hexdigest(const Hash_Sha3_224 s, char* buf
     {
         sprintf(&buff[i*2], "%02" PRIx32, (uint32_t)((uint8_t*)s->u.s)[i]);
     }
-    buff[HASH_SHA3_224_BUFFER_SIZE] = 0;
+    if (buffer == NULL)
+        buff[HASH_SHA3_224_BUFFER_SIZE] = 0;
     return buff;
 }
 
-// if buffer == NULL returns internal buffer, buffer size must be at least 41 (Null term char)
+// if buffer == NULL returns internal buffer (null terminated), buffer size must be at least 56 (warning user buffer not null terminated)
 HASH_INLINE const char* hash_sha3_224_binary(const char* str, size_t size, char* buffer)
 {
     Hash_Sha3_224 s;
@@ -1663,7 +1671,7 @@ HASH_INLINE void hash_sha3_256_finalize(Hash_Sha3_256 s)
     hash_private_sha3_finalize(s);
 }
 
-// if buffer == NULL returns internal buffer, buffer size must be at least 41 (Null term char)
+// if buffer == NULL returns internal buffer (null terminated), buffer size must be at least 64 (warning user buffer not null terminated)
 HASH_INLINE const char* hash_sha3_256_hexdigest(const Hash_Sha3_256 s, char* buffer)
 {
     static char hex[HASH_SHA3_256_BUFFER_SIZE+1];
@@ -1672,11 +1680,12 @@ HASH_INLINE const char* hash_sha3_256_hexdigest(const Hash_Sha3_256 s, char* buf
     {
         sprintf(&buff[i*2], "%02" PRIx32, (uint32_t)((uint8_t*)s->u.s)[i]);
     }
-    buff[HASH_SHA3_256_BUFFER_SIZE] = 0;
+    if (buffer == NULL)
+        buff[HASH_SHA3_256_BUFFER_SIZE] = 0;
     return buff;
 }
 
-// if buffer == NULL returns internal buffer, buffer size must be at least 41 (Null term char)
+// if buffer == NULL returns internal buffer (null terminated), buffer size must be at least 64 (warning user buffer not null terminated)
 HASH_INLINE const char* hash_sha3_256_binary(const char* str, size_t size, char* buffer)
 {
     Hash_Sha3_256 s;
@@ -1730,7 +1739,7 @@ HASH_INLINE void hash_sha3_384_finalize(Hash_Sha3_384 s)
     hash_private_sha3_finalize(s);
 }
 
-// if buffer == NULL returns internal buffer, buffer size must be at least 41 (Null term char)
+// if buffer == NULL returns internal buffer (null terminated), buffer size must be at least 96 (warning user buffer not null terminated)
 HASH_INLINE const char* hash_sha3_384_hexdigest(const Hash_Sha3_384 s, char* buffer)
 {
     static char hex[HASH_SHA3_384_BUFFER_SIZE+1];
@@ -1739,11 +1748,12 @@ HASH_INLINE const char* hash_sha3_384_hexdigest(const Hash_Sha3_384 s, char* buf
     {
         sprintf(&buff[i*2], "%02" PRIx32, (uint32_t)((uint8_t*)s->u.s)[i]);
     }
-    buff[HASH_SHA3_384_BUFFER_SIZE] = 0;
+    if (buffer == NULL)
+        buff[HASH_SHA3_384_BUFFER_SIZE] = 0;
     return buff;
 }
 
-// if buffer == NULL returns internal buffer, buffer size must be at least 41 (Null term char)
+// if buffer == NULL returns internal buffer (null terminated), buffer size must be at least 96 (warning user buffer not null terminated)
 HASH_INLINE const char* hash_sha3_384_binary(const char* str, size_t size, char* buffer)
 {
     Hash_Sha3_384 s;
@@ -1797,7 +1807,7 @@ HASH_INLINE void hash_sha3_512_finalize(Hash_Sha3_512 s)
     hash_private_sha3_finalize(s);
 }
 
-// if buffer == NULL returns internal buffer, buffer size must be at least 41 (Null term char)
+// if buffer == NULL returns internal buffer (null terminated), buffer size must be at least 128 (warning user buffer not null terminated)
 HASH_INLINE const char* hash_sha3_512_hexdigest(const Hash_Sha3_512 s, char* buffer)
 {
     static char hex[HASH_SHA3_512_BUFFER_SIZE+1];
@@ -1806,11 +1816,12 @@ HASH_INLINE const char* hash_sha3_512_hexdigest(const Hash_Sha3_512 s, char* buf
     {
         sprintf(&buff[i*2], "%02" PRIx32, (uint32_t)((uint8_t*)s->u.s)[i]);
     }
-    buff[HASH_SHA3_512_BUFFER_SIZE] = 0;
+    if (buffer == NULL)
+        buff[HASH_SHA3_512_BUFFER_SIZE] = 0;
     return buff;
 }
 
-// if buffer == NULL returns internal buffer, buffer size must be at least 41 (Null term char)
+// if buffer == NULL returns internal buffer (null terminated), buffer size must be at least 128 (warning user buffer not null terminated)
 HASH_INLINE const char* hash_sha3_512_binary(const char* str, size_t size, char* buffer)
 {
     Hash_Sha3_512 s;
