@@ -2354,6 +2354,11 @@ namespace Hash
             Update((const unsigned char*)input, length);
         }
 
+        inline void Update(std::string_view data)
+        {
+            Update((const unsigned char*)data.data(), data.size());
+        }
+
         //////////////////////////////
 
         // MD5 finalization. Ends an MD5 message-digest operation, writing the
@@ -2595,6 +2600,14 @@ namespace Hash
     inline std::string md5(std::string_view str)
     {
         MD5 md5 = MD5(str);
+        return md5.Hexdigest();
+    }
+
+    inline std::string md5(const char* str, std::size_t size)
+    {
+        MD5 md5;
+        md5.Update(str, size);
+        md5.Finalize();
         return md5.Hexdigest();
     }
 
