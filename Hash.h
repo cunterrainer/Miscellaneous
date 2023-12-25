@@ -14,7 +14,7 @@
         hash_sha256_file("main.c", "rb", buffer); // a user provided buffer must hold atleast HASH_SHA256_BUFFER_SIZE chars, warning user provided buffer not null terminated
 
         hash_sha256_easy("Hello world"); // returns internal buffer
-        hash_sha256_file_easy("main.c", "rb");
+        hash_sha256_file_easy("main.c", "rb"); // buffered file hash (Shake128, Shake256 and Sha512t are not buffered)
 
         hash_sha256_binary("Hello world", 11, buffer); // the binary function take the size of the string e.g. for binary files
 
