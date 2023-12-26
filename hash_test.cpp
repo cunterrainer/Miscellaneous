@@ -24,7 +24,7 @@ struct HashPair
 
 
 // random strings length 0 - 1000 chars
-static std::array<HashPair, 1000> hash_pairs =
+static const std::array<HashPair, 1000> hash_pairs =
 {{
     {
         "",
