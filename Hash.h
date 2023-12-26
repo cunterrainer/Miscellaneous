@@ -1891,11 +1891,13 @@ namespace Hash
             std::string strOut;
             for (std::string_view::const_iterator it = str.begin(); it != str.end(); ++it)
             {
-                uint8_t ch = *it;
-                if (ch < 0x80) {
+                std::uint8_t ch = *it;
+                if (ch < 0x80)
+                {
                     strOut.push_back(ch);
                 }
-                else {
+                else
+                {
                     strOut.push_back(0xc0 | ch >> 6);
                     strOut.push_back(0x80 | (ch & 0x3f));
                 }
@@ -1932,13 +1934,13 @@ namespace Hash
 
     namespace Util
     {
-        inline std::string CharArrayToHexString(unsigned char* data, size_t size)
+        inline std::string CharArrayToHexString(unsigned char* data, std::size_t size)
         {
-            static const char hex_chars[16] = { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f' };
+            static constexpr char hex_chars[16] = { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f' };
             std::string string;
-            for (size_t i = 0; i < size; ++i)
+            for (std::size_t i = 0; i < size; ++i)
             {
-                char const byte = data[i];
+                const char byte = data[i];
 
                 string += hex_chars[(byte & 0xF0) >> 4];
                 string += hex_chars[(byte & 0x0F) >> 0];
@@ -1954,7 +1956,7 @@ namespace Hash
                 return "";
 
             infile.seekg(0, std::ios::end);
-            size_t size = (size_t)infile.tellg();
+            std::size_t size = static_cast<std::size_t>(infile.tellg());
             infile.seekg(0, std::ios::beg);
 
             std::string data(size, ' ');
@@ -1971,11 +1973,11 @@ namespace Hash
             union
             {
                 T u;
-                unsigned char u8[sizeof(T)];
+                std::uint8_t u8[sizeof(T)];
             } source, dest;
             source.u = u;
 
-            for (size_t k = 0; k < sizeof(T); k++)
+            for (std::size_t k = 0; k < sizeof(T); k++)
                 dest.u8[k] = source.u8[sizeof(T) - k - 1];
 
             return dest.u;
@@ -1984,8 +1986,8 @@ namespace Hash
 
         inline bool IsLittleEndian()
         {
-            int32_t num = 1;
-            return *(char*)&num == 1;
+            std::int32_t num = 1;
+            return *reinterpret_cast<char*>(&num) == 1;
         }
 
         template <typename T> constexpr T RightRotate(T n, std::size_t c)
@@ -2011,12 +2013,12 @@ namespace Hash
     public:
         static constexpr std::size_t Size = 64;
     private:
-        uint64_t m_Bitlen = 0;
-        uint8_t m_BufferSize = 0;
-        uint8_t m_Buffer[64];
+        std::uint64_t m_Bitlen = 0;
+        std::uint8_t m_BufferSize = 0;
+        std::uint8_t m_Buffer[64];
     protected:
         // FracPartsSqareRoots
-        uint32_t m_H[8] =
+        std::uint32_t m_H[8] =
         {
            UINT32_C(0x6a09e667),
            UINT32_C(0xbb67ae85),
@@ -2029,7 +2031,7 @@ namespace Hash
         };
     private:
         // FracPartsCubeRoots
-        static constexpr uint32_t s_K[64] =
+        static constexpr std::uint32_t s_K[64] =
         {
             UINT32_C(0x428a2f98), UINT32_C(0x71374491), UINT32_C(0xb5c0fbcf), UINT32_C(0xe9b5dba5), UINT32_C(0x3956c25b), UINT32_C(0x59f111f1), UINT32_C(0x923f82a4), UINT32_C(0xab1c5ed5),
             UINT32_C(0xd807aa98), UINT32_C(0x12835b01), UINT32_C(0x243185be), UINT32_C(0x550c7dc3), UINT32_C(0x72be5d74), UINT32_C(0x80deb1fe), UINT32_C(0x9bdc06a7), UINT32_C(0xc19bf174),
@@ -2041,24 +2043,24 @@ namespace Hash
             UINT32_C(0x748f82ee), UINT32_C(0x78a5636f), UINT32_C(0x84c87814), UINT32_C(0x8cc70208), UINT32_C(0x90befffa), UINT32_C(0xa4506ceb), UINT32_C(0xbef9a3f7), UINT32_C(0xc67178f2)
         };
     private:
-        inline void Compress(const uint32_t* const w)
+        inline void Compress(const std::uint32_t* const w)
         {
-            uint32_t a = m_H[0];
-            uint32_t b = m_H[1];
-            uint32_t c = m_H[2];
-            uint32_t d = m_H[3];
-            uint32_t e = m_H[4];
-            uint32_t f = m_H[5];
-            uint32_t g = m_H[6];
-            uint32_t h = m_H[7];
-            for (size_t i = 0; i < 64; ++i)
+            std::uint32_t a = m_H[0];
+            std::uint32_t b = m_H[1];
+            std::uint32_t c = m_H[2];
+            std::uint32_t d = m_H[3];
+            std::uint32_t e = m_H[4];
+            std::uint32_t f = m_H[5];
+            std::uint32_t g = m_H[6];
+            std::uint32_t h = m_H[7];
+            for (std::size_t i = 0; i < 64; ++i)
             {
-                const uint32_t s1 = Util::RightRotate(e, 6) ^ Util::RightRotate(e, 11) ^ Util::RightRotate(e, 25);
-                const uint32_t ch = (e & f) ^ (~e & g);
-                const uint32_t temp1 = h + s1 + ch + s_K[i] + w[i];
-                const uint32_t s0 = Util::RightRotate(a, 2) ^ Util::RightRotate(a, 13) ^ Util::RightRotate(a, 22);
-                const uint32_t maj = (a & b) ^ (a & c) ^ (b & c);
-                const uint32_t temp2 = s0 + maj;
+                const std::uint32_t s1 = Util::RightRotate(e, 6) ^ Util::RightRotate(e, 11) ^ Util::RightRotate(e, 25);
+                const std::uint32_t ch = (e & f) ^ (~e & g);
+                const std::uint32_t temp1 = h + s1 + ch + s_K[i] + w[i];
+                const std::uint32_t s0 = Util::RightRotate(a, 2) ^ Util::RightRotate(a, 13) ^ Util::RightRotate(a, 22);
+                const std::uint32_t maj = (a & b) ^ (a & c) ^ (b & c);
+                const std::uint32_t temp2 = s0 + maj;
                 h = g;
                 g = f;
                 f = e;
@@ -2081,10 +2083,10 @@ namespace Hash
 
         inline void Transform()
         {
-            uint32_t w[64];
-            for (size_t i = 0; i < 16; ++i)
+            std::uint32_t w[64];
+            for (std::size_t i = 0; i < 16; ++i)
             {
-                uint8_t* c = (uint8_t*)&w[i];
+                std::uint8_t* c = reinterpret_cast<std::uint8_t*>(&w[i]);
                 c[0] = m_Buffer[4 * i];
                 c[1] = m_Buffer[4 * i + 1];
                 c[2] = m_Buffer[4 * i + 2];
@@ -2092,22 +2094,22 @@ namespace Hash
                 w[i] = Util::IsLittleEndian() ? Util::SwapEndian(w[i]) : w[i];
             }
 
-            for (size_t i = 16; i < 64; ++i)
+            for (std::size_t i = 16; i < 64; ++i)
             {
-                const uint32_t s0 = Util::RightRotate(w[i - 15], 7) ^ Util::RightRotate(w[i - 15], 18) ^ (w[i - 15] >> 3);
-                const uint32_t s1 = Util::RightRotate(w[i - 2], 17) ^ Util::RightRotate(w[i - 2], 19) ^ (w[i - 2] >> 10);
+                const std::uint32_t s0 = Util::RightRotate(w[i - 15], 7) ^ Util::RightRotate(w[i - 15], 18) ^ (w[i - 15] >> 3);
+                const std::uint32_t s1 = Util::RightRotate(w[i - 2], 17) ^ Util::RightRotate(w[i - 2], 19) ^ (w[i - 2] >> 10);
                 w[i] = w[i - 16] + s0 + w[i - 7] + s1;
             }
             Compress(w);
         }
     public:
         Sha256() = default;
-        explicit Sha256(uint32_t h0, uint32_t h1, uint32_t h2, uint32_t h3, uint32_t h4, uint32_t h5, uint32_t h6, uint32_t h7) : m_H{ h0, h1, h2, h3, h4, h5, h6, h7 } {}
+        explicit Sha256(std::uint32_t h0, std::uint32_t h1, std::uint32_t h2, std::uint32_t h3, std::uint32_t h4, std::uint32_t h5, std::uint32_t h6, std::uint32_t h7) : m_H{ h0, h1, h2, h3, h4, h5, h6, h7 } {}
         virtual ~Sha256() = default;
 
-        inline void Update(const uint8_t* data, std::size_t size)
+        inline void Update(const std::uint8_t* data, std::size_t size)
         {
-            for (size_t i = 0; i < size; ++i)
+            for (std::size_t i = 0; i < size; ++i)
             {
                 m_Buffer[m_BufferSize++] = data[i];
                 if (m_BufferSize == 64)
@@ -2121,19 +2123,19 @@ namespace Hash
 
         inline void Update(const char* data, std::size_t size)
         {
-            Update((const uint8_t*)data, size);
+            Update(reinterpret_cast<const std::uint8_t*>(data), size);
         }
 
         inline void Update(std::string_view data)
         {
-            Update((const uint8_t*)data.data(), data.size());
+            Update(reinterpret_cast<const std::uint8_t*>(data.data()), data.size());
         }
 
 
         inline virtual void Finalize()
         {
-            uint8_t start = m_BufferSize;
-            uint8_t end = m_BufferSize < 56 ? 56 : 64;
+            std::uint8_t start = m_BufferSize;
+            std::uint8_t end = m_BufferSize < 56 ? 56 : 64;
 
             m_Buffer[start++] = 0b10000000;
             std::memset(&m_Buffer[start], 0, end - start);
@@ -2145,7 +2147,7 @@ namespace Hash
             }
 
             m_Bitlen += m_BufferSize * 8;
-            uint64_t* const size = (uint64_t*)&m_Buffer[64 - 8];
+            std::uint64_t* const size = reinterpret_cast<std::uint64_t*>(&m_Buffer[64 - 8]);
             *size = Util::IsLittleEndian() ? Util::SwapEndian(m_Bitlen) : m_Bitlen;
             Transform();
         }
@@ -2154,9 +2156,9 @@ namespace Hash
         inline virtual std::string Hexdigest() const
         {
             char buff[Size+1];
-            for (size_t i = 0; i < 8; ++i)
+            for (std::size_t i = 0; i < 8; ++i)
             {
-                snprintf(&buff[i * 8], Size+1, "%08" PRIx32, m_H[i]);
+                std::snprintf(&buff[i * 8], Size+1, "%08" PRIx32, m_H[i]);
             }
             return std::string(buff);
         }
@@ -2183,15 +2185,15 @@ namespace Hash
     class Sha224 : public Sha256
     {
     public:
-        static constexpr size_t Size = 56;
+        static constexpr std::size_t Size = 56;
     public:
         Sha224() : Sha256(UINT32_C(0xC1059ED8), UINT32_C(0x367CD507), UINT32_C(0x3070DD17), UINT32_C(0xF70E5939), UINT32_C(0xFFC00B31), UINT32_C(0x68581511), UINT32_C(0x64F98FA7), UINT32_C(0xBEFA4FA4)) {}
         inline std::string Hexdigest() const override
         {
             char buff[Size+1];
-            for (size_t i = 0; i < 7; ++i)
+            for (std::size_t i = 0; i < 7; ++i)
             {
-                snprintf(&buff[i * 8], Size+1, "%08" PRIx32, m_H[i]);
+                std::snprintf(&buff[i * 8], Size+1, "%08" PRIx32, m_H[i]);
             }
             return std::string(buff);
         }
@@ -2220,11 +2222,11 @@ namespace Hash
     public:
         static constexpr std::size_t Size = 128;
     private:
-        uint64_t m_Bitlen = 0;
-        uint8_t m_BufferSize = 0;
-        uint8_t m_Buffer[128];
+        std::uint64_t m_Bitlen = 0;
+        std::uint8_t m_BufferSize = 0;
+        std::uint8_t m_Buffer[128];
     protected:
-        uint64_t m_H[8] =
+        std::uint64_t m_H[8] =
         {
             UINT64_C(0x6a09e667f3bcc908),
             UINT64_C(0xbb67ae8584caa73b),
@@ -2237,7 +2239,7 @@ namespace Hash
         };
     private:
         // round constants
-        static constexpr uint64_t s_K[80] =
+        static constexpr std::uint64_t s_K[80] =
         {
             UINT64_C(0x428a2f98d728ae22), UINT64_C(0x7137449123ef65cd), UINT64_C(0xb5c0fbcfec4d3b2f), UINT64_C(0xe9b5dba58189dbbc), UINT64_C(0x3956c25bf348b538),
             UINT64_C(0x59f111f1b605d019), UINT64_C(0x923f82a4af194f9b), UINT64_C(0xab1c5ed5da6d8118), UINT64_C(0xd807aa98a3030242), UINT64_C(0x12835b0145706fbe),
@@ -2257,24 +2259,24 @@ namespace Hash
             UINT64_C(0x431d67c49c100d4c), UINT64_C(0x4cc5d4becb3e42b6), UINT64_C(0x597f299cfc657e2a), UINT64_C(0x5fcb6fab3ad6faec), UINT64_C(0x6c44198c4a475817)
         };
     private:
-        inline void Compress(const uint64_t* const w)
+        inline void Compress(const std::uint64_t* const w)
         {
-            uint64_t a = m_H[0];
-            uint64_t b = m_H[1];
-            uint64_t c = m_H[2];
-            uint64_t d = m_H[3];
-            uint64_t e = m_H[4];
-            uint64_t f = m_H[5];
-            uint64_t g = m_H[6];
-            uint64_t h = m_H[7];
-            for (size_t i = 0; i < 80; ++i)
+            std::uint64_t a = m_H[0];
+            std::uint64_t b = m_H[1];
+            std::uint64_t c = m_H[2];
+            std::uint64_t d = m_H[3];
+            std::uint64_t e = m_H[4];
+            std::uint64_t f = m_H[5];
+            std::uint64_t g = m_H[6];
+            std::uint64_t h = m_H[7];
+            for (std::size_t i = 0; i < 80; ++i)
             {
-                const uint64_t s1 = Util::RightRotate(e, 14) ^ Util::RightRotate(e, 18) ^ Util::RightRotate(e, 41);
-                const uint64_t ch = (e & f) ^ (~e & g);
-                const uint64_t temp1 = h + s1 + ch + s_K[i] + w[i];
-                const uint64_t s0 = Util::RightRotate(a, 28) ^ Util::RightRotate(a, 34) ^ Util::RightRotate(a, 39);
-                const uint64_t maj = (a & b) ^ (a & c) ^ (b & c);
-                const uint64_t temp2 = s0 + maj;
+                const std::uint64_t s1 = Util::RightRotate(e, 14) ^ Util::RightRotate(e, 18) ^ Util::RightRotate(e, 41);
+                const std::uint64_t ch = (e & f) ^ (~e & g);
+                const std::uint64_t temp1 = h + s1 + ch + s_K[i] + w[i];
+                const std::uint64_t s0 = Util::RightRotate(a, 28) ^ Util::RightRotate(a, 34) ^ Util::RightRotate(a, 39);
+                const std::uint64_t maj = (a & b) ^ (a & c) ^ (b & c);
+                const std::uint64_t temp2 = s0 + maj;
                 h = g;
                 g = f;
                 f = e;
@@ -2297,10 +2299,10 @@ namespace Hash
 
         inline void Transform()
         {
-            uint64_t w[80];
-            for (size_t i = 0; i < 16; ++i)
+            std::uint64_t w[80];
+            for (std::size_t i = 0; i < 16; ++i)
             {
-                uint8_t* c = (uint8_t*)&w[i];
+                std::uint8_t* c = reinterpret_cast<std::uint8_t*>(&w[i]);
                 c[0] = m_Buffer[8 * i];
                 c[1] = m_Buffer[8 * i + 1];
                 c[2] = m_Buffer[8 * i + 2];
@@ -2312,17 +2314,17 @@ namespace Hash
                 w[i] = Util::IsLittleEndian() ? Util::SwapEndian(w[i]) : w[i];
             }
 
-            for (size_t i = 16; i < 80; ++i) // Extend the first 16 words
+            for (std::size_t i = 16; i < 80; ++i) // Extend the first 16 words
             {
-                const uint64_t s0 = Util::RightRotate(w[i - 15], 1) ^ Util::RightRotate(w[i - 15], 8) ^ (w[i - 15] >> 7);
-                const uint64_t s1 = Util::RightRotate(w[i - 2], 19) ^ Util::RightRotate(w[i - 2], 61) ^ (w[i - 2] >> 6);
+                const std::uint64_t s0 = Util::RightRotate(w[i - 15], 1) ^ Util::RightRotate(w[i - 15], 8) ^ (w[i - 15] >> 7);
+                const std::uint64_t s1 = Util::RightRotate(w[i - 2], 19) ^ Util::RightRotate(w[i - 2], 61) ^ (w[i - 2] >> 6);
                 w[i] = w[i - 16] + s0 + w[i - 7] + s1;
             }
             Compress(w);
         }
     public:
         Sha512() = default;
-        explicit Sha512(uint64_t h0, uint64_t h1, uint64_t h2, uint64_t h3, uint64_t h4, uint64_t h5, uint64_t h6, uint64_t h7) : m_H{ h0, h1, h2, h3, h4, h5, h6, h7 } {}
+        explicit Sha512(std::uint64_t h0, std::uint64_t h1, std::uint64_t h2, std::uint64_t h3, std::uint64_t h4, std::uint64_t h5, std::uint64_t h6, std::uint64_t h7) : m_H{ h0, h1, h2, h3, h4, h5, h6, h7 } {}
         virtual ~Sha512() = default;
 
         inline void Reset()
@@ -2331,9 +2333,9 @@ namespace Hash
             m_BufferSize = 0;
         }
 
-        inline void Update(const uint8_t* data, std::size_t size)
+        inline void Update(const std::uint8_t* data, std::size_t size)
         {
-            for (size_t i = 0; i < size; ++i)
+            for (std::size_t i = 0; i < size; ++i)
             {
                 m_Buffer[m_BufferSize++] = data[i];
                 if (m_BufferSize == 128)
@@ -2347,19 +2349,19 @@ namespace Hash
 
         inline void Update(const char* data, std::size_t size)
         {
-            Update((const uint8_t*)data, size);
+            Update(reinterpret_cast<const std::uint8_t*>(data), size);
         }
 
         inline void Update(std::string_view data)
         {
-            Update((const uint8_t*)data.data(), data.size());
+            Update(reinterpret_cast<const std::uint8_t*>(data.data()), data.size());
         }
 
 
         inline void Finalize()
         {
-            uint8_t start = m_BufferSize;
-            uint8_t end = m_BufferSize < 112 ? 120 : 128; // 120 instead of 112 because m_Bitlen is a 64 bit uint
+            std::uint8_t start = m_BufferSize;
+            std::uint8_t end = m_BufferSize < 112 ? 120 : 128; // 120 instead of 112 because m_Bitlen is a 64 bit uint
 
             m_Buffer[start++] = 0b10000000;
             std::memset(&m_Buffer[start], 0, end - start);
@@ -2371,7 +2373,7 @@ namespace Hash
             }
 
             m_Bitlen += m_BufferSize * 8;
-            uint64_t* const size = (uint64_t*)&m_Buffer[128 - 8]; // -8 instead of -16 because we use an uint64 instead of uint128
+            std::uint64_t* const size = reinterpret_cast<std::uint64_t*>(&m_Buffer[128 - 8]); // -8 instead of -16 because we use an uint64 instead of uint128
             *size = Util::IsLittleEndian() ? Util::SwapEndian(m_Bitlen) : m_Bitlen;
             Transform();
         }
@@ -2380,9 +2382,9 @@ namespace Hash
         inline virtual std::string Hexdigest() const
         {
             char buff[Size+1];
-            for (size_t i = 0; i < 8; ++i)
+            for (std::size_t i = 0; i < 8; ++i)
             {
-                snprintf(&buff[i * 16], Size+1, "%016" PRIx64, m_H[i]);
+                std::snprintf(&buff[i * 16], Size+1, "%016" PRIx64, m_H[i]);
             }
             return std::string(buff);
         }
@@ -2409,14 +2411,14 @@ namespace Hash
     class Sha512T : public Sha512
     {
     private:
-        size_t m_T;
+        std::size_t m_T;
     private:
         inline std::string HexdigestFull() const
         {
             return Sha512::Hexdigest();
         }
     public:
-        inline explicit Sha512T(size_t t) : Sha512(UINT64_C(0xcfac43c256196cad), UINT64_C(0x1ec20b20216f029e), UINT64_C(0x99cb56d75b315d8e), UINT64_C(0x00ea509ffab89354), UINT64_C(0xf4abf7da08432774), UINT64_C(0x3ea0cd298e9bc9ba), UINT64_C(0xba267c0e5ee418ce), UINT64_C(0xfe4568bcb6db84dc)), m_T(t)
+        inline explicit Sha512T(std::size_t t) : Sha512(UINT64_C(0xcfac43c256196cad), UINT64_C(0x1ec20b20216f029e), UINT64_C(0x99cb56d75b315d8e), UINT64_C(0x00ea509ffab89354), UINT64_C(0xf4abf7da08432774), UINT64_C(0x3ea0cd298e9bc9ba), UINT64_C(0xba267c0e5ee418ce), UINT64_C(0xfe4568bcb6db84dc)), m_T(t)
         {
             assert(t != 384 && "t = 384 is not allowed use Sha384 instead!");
             assert(t >= 4 && t <= 2048 && "t must satisfy t >= 4 && t <= 2048!");
@@ -2427,8 +2429,8 @@ namespace Hash
             s = HexdigestFull();
             Reset();
 
-            size_t k = 0;
-            for (size_t i = 0; i < s.size(); i += 16)
+            std::size_t k = 0;
+            for (std::size_t i = 0; i < s.size(); i += 16)
             {
                 std::stringstream ss;
                 ss << std::hex << std::string_view(&s.c_str()[i], 16);
@@ -2443,7 +2445,7 @@ namespace Hash
     };
 
 
-    template <size_t T>
+    template <std::size_t T>
     class Sha512_T : public Sha512T
     {
         static_assert(T != 384, "T = 384 is not allowed use Sha384 instead!");
@@ -2455,7 +2457,7 @@ namespace Hash
     using Sha512_256 = Sha512_T<256>;
 
 
-    inline std::string sha512t(size_t t, const char* str, std::size_t size)
+    inline std::string sha512t(std::size_t t, const char* str, std::size_t size)
     {
         Sha512T s(t);
         s.Update(str, size);
@@ -2463,12 +2465,12 @@ namespace Hash
         return s.Hexdigest();
     }
 
-    inline std::string sha512t(size_t t, std::string_view str)
+    inline std::string sha512t(std::size_t t, std::string_view str)
     {
         return sha512t(t, str.data(), str.size());
     }
 
-    template <size_t T> inline std::string sha512t(const char* str, std::size_t size)
+    template <std::size_t T> inline std::string sha512t(const char* str, std::size_t size)
     {
         Sha512_T<T> s;
         s.Update(str, size);
@@ -2476,7 +2478,7 @@ namespace Hash
         return s.Hexdigest();
     }
 
-    template <size_t T> inline std::string sha512t(std::string_view str)
+    template <std::size_t T> inline std::string sha512t(std::string_view str)
     {
         return sha512t<T>(str.data(), str.size());
     }
@@ -2488,8 +2490,8 @@ namespace Hash
 
     namespace File
     {
-        inline std::string sha512t(size_t t, const char* path, std::ios::openmode flag = std::ios::binary) { return Hash::sha512t(t, Util::LoadFile(path, flag)); }
-        inline std::string sha512t(size_t t, std::string_view path, std::ios::openmode flag = std::ios::binary) { return Hash::sha512t(t, Util::LoadFile(path.data(), flag)); }
+        inline std::string sha512t(std::size_t t, const char* path, std::ios::openmode flag = std::ios::binary) { return Hash::sha512t(t, Util::LoadFile(path, flag)); }
+        inline std::string sha512t(std::size_t t, std::string_view path, std::ios::openmode flag = std::ios::binary) { return Hash::sha512t(t, Util::LoadFile(path.data(), flag)); }
     }
 
 
@@ -2504,9 +2506,9 @@ namespace Hash
         inline std::string Hexdigest() const override
         {
             char buff[Size+1];
-            for (size_t i = 0; i < 6; ++i)
+            for (std::size_t i = 0; i < 6; ++i)
             {
-                snprintf(&buff[i * 16], Size+1, "%016" PRIx64, m_H[i]);
+                std::snprintf(&buff[i * 16], Size+1, "%016" PRIx64, m_H[i]);
             }
             return std::string(buff);
         }
@@ -2536,11 +2538,11 @@ namespace Hash
     public:
         static constexpr std::size_t Size = 40;
     private:
-        uint64_t m_Bitlen = 0;
-        uint8_t m_BufferSize = 0;
-        uint8_t m_Buffer[64];
+        std::uint64_t m_Bitlen = 0;
+        std::uint8_t m_BufferSize = 0;
+        std::uint8_t m_Buffer[64];
 
-        uint32_t m_H[5] =
+        std::uint32_t m_H[5] =
         {
             UINT32_C(0x67452301),
             UINT32_C(0xEFCDAB89),
@@ -2551,30 +2553,30 @@ namespace Hash
     private:
         inline void Transform()
         {
-            uint32_t w[80];
-            for (size_t i = 0; i < 16; ++i)
+            std::uint32_t w[80];
+            for (std::size_t i = 0; i < 16; ++i)
             {
-                uint8_t* ptr = (uint8_t*)&w[i];
+                std::uint8_t* ptr = reinterpret_cast<std::uint8_t*>(&w[i]);
                 ptr[0] = m_Buffer[4 * i];
                 ptr[1] = m_Buffer[4 * i + 1];
                 ptr[2] = m_Buffer[4 * i + 2];
                 ptr[3] = m_Buffer[4 * i + 3];
-                w[i] = Util::IsLittleEndian() ? Util::SwapEndian<uint32_t>(w[i]) : w[i];
+                w[i] = Util::IsLittleEndian() ? Util::SwapEndian<std::uint32_t>(w[i]) : w[i];
             }
 
-            for (size_t i = 16; i < 80; ++i)
+            for (std::size_t i = 16; i < 80; ++i)
             {
                 w[i] = (Util::LeftRotate(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1));
             }
 
-            uint32_t a = m_H[0];
-            uint32_t b = m_H[1];
-            uint32_t c = m_H[2];
-            uint32_t d = m_H[3];
-            uint32_t e = m_H[4];
-            uint32_t k, f;
+            std::uint32_t a = m_H[0];
+            std::uint32_t b = m_H[1];
+            std::uint32_t c = m_H[2];
+            std::uint32_t d = m_H[3];
+            std::uint32_t e = m_H[4];
+            std::uint32_t k, f;
 
-            for (size_t i = 0; i <= 79; ++i)
+            for (std::size_t i = 0; i <= 79; ++i)
             {
                 if (i <= 19)
                 {
@@ -2598,7 +2600,7 @@ namespace Hash
                     k = UINT32_C(0xCA62C1D6);
                 }
 
-                const uint32_t tmp = Util::LeftRotate(a, 5) + f + e + k + w[i];
+                const std::uint32_t tmp = Util::LeftRotate(a, 5) + f + e + k + w[i];
                 e = d;
                 d = c;
                 c = Util::LeftRotate(b, 30);
@@ -2613,9 +2615,9 @@ namespace Hash
             m_H[4] = m_H[4] + e;
         }
     public:
-        inline void Update(const uint8_t* data, std::size_t size)
+        inline void Update(const std::uint8_t* data, std::size_t size)
         {
-            for (size_t i = 0; i < size; ++i)
+            for (std::size_t i = 0; i < size; ++i)
             {
                 m_Buffer[m_BufferSize++] = data[i];
                 if (m_BufferSize == 64)
@@ -2629,18 +2631,18 @@ namespace Hash
 
         inline void Update(const char* data, std::size_t size)
         {
-            Update((const uint8_t*)data, size);
+            Update(reinterpret_cast<const std::uint8_t*>(data), size);
         }
 
         inline void Update(std::string_view data)
         {
-            Update((const uint8_t*)data.data(), data.size());
+            Update(reinterpret_cast<const std::uint8_t*>(data.data()), data.size());
         }
 
         inline void Finalize()
         {
-            uint8_t start = m_BufferSize;
-            uint8_t end = m_BufferSize < 56 ? 56 : 64;
+            std::uint8_t start = m_BufferSize;
+            std::uint8_t end = m_BufferSize < 56 ? 56 : 64;
 
             m_Buffer[start++] = 0b10000000;
             std::memset(&m_Buffer[start], 0, end - start);
@@ -2652,7 +2654,7 @@ namespace Hash
             }
 
             m_Bitlen += m_BufferSize * 8;
-            uint64_t* const size = (uint64_t*)&m_Buffer[64 - 8];
+            std::uint64_t* const size = (std::uint64_t*)&m_Buffer[64 - 8];
             *size = Util::IsLittleEndian() ? Util::SwapEndian(m_Bitlen) : m_Bitlen;
             Transform();
         }
@@ -2661,9 +2663,9 @@ namespace Hash
         inline std::string Hexdigest() const
         {
             char buff[Size+1];
-            for (size_t i = 0; i < 5; ++i)
+            for (std::size_t i = 0; i < 5; ++i)
             {
-                snprintf(&buff[i * 8], Size+1, "%08" PRIx32, m_H[i]);
+                std::snprintf(&buff[i * 8], Size+1, "%08" PRIx32, m_H[i]);
             }
             return std::string(buff);
         }
@@ -2735,28 +2737,28 @@ namespace Hash
     private:
         static constexpr std::size_t BlockSize = 64;
 
-        uint8_t buffer[BlockSize]; // bytes that didn't fit in last 64 byte chunk
-        uint32_t count[2];         // 64bit counter for number of bits (lo, hi)
-        uint32_t state[4];         // digest so far
-        uint8_t digest[16];        // the result
+        std::uint8_t buffer[BlockSize]; // bytes that didn't fit in last 64 byte chunk
+        std::uint32_t count[2];         // 64bit counter for number of bits (lo, hi)
+        std::uint32_t state[4];         // digest so far
+        std::uint8_t digest[16];        // the result
     private:
         // Constants for MD5 Transform routine.
-        static constexpr uint32_t S11 = 7;
-        static constexpr uint32_t S12 = 12;
-        static constexpr uint32_t S13 = 17;
-        static constexpr uint32_t S14 = 22;
-        static constexpr uint32_t S21 = 5;
-        static constexpr uint32_t S22 = 9;
-        static constexpr uint32_t S23 = 14;
-        static constexpr uint32_t S24 = 20;
-        static constexpr uint32_t S31 = 4;
-        static constexpr uint32_t S32 = 11;
-        static constexpr uint32_t S33 = 16;
-        static constexpr uint32_t S34 = 23;
-        static constexpr uint32_t S41 = 6;
-        static constexpr uint32_t S42 = 10;
-        static constexpr uint32_t S43 = 15;
-        static constexpr uint32_t S44 = 21;
+        static constexpr std::uint32_t S11 = 7;
+        static constexpr std::uint32_t S12 = 12;
+        static constexpr std::uint32_t S13 = 17;
+        static constexpr std::uint32_t S14 = 22;
+        static constexpr std::uint32_t S21 = 5;
+        static constexpr std::uint32_t S22 = 9;
+        static constexpr std::uint32_t S23 = 14;
+        static constexpr std::uint32_t S24 = 20;
+        static constexpr std::uint32_t S31 = 4;
+        static constexpr std::uint32_t S32 = 11;
+        static constexpr std::uint32_t S33 = 16;
+        static constexpr std::uint32_t S34 = 23;
+        static constexpr std::uint32_t S41 = 6;
+        static constexpr std::uint32_t S42 = 10;
+        static constexpr std::uint32_t S43 = 15;
+        static constexpr std::uint32_t S44 = 21;
     public:
         // default ctor, just initailize
         MD5()
@@ -2770,14 +2772,14 @@ namespace Hash
         MD5(const std::string& text)
         {
             Init();
-            Update(text.c_str(), (uint32_t)text.length());
+            Update(text.c_str(), static_cast<std::uint32_t>(text.length()));
             Finalize();
         }
 
         MD5(std::string_view text)
         {
             Init();
-            Update(text.data(), (uint32_t)text.length());
+            Update(text.data(), static_cast<std::uint32_t>(text.length()));
             Finalize();
         }
 
@@ -2785,10 +2787,10 @@ namespace Hash
 
         // MD5 block update operation. Continues an Hash_MD5 message-digest
         // operation, processing another message block
-        void Update(const uint8_t input[], uint32_t length)
+        void Update(const std::uint8_t input[], std::uint32_t length)
         {
             // compute number of bytes mod 64
-            uint32_t index = count[0] / 8 % BlockSize;
+            std::uint32_t index = count[0] / 8 % BlockSize;
 
             // Update number of bits
             if ((count[0] += (length << 3)) < (length << 3))
@@ -2796,15 +2798,15 @@ namespace Hash
             count[1] += (length >> 29);
 
             // number of bytes we need to fill in buffer
-            uint32_t firstpart = 64 - index;
+            std::uint32_t firstpart = 64 - index;
 
-            uint32_t i;
+            std::uint32_t i;
 
             // transform as many times as possible.
             if (length >= firstpart)
             {
                 // fill buffer first, transform
-                memcpy(&buffer[index], input, firstpart);
+                std::memcpy(&buffer[index], input, firstpart);
                 Transform(buffer);
 
                 // transform chunks of blocksize (64 bytes)
@@ -2817,20 +2819,20 @@ namespace Hash
                 i = 0;
 
             // buffer remaining input
-            memcpy(&buffer[index], &input[i], length - i);
+            std::memcpy(&buffer[index], &input[i], length - i);
         }
 
         //////////////////////////////
 
         // for convenience provide a verson with signed char
-        inline void Update(const char input[], uint32_t length)
+        inline void Update(const char input[], std::uint32_t length)
         {
-            Update((const uint8_t*)input, length);
+            Update(reinterpret_cast<const std::uint8_t*>(input), length);
         }
 
         inline void Update(std::string_view data)
         {
-            Update((const uint8_t*)data.data(), static_cast<uint32_t>(data.size()));
+            Update(reinterpret_cast<const std::uint8_t*>(data.data()), static_cast<std::uint32_t>(data.size()));
         }
 
         //////////////////////////////
@@ -2839,19 +2841,19 @@ namespace Hash
         // the message digest and zeroizing the context.
         void Finalize()
         {
-            static const uint8_t padding[64] = {
-              0x80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            static constexpr std::uint8_t padding[64] = {
+                0x80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
             };
 
             // Save number of bits
-            uint8_t bits[8];
+            std::uint8_t bits[8];
             Encode(bits, count, 8);
 
             // pad out to 56 mod 64.
-            uint32_t index = count[0] / 8 % 64;
-            uint32_t padLen = (index < 56) ? (56 - index) : (120 - index);
+            std::uint32_t index = count[0] / 8 % 64;
+            std::uint32_t padLen = (index < 56) ? (56 - index) : (120 - index);
             Update(padding, padLen);
 
             // Append length (before padding)
@@ -2873,12 +2875,10 @@ namespace Hash
             char buf[Size+1];
             for (int i = 0; i < 16; i++)
             {
-                snprintf(buf + i * 2, Size+1, "%02x", digest[i]);
+                std::snprintf(buf + i * 2, Size+1, "%02x", digest[i]);
             }
             return std::string(buf);
         }
-
-        friend std::ostream& operator<<(std::ostream&, const MD5& md5);
     private:
         void Init()
         {
@@ -2895,9 +2895,9 @@ namespace Hash
         //////////////////////////////
 
         // apply MD5 algo on a block
-        void Transform(const uint8_t block[BlockSize])
+        void Transform(const std::uint8_t block[BlockSize])
         {
-            uint32_t a = state[0], b = state[1], c = state[2], d = state[3], x[16];
+            std::uint32_t a = state[0], b = state[1], c = state[2], d = state[3], x[16];
             Decode(x, block, BlockSize);
 
             /* Round 1 */
@@ -2978,26 +2978,26 @@ namespace Hash
             state[3] += d;
 
             // Zeroize sensitive information.
-            memset(x, 0, sizeof x);
+            std::memset(x, 0, sizeof x);
         }
 
         //////////////////////////////
 
         // decodes input (unsigned char) into output (uint4). Assumes len is a multiple of 4.
-        inline void Decode(uint32_t output[], const uint8_t input[], uint32_t len)
+        inline void Decode(std::uint32_t output[], const std::uint8_t input[], std::uint32_t len)
         {
-            for (uint32_t i = 0, j = 0; j < len; i++, j += 4)
-                output[i] = ((uint32_t)input[j]) | (((uint32_t)input[j + 1]) << 8) |
-                (((uint32_t)input[j + 2]) << 16) | (((uint32_t)input[j + 3]) << 24);
+            for (std::uint32_t i = 0, j = 0; j < len; i++, j += 4)
+                output[i] = ((std::uint32_t)input[j]) | (((std::uint32_t)input[j + 1]) << 8) |
+                (((std::uint32_t)input[j + 2]) << 16) | (((std::uint32_t)input[j + 3]) << 24);
         }
 
         //////////////////////////////
 
         // encodes input (uint4) into output (unsigned char). Assumes len is
         // a multiple of 4.
-        inline void Encode(uint8_t output[], const uint32_t input[], uint32_t len)
+        inline void Encode(std::uint8_t output[], const std::uint32_t input[], std::uint32_t len)
         {
-            for (uint32_t i = 0, j = 0; j < len; i++, j += 4)
+            for (std::uint32_t i = 0, j = 0; j < len; i++, j += 4)
             {
                 output[j] = input[i] & 0xff;
                 output[j + 1] = (input[i] >> 8) & 0xff;
@@ -3011,22 +3011,22 @@ namespace Hash
         // low level logic operations
         ///////////////////////////////////////////////
         // F, G, H and I are basic Hash_MD5 functions.
-        inline uint32_t F(uint32_t x, uint32_t y, uint32_t z)
+        inline std::uint32_t F(std::uint32_t x, std::uint32_t y, std::uint32_t z)
         {
             return (x & y) | (~x & z);
         }
 
-        inline uint32_t G(uint32_t x, uint32_t y, uint32_t z)
+        inline std::uint32_t G(std::uint32_t x, std::uint32_t y, std::uint32_t z)
         {
             return (x & z) | (y & ~z);
         }
 
-        inline uint32_t H(uint32_t x, uint32_t y, uint32_t z)
+        inline std::uint32_t H(std::uint32_t x, std::uint32_t y, std::uint32_t z)
         {
             return x ^ y ^ z;
         }
 
-        inline uint32_t I(uint32_t x, uint32_t y, uint32_t z)
+        inline std::uint32_t I(std::uint32_t x, std::uint32_t y, std::uint32_t z)
         {
             return y ^ (x | ~z);
         }
@@ -3034,35 +3034,28 @@ namespace Hash
 
         // FF, GG, HH, and II transformations for rounds 1, 2, 3, and 4.
         // Rotation is separate from addition to prevent recomputation.
-        inline uint32_t FF(uint32_t a, uint32_t b, uint32_t c, uint32_t d, uint32_t x, uint32_t s, uint32_t ac)
+        inline std::uint32_t FF(std::uint32_t a, std::uint32_t b, std::uint32_t c, std::uint32_t d, std::uint32_t x, std::uint32_t s, std::uint32_t ac)
         {
-            return Util::LeftRotate<uint32_t>(a + F(b, c, d) + x + ac, s) + b;
+            return Util::LeftRotate<std::uint32_t>(a + F(b, c, d) + x + ac, s) + b;
         }
 
-        inline uint32_t GG(uint32_t a, uint32_t b, uint32_t c, uint32_t d, uint32_t x, uint32_t s, uint32_t ac)
+        inline std::uint32_t GG(std::uint32_t a, std::uint32_t b, std::uint32_t c, std::uint32_t d, std::uint32_t x, std::uint32_t s, std::uint32_t ac)
         {
-            return Util::LeftRotate<uint32_t>(a + G(b, c, d) + x + ac, s) + b;
+            return Util::LeftRotate<std::uint32_t>(a + G(b, c, d) + x + ac, s) + b;
         }
 
-        inline uint32_t HH(uint32_t a, uint32_t b, uint32_t c, uint32_t d, uint32_t x, uint32_t s, uint32_t ac)
+        inline std::uint32_t HH(std::uint32_t a, std::uint32_t b, std::uint32_t c, std::uint32_t d, std::uint32_t x, std::uint32_t s, std::uint32_t ac)
         {
-            return Util::LeftRotate<uint32_t>(a + H(b, c, d) + x + ac, s) + b;
+            return Util::LeftRotate<std::uint32_t>(a + H(b, c, d) + x + ac, s) + b;
         }
 
-        inline uint32_t II(uint32_t a, uint32_t b, uint32_t c, uint32_t d, uint32_t x, uint32_t s, uint32_t ac)
+        inline std::uint32_t II(std::uint32_t a, std::uint32_t b, std::uint32_t c, std::uint32_t d, std::uint32_t x, std::uint32_t s, std::uint32_t ac)
         {
-            return Util::LeftRotate<uint32_t>(a + I(b, c, d) + x + ac, s) + b;
+            return Util::LeftRotate<std::uint32_t>(a + I(b, c, d) + x + ac, s) + b;
         }
 
         //////////////////////////////////////////////
     };
-
-    inline std::ostream& operator<<(std::ostream& out, const MD5& md5)
-    {
-        return out << md5.Hexdigest();
-    }
-
-    //////////////////////////////
 
     inline std::string md5(std::string_view str)
     {
@@ -3073,7 +3066,7 @@ namespace Hash
     inline std::string md5(const char* str, std::size_t size)
     {
         MD5 md5;
-        md5.Update(str, static_cast<uint32_t>(size));
+        md5.Update(str, static_cast<std::uint32_t>(size));
         md5.Finalize();
         return md5.Hexdigest();
     }
@@ -3084,43 +3077,43 @@ namespace Hash
 #if HASH_ENABLE_SHA3
     namespace Private
     {
-        template <size_t BitSize>
+        template <std::size_t BitSize>
         struct Sha3
         {
             static_assert(BitSize == 224 || BitSize == 256 || BitSize == 384 || BitSize == 512, "BitSize must be 224, 256, 384 or 512");
         public:
-            static constexpr size_t Size = BitSize / 4;
+            static constexpr std::size_t Size = BitSize / 4;
         private:
-            static constexpr size_t UseKeccakFlag = 0x80000000;
-            static constexpr size_t KeccakSpongeWords = (((1600)/8/*bits to byte*/)/sizeof(uint64_t));
+            static constexpr std::size_t UseKeccakFlag = 0x80000000;
+            static constexpr std::size_t KeccakSpongeWords = (((1600)/8/*bits to byte*/)/sizeof(std::uint64_t));
         private:
-            uint64_t m_Saved = 0;       // the portion of the input message that we didn't consume yet
+            std::uint64_t m_Saved = 0;       // the portion of the input message that we didn't consume yet
             union {                     // Keccak's state
-                uint64_t s[KeccakSpongeWords];
-                uint8_t sb[KeccakSpongeWords * 8] = {0};
+                std::uint64_t s[KeccakSpongeWords];
+                std::uint8_t sb[KeccakSpongeWords * 8] = {0};
             } u;
-            size_t m_ByteIndex = 0;      // 0..7--the next byte after the set one (starts from 0; 0--none are buffered)
-            size_t m_WordIndex = 0;      // 0..24--the next word to integrate input (starts from 0)
-            size_t m_CapacityWords = 2 * BitSize / (8 * sizeof(uint64_t));  // the double size of the hash output in words (e.g. 16 for Keccak 512)
+            std::size_t m_ByteIndex = 0;      // 0..7--the next byte after the set one (starts from 0; 0--none are buffered)
+            std::size_t m_WordIndex = 0;      // 0..24--the next word to integrate input (starts from 0)
+            std::size_t m_CapacityWords = 2 * BitSize / (8 * sizeof(std::uint64_t));  // the double size of the hash output in words (e.g. 16 for Keccak 512)
         private:
-            inline size_t CW(size_t x) const noexcept
+            inline std::size_t CW(std::size_t x) const noexcept
             {
                 return (x) & (~UseKeccakFlag);
             }
 
-            void keccakf(uint64_t s[25]) const noexcept
+            void keccakf(std::uint64_t s[25]) const noexcept
             {
-                static constexpr uint8_t keccakf_rotc[24] = {
+                static constexpr std::uint8_t keccakf_rotc[24] = {
                     1, 3, 6, 10, 15, 21, 28, 36, 45, 55, 2, 14, 27, 41, 56, 8, 25, 43, 62,
                     18, 39, 61, 20, 44
                 };
 
-                static constexpr uint8_t keccakf_piln[24] = {
+                static constexpr std::uint8_t keccakf_piln[24] = {
                     10, 7, 11, 17, 18, 3, 5, 16, 8, 21, 24, 4, 15, 23, 19, 13, 12, 2, 20,
                     14, 22, 9, 6, 1
                 };
 
-                static constexpr uint64_t keccakf_rndc[24] = {
+                static constexpr std::uint64_t keccakf_rndc[24] = {
                     UINT64_C(0x0000000000000001), UINT64_C(0x0000000000008082),
                     UINT64_C(0x800000000000808a), UINT64_C(0x8000000080008000),
                     UINT64_C(0x000000000000808b), UINT64_C(0x0000000080000001),
@@ -3136,38 +3129,38 @@ namespace Hash
                 };
 
 
-                uint64_t bc[5];
-                constexpr uint8_t KeccakRounds = 24;
+                std::uint64_t bc[5];
+                constexpr std::uint8_t KeccakRounds = 24;
 
-                for(uint8_t round = 0; round < KeccakRounds; round++)
+                for(std::uint8_t round = 0; round < KeccakRounds; round++)
                 {
                     /* Theta */
-                    for(uint8_t i = 0; i < 5; i++)
+                    for(std::uint8_t i = 0; i < 5; i++)
                         bc[i] = s[i] ^ s[i + 5] ^ s[i + 10] ^ s[i + 15] ^ s[i + 20];
 
-                    for(uint8_t i = 0; i < 5; i++)
+                    for(std::uint8_t i = 0; i < 5; i++)
                     {
-                        uint64_t t = bc[(i + 4) % 5] ^ Hash::Util::LeftRotate<uint64_t>(bc[(i + 1) % 5], 1);
-                        for(uint8_t j = 0; j < 25; j += 5)
+                        std::uint64_t t = bc[(i + 4) % 5] ^ Hash::Util::LeftRotate<std::uint64_t>(bc[(i + 1) % 5], 1);
+                        for(std::uint8_t j = 0; j < 25; j += 5)
                             s[j + i] ^= t;
                     }
 
                     /* Rho Pi */
-                    uint64_t t = s[1];
-                    for(uint8_t i = 0; i < 24; i++)
+                    std::uint64_t t = s[1];
+                    for(std::uint8_t i = 0; i < 24; i++)
                     {
-                        uint8_t j = keccakf_piln[i];
+                        std::uint8_t j = keccakf_piln[i];
                         bc[0] = s[j];
-                        s[j] = Hash::Util::LeftRotate<uint64_t>(t, keccakf_rotc[i]);
+                        s[j] = Hash::Util::LeftRotate<std::uint64_t>(t, keccakf_rotc[i]);
                         t = bc[0];
                     }
 
                     /* Chi */
-                    for(uint8_t j = 0; j < 25; j += 5)
+                    for(std::uint8_t j = 0; j < 25; j += 5)
                     {
-                        for(uint8_t i = 0; i < 5; i++)
+                        for(std::uint8_t i = 0; i < 5; i++)
                             bc[i] = s[j + i];
-                        for(uint8_t i = 0; i < 5; i++)
+                        for(std::uint8_t i = 0; i < 5; i++)
                             s[j + i] ^= (~bc[(i + 1) % 5]) & bc[(i + 2) % 5];
                     }
 
@@ -3176,17 +3169,17 @@ namespace Hash
                 }
             }
         public:
-            void Update(const uint8_t *data, std::size_t size) noexcept
+            void Update(const std::uint8_t *data, std::size_t size) noexcept
             {
                 /* 0...7 -- how much is needed to have a word */
-                size_t old_tail = (8 - m_ByteIndex) & 7;
+                std::size_t old_tail = (8 - m_ByteIndex) & 7;
 
                 if(size < old_tail)
                 {        /* have no complete word or haven't started 
                                             * the word yet */
                     /* endian-independent code follows: */
                     while (size--)
-                        m_Saved |= (uint64_t) (*(data++)) << ((m_ByteIndex++) * 8);
+                        m_Saved |= (std::uint64_t) (*(data++)) << ((m_ByteIndex++) * 8);
                     return;
                 }
 
@@ -3195,7 +3188,7 @@ namespace Hash
                     /* endian-independent code follows: */
                     size -= old_tail;
                     while (old_tail--)
-                        m_Saved |= (uint64_t) (*(data++)) << ((m_ByteIndex++) * 8);
+                        m_Saved |= (std::uint64_t) (*(data++)) << ((m_ByteIndex++) * 8);
 
                     /* now ready to add saved to the sponge */
                     u.s[m_WordIndex] ^= m_Saved;
@@ -3209,19 +3202,19 @@ namespace Hash
                 }
 
 
-                size_t words = size / sizeof(uint64_t);
-                size_t tail = size - words * sizeof(uint64_t);
+                std::size_t words = size / sizeof(std::uint64_t);
+                std::size_t tail = size - words * sizeof(std::uint64_t);
 
-                for(size_t i = 0; i < words; i++, data += sizeof(uint64_t))
+                for(std::size_t i = 0; i < words; i++, data += sizeof(std::uint64_t))
                 {
-                    const uint64_t t = (uint64_t) (data[0]) |
-                            ((uint64_t) (data[1]) << 8 * 1) |
-                            ((uint64_t) (data[2]) << 8 * 2) |
-                            ((uint64_t) (data[3]) << 8 * 3) |
-                            ((uint64_t) (data[4]) << 8 * 4) |
-                            ((uint64_t) (data[5]) << 8 * 5) |
-                            ((uint64_t) (data[6]) << 8 * 6) |
-                            ((uint64_t) (data[7]) << 8 * 7);
+                    const std::uint64_t t = (std::uint64_t) (data[0]) |
+                            ((std::uint64_t) (data[1]) << 8 * 1) |
+                            ((std::uint64_t) (data[2]) << 8 * 2) |
+                            ((std::uint64_t) (data[3]) << 8 * 3) |
+                            ((std::uint64_t) (data[4]) << 8 * 4) |
+                            ((std::uint64_t) (data[5]) << 8 * 5) |
+                            ((std::uint64_t) (data[6]) << 8 * 6) |
+                            ((std::uint64_t) (data[7]) << 8 * 7);
 
                     u.s[m_WordIndex] ^= t;
                     if(++m_WordIndex == (KeccakSpongeWords - CW(m_CapacityWords)))
@@ -3234,20 +3227,20 @@ namespace Hash
 
                 while (tail--)
                 {
-                    m_Saved |= (uint64_t) (*(data++)) << ((m_ByteIndex++) * 8);
+                    m_Saved |= (std::uint64_t) (*(data++)) << ((m_ByteIndex++) * 8);
                 }
             }
 
 
             inline void Update(const char* data, std::size_t size) noexcept
             {
-                Update((const uint8_t*)data, size);
+                Update(reinterpret_cast<const std::uint8_t*>(data), size);
             }
 
 
             inline void Update(std::string_view data) noexcept
             {
-                Update((const uint8_t*)data.data(), data.size());
+                Update(reinterpret_cast<const std::uint8_t*>(data.data()), data.size());
             }
 
 
@@ -3258,7 +3251,7 @@ namespace Hash
                 * Overall, we feed 0, then 1, and finally 1 to start padding. Without
                 * M || 01, we would simply use 1 to start padding. */
 
-                uint64_t t;
+                std::uint64_t t;
 
                 //if(m_CapacityWords & UseKeccakFlag)
                 //{
@@ -3268,7 +3261,7 @@ namespace Hash
                 //else
                 //{
                     /* SHA3 version */
-                    t = (uint64_t)(((uint64_t)(0x02 | (1 << 2))) << ((m_ByteIndex) * 8));
+                    t = (std::uint64_t)(((std::uint64_t)(0x02 | (1 << 2))) << ((m_ByteIndex) * 8));
                 //}
 
                 u.s[m_WordIndex] ^= m_Saved ^ t;
@@ -3279,19 +3272,19 @@ namespace Hash
                 // This conversion is not needed for little-endian platforms
                 if (!Util::IsLittleEndian())
                 {
-                    uint32_t i;
+                    std::uint32_t i;
                     for(i = 0; i < KeccakSpongeWords; i++)
                     {
-                        const uint32_t t1 = (uint32_t) u.s[i];
-                        const uint32_t t2 = (uint32_t) ((u.s[i] >> 16) >> 16);
-                        u.sb[i * 8 + 0] = (uint8_t) (t1);
-                        u.sb[i * 8 + 1] = (uint8_t) (t1 >> 8);
-                        u.sb[i * 8 + 2] = (uint8_t) (t1 >> 16);
-                        u.sb[i * 8 + 3] = (uint8_t) (t1 >> 24);
-                        u.sb[i * 8 + 4] = (uint8_t) (t2);
-                        u.sb[i * 8 + 5] = (uint8_t) (t2 >> 8);
-                        u.sb[i * 8 + 6] = (uint8_t) (t2 >> 16);
-                        u.sb[i * 8 + 7] = (uint8_t) (t2 >> 24);
+                        const std::uint32_t t1 = (std::uint32_t) u.s[i];
+                        const std::uint32_t t2 = (std::uint32_t) ((u.s[i] >> 16) >> 16);
+                        u.sb[i * 8 + 0] = (std::uint8_t) (t1);
+                        u.sb[i * 8 + 1] = (std::uint8_t) (t1 >> 8);
+                        u.sb[i * 8 + 2] = (std::uint8_t) (t1 >> 16);
+                        u.sb[i * 8 + 3] = (std::uint8_t) (t1 >> 24);
+                        u.sb[i * 8 + 4] = (std::uint8_t) (t2);
+                        u.sb[i * 8 + 5] = (std::uint8_t) (t2 >> 8);
+                        u.sb[i * 8 + 6] = (std::uint8_t) (t2 >> 16);
+                        u.sb[i * 8 + 7] = (std::uint8_t) (t2 >> 24);
                     }
                 }
             }
@@ -3300,9 +3293,9 @@ namespace Hash
             inline std::string Hexdigest() const
             {
                 char buff[Size+1];
-                for (size_t i = 0; i < Size/2; i++)
+                for (std::size_t i = 0; i < Size/2; i++)
                 {
-                    snprintf(&buff[i*2], Size+1, "%02" PRIx32, (uint32_t)((uint8_t*)u.s)[i]);
+                    std::snprintf(&buff[i*2], Size+1, "%02" PRIx32, static_cast<std::uint32_t>(reinterpret_cast<std::uint8_t*>(const_cast<std::uint64_t*>(u.s))[i]));
                 }
                 return std::string(buff);
             }
@@ -3314,7 +3307,7 @@ namespace Hash
     using Sha3_512 = Private::Sha3<512>;
 
 
-    inline std::string sha3_224(const unsigned char* data, size_t size)
+    inline std::string sha3_224(const unsigned char* data, std::size_t size)
     {
         Sha3_224 s;
         s.Update(data, size);
@@ -3322,7 +3315,7 @@ namespace Hash
         return s.Hexdigest();
     }
 
-    inline std::string sha3_256(const unsigned char* data, size_t size)
+    inline std::string sha3_256(const unsigned char* data, std::size_t size)
     {
         Sha3_256 s;
         s.Update(data, size);
@@ -3330,7 +3323,7 @@ namespace Hash
         return s.Hexdigest();
     }
 
-    inline std::string sha3_384(const unsigned char* data, size_t size)
+    inline std::string sha3_384(const unsigned char* data, std::size_t size)
     {
         Sha3_384 s;
         s.Update(data, size);
@@ -3338,7 +3331,7 @@ namespace Hash
         return s.Hexdigest();
     }
 
-    inline std::string sha3_512(const unsigned char* data, size_t size)
+    inline std::string sha3_512(const unsigned char* data, std::size_t size)
     {
         Sha3_512 s;
         s.Update(data, size);
@@ -3346,10 +3339,10 @@ namespace Hash
         return s.Hexdigest();
     }
 
-    inline std::string sha3_224(const char* data, size_t size) { return sha3_224((const unsigned char*)data, size); }
-    inline std::string sha3_256(const char* data, size_t size) { return sha3_256((const unsigned char*)data, size); }
-    inline std::string sha3_384(const char* data, size_t size) { return sha3_384((const unsigned char*)data, size); }
-    inline std::string sha3_512(const char* data, size_t size) { return sha3_512((const unsigned char*)data, size); }
+    inline std::string sha3_224(const char* data, std::size_t size) { return sha3_224(reinterpret_cast<const unsigned char*>(data), size); }
+    inline std::string sha3_256(const char* data, std::size_t size) { return sha3_256(reinterpret_cast<const unsigned char*>(data), size); }
+    inline std::string sha3_384(const char* data, std::size_t size) { return sha3_384(reinterpret_cast<const unsigned char*>(data), size); }
+    inline std::string sha3_512(const char* data, std::size_t size) { return sha3_512(reinterpret_cast<const unsigned char*>(data), size); }
 
     inline std::string sha3_224(std::string_view data) { return sha3_224(data.data(), data.size()); }
     inline std::string sha3_256(std::string_view data) { return sha3_256(data.data(), data.size()); }
@@ -3437,28 +3430,28 @@ inline void hash_private_keccak_Keccak(unsigned int rate, unsigned int capacity,
 
 namespace Hash
 {
-    inline std::string shake128(const unsigned char* data, size_t size, size_t outsizeBytes)
+    inline std::string shake128(const unsigned char* data, std::size_t size, std::size_t outsizeBytes)
     {
         std::string buff(outsizeBytes / 2, ' ');
-        hash_private_keccak_Keccak(1344, 256, data, size, 0x1F, (unsigned char*)buff.data(), outsizeBytes / 2);
-        return Util::CharArrayToHexString((unsigned char*)buff.data(), outsizeBytes / 2);
+        hash_private_keccak_Keccak(1344, 256, data, size, 0x1F, reinterpret_cast<unsigned char*>(buff.data()), outsizeBytes / 2);
+        return Util::CharArrayToHexString(reinterpret_cast<unsigned char*>(buff.data()), outsizeBytes / 2);
     }
 
 
-    inline std::string shake256(const unsigned char* data, size_t size, size_t outsizeBytes)
+    inline std::string shake256(const unsigned char* data, std::size_t size, std::size_t outsizeBytes)
     {
         std::string buff(outsizeBytes / 2, ' ');
-        hash_private_keccak_Keccak(1088, 512, data, size, 0x1F, (unsigned char*)buff.data(), outsizeBytes / 2);
-        return Util::CharArrayToHexString((unsigned char*)buff.data(), outsizeBytes / 2);
+        hash_private_keccak_Keccak(1088, 512, data, size, 0x1F, reinterpret_cast<unsigned char*>(buff.data()), outsizeBytes / 2);
+        return Util::CharArrayToHexString(reinterpret_cast<unsigned char*>(buff.data()), outsizeBytes / 2);
     }
 
-    inline std::string shake128(const char* data, size_t size, size_t outsizeBytes) { return shake128((const unsigned char*)data, size, outsizeBytes); }
-    inline std::string shake256(const char* data, size_t size, size_t outsizeBytes) { return shake256((const unsigned char*)data, size, outsizeBytes); }
-    inline std::string shake128(std::string_view data, size_t outsizeBytes) { return shake128(data.data(), data.size(), outsizeBytes); }
-    inline std::string shake256(std::string_view data, size_t outsizeBytes) { return shake256(data.data(), data.size(), outsizeBytes); }
+    inline std::string shake128(const char* data, std::size_t size, std::size_t outsizeBytes) { return shake128(reinterpret_cast<const unsigned char*>(data), size, outsizeBytes); }
+    inline std::string shake256(const char* data, std::size_t size, std::size_t outsizeBytes) { return shake256(reinterpret_cast<const unsigned char*>(data), size, outsizeBytes); }
+    inline std::string shake128(std::string_view data, std::size_t outsizeBytes) { return shake128(data.data(), data.size(), outsizeBytes); }
+    inline std::string shake256(std::string_view data, std::size_t outsizeBytes) { return shake256(data.data(), data.size(), outsizeBytes); }
 
 
-    template <size_t outsizeBytes> inline std::string shake128(const unsigned char* data, size_t size)
+    template <std::size_t outsizeBytes> inline std::string shake128(const unsigned char* data, std::size_t size)
     {
         static_assert(outsizeBytes > 0, "outsizeBytes must be greater than 0!");
         unsigned char buff[outsizeBytes / 2];
@@ -3467,7 +3460,7 @@ namespace Hash
     }
 
 
-    template <size_t outsizeBytes> inline std::string shake256(const unsigned char* data, size_t size)
+    template <std::size_t outsizeBytes> inline std::string shake256(const unsigned char* data, std::size_t size)
     {
         static_assert(outsizeBytes > 0, "outsizeBytes must be greater than 0!");
         unsigned char buff[outsizeBytes / 2];
@@ -3475,46 +3468,46 @@ namespace Hash
         return Util::CharArrayToHexString(buff, outsizeBytes / 2);
     }
 
-    template <size_t outsizeBytes> inline std::string shake128(const char* data, size_t size) { return shake128<outsizeBytes>((const unsigned char*)data, size); }
-    template <size_t outsizeBytes> inline std::string shake256(const char* data, size_t size) { return shake256<outsizeBytes>((const unsigned char*)data, size); }
-    template <size_t outsizeBytes> inline std::string shake128(std::string_view data) { return shake128<outsizeBytes>(data.data(), data.size()); }
-    template <size_t outsizeBytes> inline std::string shake256(std::string_view data) { return shake256<outsizeBytes>(data.data(), data.size()); }
+    template <std::size_t outsizeBytes> inline std::string shake128(const char* data, std::size_t size) { return shake128<outsizeBytes>(reinterpret_cast<const unsigned char*>(data), size); }
+    template <std::size_t outsizeBytes> inline std::string shake256(const char* data, std::size_t size) { return shake256<outsizeBytes>(reinterpret_cast<const unsigned char*>(data), size); }
+    template <std::size_t outsizeBytes> inline std::string shake128(std::string_view data) { return shake128<outsizeBytes>(data.data(), data.size()); }
+    template <std::size_t outsizeBytes> inline std::string shake256(std::string_view data) { return shake256<outsizeBytes>(data.data(), data.size()); }
 
 
     namespace File
     {
-        inline std::string shake128(const char* path,      size_t outsizeBytes, std::ios::openmode flag = std::ios::binary) { return Hash::shake128(Util::LoadFile(path, flag),        outsizeBytes); }
-        inline std::string shake128(std::string_view path, size_t outsizeBytes, std::ios::openmode flag = std::ios::binary) { return Hash::shake128(Util::LoadFile(path.data(), flag), outsizeBytes); }
-        inline std::string shake256(const char* path,      size_t outsizeBytes, std::ios::openmode flag = std::ios::binary) { return Hash::shake256(Util::LoadFile(path, flag),        outsizeBytes); }
-        inline std::string shake256(std::string_view path, size_t outsizeBytes, std::ios::openmode flag = std::ios::binary) { return Hash::shake256(Util::LoadFile(path.data(), flag), outsizeBytes); }
+        inline std::string shake128(const char* path,      std::size_t outsizeBytes, std::ios::openmode flag = std::ios::binary) { return Hash::shake128(Util::LoadFile(path, flag),        outsizeBytes); }
+        inline std::string shake128(std::string_view path, std::size_t outsizeBytes, std::ios::openmode flag = std::ios::binary) { return Hash::shake128(Util::LoadFile(path.data(), flag), outsizeBytes); }
+        inline std::string shake256(const char* path,      std::size_t outsizeBytes, std::ios::openmode flag = std::ios::binary) { return Hash::shake256(Util::LoadFile(path, flag),        outsizeBytes); }
+        inline std::string shake256(std::string_view path, std::size_t outsizeBytes, std::ios::openmode flag = std::ios::binary) { return Hash::shake256(Util::LoadFile(path.data(), flag), outsizeBytes); }
 
-        template <size_t outsizeBytes> inline std::string shake128(const char* path,      std::ios::openmode flag = std::ios::binary) { return Hash::shake128<outsizeBytes>(Util::LoadFile(path,        flag)); }
-        template <size_t outsizeBytes> inline std::string shake128(std::string_view path, std::ios::openmode flag = std::ios::binary) { return Hash::shake128<outsizeBytes>(Util::LoadFile(path.data(), flag)); }
-        template <size_t outsizeBytes> inline std::string shake256(const char* path,      std::ios::openmode flag = std::ios::binary) { return Hash::shake256<outsizeBytes>(Util::LoadFile(path,        flag)); }
-        template <size_t outsizeBytes> inline std::string shake256(std::string_view path, std::ios::openmode flag = std::ios::binary) { return Hash::shake256<outsizeBytes>(Util::LoadFile(path.data(), flag)); }
+        template <std::size_t outsizeBytes> inline std::string shake128(const char* path,      std::ios::openmode flag = std::ios::binary) { return Hash::shake128<outsizeBytes>(Util::LoadFile(path,        flag)); }
+        template <std::size_t outsizeBytes> inline std::string shake128(std::string_view path, std::ios::openmode flag = std::ios::binary) { return Hash::shake128<outsizeBytes>(Util::LoadFile(path.data(), flag)); }
+        template <std::size_t outsizeBytes> inline std::string shake256(const char* path,      std::ios::openmode flag = std::ios::binary) { return Hash::shake256<outsizeBytes>(Util::LoadFile(path,        flag)); }
+        template <std::size_t outsizeBytes> inline std::string shake256(std::string_view path, std::ios::openmode flag = std::ios::binary) { return Hash::shake256<outsizeBytes>(Util::LoadFile(path.data(), flag)); }
     }
 
 
     struct Shake128
     {
-        size_t OutputSize = 64;
-        inline std::string Hash(std::string_view data)                  const noexcept { return shake128(data, OutputSize);       }
-        inline std::string Hash(const char* data, size_t size)          const noexcept { return shake128(data, size, OutputSize); }
-        inline std::string Hash(const unsigned char* data, size_t size) const noexcept { return shake128(data, size, OutputSize); }
-        inline std::string Hash(std::string_view data, size_t outsize)                  const noexcept { return shake128(data, outsize);       }
-        inline std::string Hash(const char* data, size_t size, size_t outsize)          const noexcept { return shake128(data, size, outsize); }
-        inline std::string Hash(const unsigned char* data, size_t size, size_t outsize) const noexcept { return shake128(data, size, outsize); }
+        std::size_t OutputSize = 64;
+        inline std::string Hash(std::string_view data)                       const noexcept { return shake128(data, OutputSize);       }
+        inline std::string Hash(const char* data, std::size_t size)          const noexcept { return shake128(data, size, OutputSize); }
+        inline std::string Hash(const unsigned char* data, std::size_t size) const noexcept { return shake128(data, size, OutputSize); }
+        inline std::string Hash(std::string_view data, std::size_t outsize)                       const noexcept { return shake128(data, outsize);       }
+        inline std::string Hash(const char* data, std::size_t size, std::size_t outsize)          const noexcept { return shake128(data, size, outsize); }
+        inline std::string Hash(const unsigned char* data, std::size_t size, std::size_t outsize) const noexcept { return shake128(data, size, outsize); }
     };
 
     struct Shake256
     {
-        size_t OutputSize = 64;
-        inline std::string Hash(std::string_view data)                  const noexcept { return shake256(data, OutputSize);       }
-        inline std::string Hash(const char* data, size_t size)          const noexcept { return shake256(data, size, OutputSize); }
-        inline std::string Hash(const unsigned char* data, size_t size) const noexcept { return shake256(data, size, OutputSize); }
-        inline std::string Hash(std::string_view data, size_t outsize)                  const noexcept { return shake256(data, outsize);       }
-        inline std::string Hash(const char* data, size_t size, size_t outsize)          const noexcept { return shake256(data, size, outsize); }
-        inline std::string Hash(const unsigned char* data, size_t size, size_t outsize) const noexcept { return shake256(data, size, outsize); }
+        std::size_t OutputSize = 64;
+        inline std::string Hash(std::string_view data)                       const noexcept { return shake256(data, OutputSize);       }
+        inline std::string Hash(const char* data, std::size_t size)          const noexcept { return shake256(data, size, OutputSize); }
+        inline std::string Hash(const unsigned char* data, std::size_t size) const noexcept { return shake256(data, size, OutputSize); }
+        inline std::string Hash(std::string_view data, std::size_t outsize)                       const noexcept { return shake256(data, outsize);       }
+        inline std::string Hash(const char* data, std::size_t size, std::size_t outsize)          const noexcept { return shake256(data, size, outsize); }
+        inline std::string Hash(const unsigned char* data, std::size_t size, std::size_t outsize) const noexcept { return shake256(data, size, outsize); }
     };
 }
 #endif // HASH_ENABLE_SHAKE
