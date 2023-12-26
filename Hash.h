@@ -1966,7 +1966,7 @@ namespace Hash
 
 
         template <typename T>
-        constexpr T SwapEndian(T u)
+        constexpr T SwapEndian(T u) noexcept
         {
             static_assert (CHAR_BIT == 8, "CHAR_BIT != 8");
 
@@ -1984,13 +1984,13 @@ namespace Hash
         }
 
 
-        inline bool IsLittleEndian()
+        inline bool IsLittleEndian() noexcept
         {
             std::int32_t num = 1;
             return *reinterpret_cast<char*>(&num) == 1;
         }
 
-        template <typename T> constexpr T RightRotate(T n, std::size_t c)
+        template <typename T> constexpr T RightRotate(T n, std::size_t c) noexcept
         {
             //const unsigned int mask = (CHAR_BIT * sizeof(n) - 1); // doesn't loose bits
             //c &= mask;
@@ -1998,7 +1998,7 @@ namespace Hash
             return (n >> c) | (n << (std::numeric_limits<T>::digits - c));
         }
 
-        template <typename T> constexpr T LeftRotate(T n, std::size_t c)
+        template <typename T> constexpr T LeftRotate(T n, std::size_t c) noexcept
         {
             //const unsigned int mask = (CHAR_BIT * sizeof(n) - 1); // doesn't loose bits
             //c &= mask;
@@ -2043,7 +2043,7 @@ namespace Hash
             UINT32_C(0x748f82ee), UINT32_C(0x78a5636f), UINT32_C(0x84c87814), UINT32_C(0x8cc70208), UINT32_C(0x90befffa), UINT32_C(0xa4506ceb), UINT32_C(0xbef9a3f7), UINT32_C(0xc67178f2)
         };
     private:
-        inline void Compress(const std::uint32_t* const w)
+        inline void Compress(const std::uint32_t* const w) noexcept
         {
             std::uint32_t a = m_H[0];
             std::uint32_t b = m_H[1];
@@ -2081,7 +2081,7 @@ namespace Hash
         }
 
 
-        inline void Transform()
+        inline void Transform() noexcept
         {
             std::uint32_t w[64];
             for (std::size_t i = 0; i < 16; ++i)
@@ -2103,11 +2103,11 @@ namespace Hash
             Compress(w);
         }
     public:
-        Sha256() = default;
-        explicit Sha256(std::uint32_t h0, std::uint32_t h1, std::uint32_t h2, std::uint32_t h3, std::uint32_t h4, std::uint32_t h5, std::uint32_t h6, std::uint32_t h7) : m_H{ h0, h1, h2, h3, h4, h5, h6, h7 } {}
-        virtual ~Sha256() = default;
+        inline Sha256() noexcept = default;
+        inline Sha256(std::uint32_t h0, std::uint32_t h1, std::uint32_t h2, std::uint32_t h3, std::uint32_t h4, std::uint32_t h5, std::uint32_t h6, std::uint32_t h7) noexcept : m_H{ h0, h1, h2, h3, h4, h5, h6, h7 } {}
+        inline virtual ~Sha256() noexcept = default;
 
-        inline void Update(const std::uint8_t* data, std::size_t size)
+        inline void Update(const std::uint8_t* data, std::size_t size) noexcept
         {
             for (std::size_t i = 0; i < size; ++i)
             {
@@ -2121,18 +2121,18 @@ namespace Hash
             }
         }
 
-        inline void Update(const char* data, std::size_t size)
+        inline void Update(const char* data, std::size_t size) noexcept
         {
             Update(reinterpret_cast<const std::uint8_t*>(data), size);
         }
 
-        inline void Update(std::string_view data)
+        inline void Update(std::string_view data) noexcept
         {
             Update(reinterpret_cast<const std::uint8_t*>(data.data()), data.size());
         }
 
 
-        inline virtual void Finalize()
+        inline virtual void Finalize() noexcept
         {
             std::uint8_t start = m_BufferSize;
             std::uint8_t end = m_BufferSize < 56 ? 56 : 64;
@@ -2187,7 +2187,7 @@ namespace Hash
     public:
         static constexpr std::size_t Size = 56;
     public:
-        Sha224() : Sha256(UINT32_C(0xC1059ED8), UINT32_C(0x367CD507), UINT32_C(0x3070DD17), UINT32_C(0xF70E5939), UINT32_C(0xFFC00B31), UINT32_C(0x68581511), UINT32_C(0x64F98FA7), UINT32_C(0xBEFA4FA4)) {}
+        inline Sha224() noexcept : Sha256(UINT32_C(0xC1059ED8), UINT32_C(0x367CD507), UINT32_C(0x3070DD17), UINT32_C(0xF70E5939), UINT32_C(0xFFC00B31), UINT32_C(0x68581511), UINT32_C(0x64F98FA7), UINT32_C(0xBEFA4FA4)) {}
         inline std::string Hexdigest() const override
         {
             char buff[Size+1];
@@ -2259,7 +2259,7 @@ namespace Hash
             UINT64_C(0x431d67c49c100d4c), UINT64_C(0x4cc5d4becb3e42b6), UINT64_C(0x597f299cfc657e2a), UINT64_C(0x5fcb6fab3ad6faec), UINT64_C(0x6c44198c4a475817)
         };
     private:
-        inline void Compress(const std::uint64_t* const w)
+        inline void Compress(const std::uint64_t* const w) noexcept
         {
             std::uint64_t a = m_H[0];
             std::uint64_t b = m_H[1];
@@ -2297,7 +2297,7 @@ namespace Hash
         }
 
 
-        inline void Transform()
+        inline void Transform() noexcept
         {
             std::uint64_t w[80];
             for (std::size_t i = 0; i < 16; ++i)
@@ -2323,17 +2323,17 @@ namespace Hash
             Compress(w);
         }
     public:
-        Sha512() = default;
-        explicit Sha512(std::uint64_t h0, std::uint64_t h1, std::uint64_t h2, std::uint64_t h3, std::uint64_t h4, std::uint64_t h5, std::uint64_t h6, std::uint64_t h7) : m_H{ h0, h1, h2, h3, h4, h5, h6, h7 } {}
-        virtual ~Sha512() = default;
+        inline Sha512() noexcept = default;
+        inline explicit Sha512(std::uint64_t h0, std::uint64_t h1, std::uint64_t h2, std::uint64_t h3, std::uint64_t h4, std::uint64_t h5, std::uint64_t h6, std::uint64_t h7) noexcept : m_H{ h0, h1, h2, h3, h4, h5, h6, h7 } {}
+        inline virtual ~Sha512() noexcept = default;
 
-        inline void Reset()
+        inline void Reset() noexcept
         {
             m_Bitlen = 0;
             m_BufferSize = 0;
         }
 
-        inline void Update(const std::uint8_t* data, std::size_t size)
+        inline void Update(const std::uint8_t* data, std::size_t size) noexcept
         {
             for (std::size_t i = 0; i < size; ++i)
             {
@@ -2347,18 +2347,18 @@ namespace Hash
             }
         }
 
-        inline void Update(const char* data, std::size_t size)
+        inline void Update(const char* data, std::size_t size) noexcept
         {
             Update(reinterpret_cast<const std::uint8_t*>(data), size);
         }
 
-        inline void Update(std::string_view data)
+        inline void Update(std::string_view data) noexcept
         {
             Update(reinterpret_cast<const std::uint8_t*>(data.data()), data.size());
         }
 
 
-        inline void Finalize()
+        inline void Finalize() noexcept
         {
             std::uint8_t start = m_BufferSize;
             std::uint8_t end = m_BufferSize < 112 ? 120 : 128; // 120 instead of 112 because m_Bitlen is a 64 bit uint
@@ -2502,7 +2502,7 @@ namespace Hash
     public:
         static constexpr std::size_t Size = 96;
     public:
-        Sha384() : Sha512(UINT64_C(0xcbbb9d5dc1059ed8), UINT64_C(0x629a292a367cd507), UINT64_C(0x9159015a3070dd17), UINT64_C(0x152fecd8f70e5939), UINT64_C(0x67332667ffc00b31), UINT64_C(0x8eb44a8768581511), UINT64_C(0xdb0c2e0d64f98fa7), UINT64_C(0x47b5481dbefa4fa4)) {}
+        inline Sha384() noexcept : Sha512(UINT64_C(0xcbbb9d5dc1059ed8), UINT64_C(0x629a292a367cd507), UINT64_C(0x9159015a3070dd17), UINT64_C(0x152fecd8f70e5939), UINT64_C(0x67332667ffc00b31), UINT64_C(0x8eb44a8768581511), UINT64_C(0xdb0c2e0d64f98fa7), UINT64_C(0x47b5481dbefa4fa4)) {}
         inline std::string Hexdigest() const override
         {
             char buff[Size+1];
@@ -2551,7 +2551,7 @@ namespace Hash
             UINT32_C(0xC3D2E1F0)
         };
     private:
-        inline void Transform()
+        inline void Transform() noexcept
         {
             std::uint32_t w[80];
             for (std::size_t i = 0; i < 16; ++i)
@@ -2615,7 +2615,7 @@ namespace Hash
             m_H[4] = m_H[4] + e;
         }
     public:
-        inline void Update(const std::uint8_t* data, std::size_t size)
+        inline void Update(const std::uint8_t* data, std::size_t size) noexcept
         {
             for (std::size_t i = 0; i < size; ++i)
             {
@@ -2629,17 +2629,17 @@ namespace Hash
             }
         }
 
-        inline void Update(const char* data, std::size_t size)
+        inline void Update(const char* data, std::size_t size) noexcept
         {
             Update(reinterpret_cast<const std::uint8_t*>(data), size);
         }
 
-        inline void Update(std::string_view data)
+        inline void Update(std::string_view data) noexcept
         {
             Update(reinterpret_cast<const std::uint8_t*>(data.data()), data.size());
         }
 
-        inline void Finalize()
+        inline void Finalize() noexcept
         {
             std::uint8_t start = m_BufferSize;
             std::uint8_t end = m_BufferSize < 56 ? 56 : 64;
@@ -2761,7 +2761,7 @@ namespace Hash
         static constexpr std::uint32_t S44 = 21;
     public:
         // default ctor, just initailize
-        MD5()
+        MD5() noexcept
         {
             Init();
         }
@@ -2769,14 +2769,14 @@ namespace Hash
         //////////////////////////////////////////////
 
         // nifty shortcut ctor, compute Hash_MD5 for string and finalize it right away
-        MD5(const std::string& text)
+        MD5(const std::string& text) noexcept
         {
             Init();
             Update(text.c_str(), static_cast<std::uint32_t>(text.length()));
             Finalize();
         }
 
-        MD5(std::string_view text)
+        MD5(std::string_view text) noexcept
         {
             Init();
             Update(text.data(), static_cast<std::uint32_t>(text.length()));
@@ -2787,7 +2787,7 @@ namespace Hash
 
         // MD5 block update operation. Continues an Hash_MD5 message-digest
         // operation, processing another message block
-        void Update(const std::uint8_t input[], std::uint32_t length)
+        void Update(const std::uint8_t input[], std::uint32_t length) noexcept
         {
             // compute number of bytes mod 64
             std::uint32_t index = count[0] / 8 % BlockSize;
@@ -2825,12 +2825,12 @@ namespace Hash
         //////////////////////////////
 
         // for convenience provide a verson with signed char
-        inline void Update(const char input[], std::uint32_t length)
+        inline void Update(const char input[], std::uint32_t length) noexcept
         {
             Update(reinterpret_cast<const std::uint8_t*>(input), length);
         }
 
-        inline void Update(std::string_view data)
+        inline void Update(std::string_view data) noexcept
         {
             Update(reinterpret_cast<const std::uint8_t*>(data.data()), static_cast<std::uint32_t>(data.size()));
         }
@@ -2839,7 +2839,7 @@ namespace Hash
 
         // MD5 finalization. Ends an MD5 message-digest operation, writing the
         // the message digest and zeroizing the context.
-        void Finalize()
+        void Finalize() noexcept
         {
             static constexpr std::uint8_t padding[64] = {
                 0x80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -2863,8 +2863,8 @@ namespace Hash
             Encode(digest, state, 16);
 
             // Zeroize sensitive information.
-            memset(buffer, 0, sizeof buffer);
-            memset(count, 0, sizeof count);
+            std::memset(buffer, 0, sizeof buffer);
+            std::memset(count, 0, sizeof count);
         }
 
         //////////////////////////////
@@ -2880,7 +2880,7 @@ namespace Hash
             return std::string(buf);
         }
     private:
-        void Init()
+        void Init() noexcept
         {
             count[0] = 0;
             count[1] = 0;
@@ -2895,7 +2895,7 @@ namespace Hash
         //////////////////////////////
 
         // apply MD5 algo on a block
-        void Transform(const std::uint8_t block[BlockSize])
+        void Transform(const std::uint8_t block[BlockSize]) noexcept
         {
             std::uint32_t a = state[0], b = state[1], c = state[2], d = state[3], x[16];
             Decode(x, block, BlockSize);
@@ -2984,7 +2984,7 @@ namespace Hash
         //////////////////////////////
 
         // decodes input (unsigned char) into output (uint4). Assumes len is a multiple of 4.
-        inline void Decode(std::uint32_t output[], const std::uint8_t input[], std::uint32_t len)
+        inline void Decode(std::uint32_t output[], const std::uint8_t input[], std::uint32_t len) noexcept
         {
             for (std::uint32_t i = 0, j = 0; j < len; i++, j += 4)
                 output[i] = ((std::uint32_t)input[j]) | (((std::uint32_t)input[j + 1]) << 8) |
@@ -2995,7 +2995,7 @@ namespace Hash
 
         // encodes input (uint4) into output (unsigned char). Assumes len is
         // a multiple of 4.
-        inline void Encode(std::uint8_t output[], const std::uint32_t input[], std::uint32_t len)
+        inline void Encode(std::uint8_t output[], const std::uint32_t input[], std::uint32_t len) noexcept
         {
             for (std::uint32_t i = 0, j = 0; j < len; i++, j += 4)
             {
@@ -3011,22 +3011,22 @@ namespace Hash
         // low level logic operations
         ///////////////////////////////////////////////
         // F, G, H and I are basic Hash_MD5 functions.
-        inline std::uint32_t F(std::uint32_t x, std::uint32_t y, std::uint32_t z)
+        inline std::uint32_t F(std::uint32_t x, std::uint32_t y, std::uint32_t z) const noexcept
         {
             return (x & y) | (~x & z);
         }
 
-        inline std::uint32_t G(std::uint32_t x, std::uint32_t y, std::uint32_t z)
+        inline std::uint32_t G(std::uint32_t x, std::uint32_t y, std::uint32_t z) const noexcept
         {
             return (x & z) | (y & ~z);
         }
 
-        inline std::uint32_t H(std::uint32_t x, std::uint32_t y, std::uint32_t z)
+        inline std::uint32_t H(std::uint32_t x, std::uint32_t y, std::uint32_t z) const noexcept
         {
             return x ^ y ^ z;
         }
 
-        inline std::uint32_t I(std::uint32_t x, std::uint32_t y, std::uint32_t z)
+        inline std::uint32_t I(std::uint32_t x, std::uint32_t y, std::uint32_t z) const noexcept
         {
             return y ^ (x | ~z);
         }
@@ -3034,22 +3034,22 @@ namespace Hash
 
         // FF, GG, HH, and II transformations for rounds 1, 2, 3, and 4.
         // Rotation is separate from addition to prevent recomputation.
-        inline std::uint32_t FF(std::uint32_t a, std::uint32_t b, std::uint32_t c, std::uint32_t d, std::uint32_t x, std::uint32_t s, std::uint32_t ac)
+        inline std::uint32_t FF(std::uint32_t a, std::uint32_t b, std::uint32_t c, std::uint32_t d, std::uint32_t x, std::uint32_t s, std::uint32_t ac) const noexcept
         {
             return Util::LeftRotate<std::uint32_t>(a + F(b, c, d) + x + ac, s) + b;
         }
 
-        inline std::uint32_t GG(std::uint32_t a, std::uint32_t b, std::uint32_t c, std::uint32_t d, std::uint32_t x, std::uint32_t s, std::uint32_t ac)
+        inline std::uint32_t GG(std::uint32_t a, std::uint32_t b, std::uint32_t c, std::uint32_t d, std::uint32_t x, std::uint32_t s, std::uint32_t ac) const noexcept
         {
             return Util::LeftRotate<std::uint32_t>(a + G(b, c, d) + x + ac, s) + b;
         }
 
-        inline std::uint32_t HH(std::uint32_t a, std::uint32_t b, std::uint32_t c, std::uint32_t d, std::uint32_t x, std::uint32_t s, std::uint32_t ac)
+        inline std::uint32_t HH(std::uint32_t a, std::uint32_t b, std::uint32_t c, std::uint32_t d, std::uint32_t x, std::uint32_t s, std::uint32_t ac) const noexcept
         {
             return Util::LeftRotate<std::uint32_t>(a + H(b, c, d) + x + ac, s) + b;
         }
 
-        inline std::uint32_t II(std::uint32_t a, std::uint32_t b, std::uint32_t c, std::uint32_t d, std::uint32_t x, std::uint32_t s, std::uint32_t ac)
+        inline std::uint32_t II(std::uint32_t a, std::uint32_t b, std::uint32_t c, std::uint32_t d, std::uint32_t x, std::uint32_t s, std::uint32_t ac) const noexcept
         {
             return Util::LeftRotate<std::uint32_t>(a + I(b, c, d) + x + ac, s) + b;
         }
