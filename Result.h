@@ -344,19 +344,6 @@ public:
     }
 };
 
-template <typename T, typename Err = Err, typename... Args>
-inline Result<T, Err> Ok(Args&&... args)
-{
-    return T(std::forward<Args>(args)...);
-}
-
-
-template <typename E = Err>
-inline Result<void, E> Ok()
-{
-    return Result<void, E>();
-}
-
 
 template <typename E>
 class Result<void, E>
@@ -448,4 +435,16 @@ public:
             throw E(msg + m_Error.what());
     }
 };
+
+template <typename T, typename E = Err, typename... Args>
+inline Result<T, E> Ok(Args&&... args)
+{
+    return T(std::forward<Args>(args)...);
+}
+
+template <typename E = Err>
+inline Result<void, E> Ok()
+{
+    return Result<void, E>();
+}
 #endif // RESULT_H
