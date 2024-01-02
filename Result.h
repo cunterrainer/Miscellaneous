@@ -19,6 +19,16 @@
         {
             std::cout << r.Err().what() << std::endl;
         }
+    Void result:
+        The only difference when using a Result<void> is that you have to explicitly return Result<void> e.g.:
+        Result<void> ProcessFile(const char* p)
+        {
+            // open file
+            if (file_is_open == false)
+                return Err("Failed to open file: %s", p);
+            // process
+            return Ok(); // or return {}; or return Result<void>();
+        }
     Error handling:
         Result<std::string> r = ReadFile("test.txt");
         r.Unwrap(); // If valid returns const T&, otherwise throws Error with generic message
