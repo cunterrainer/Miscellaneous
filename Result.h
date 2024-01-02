@@ -183,24 +183,32 @@ public:
 using Err = Error<std::size_t>;
 
 
-template <typename E, typename = void>
-struct ErrorHasType : std::false_type {};
+namespace ResultUtil
+{
+    template <class... Types> // for C++14 compatibility
+    using VoidT = void;
 
-template <typename E>
-struct ErrorHasType<E, std::void_t<typename E::Type>> : std::true_type {};
+    template <typename E, typename = void>
+    struct ErrorHasType : std::false_type {};
 
-template <typename E, typename = void>
-struct ErrorHasTypeFunction : std::false_type {};
+    template <typename E>
+    struct ErrorHasType<E, VoidT<typename E::Type>> : std::true_type {};
 
-template <typename E>
-struct ErrorHasTypeFunction<E, std::void_t<decltype(std::declval<E>().type())>> : std::true_type {};
+    template <typename E, typename = void>
+    struct ErrorHasTypeFunction : std::false_type {};
+
+    template <typename E>
+    struct ErrorHasTypeFunction<E, VoidT<decltype(std::declval<E>().type())>> : std::true_type {};
+}
 
 
 template <typename T, typename E = Err>
 class Result
 {
-    static_assert(std::is_copy_constructible_v<E>, "Error type has to be copiable");
-    static_assert(std::is_move_constructible_v<E>, "Error type has to be movable");
+    static_assert(std::is_copy_assignable<E>::value, "Result::Error has to be copy assignable");
+    static_assert(std::is_move_assignable<E>::value, "Result::Error type has to be move assignable");
+    static_assert(std::is_copy_constructible<E>::value, "Result::Error type has to be copiable");
+    static_assert(std::is_move_constructible<E>::value, "Result::Error type has to be movable");
 private:
     union
     {
@@ -274,7 +282,7 @@ public:
         return m_Error;
     }
 
-    template <typename U = E, typename = std::enable_if_t<ErrorHasType<U>::value && ErrorHasTypeFunction<U>::value>>
+    template <typename U = E, typename = std::enable_if_t<ResultUtil::ErrorHasType<U>::value && ResultUtil::ErrorHasTypeFunction<U>::value>>
     inline typename U::Type ErrType() const noexcept
     {
         return m_Error.type();
@@ -310,7 +318,7 @@ public:
     }
 
     template <typename U = T, typename std::enable_if<std::is_default_constructible<U>::value, int>::type = 0>
-    inline const T& UnwrapOrDefault() const
+    inline T UnwrapOrDefault() const
     {
         if (m_Valid)
             return m_Data;
@@ -318,14 +326,14 @@ public:
     }
 
     template <typename Func, typename... Args>
-    inline const T& UnwrapOrElse(const Func& f, Args&&... args) const
+    inline T UnwrapOrElse(const Func& f, Args&&... args) const
     {
         if (m_Valid)
             return m_Data;
         return f(std::forward<Args>(args)...);
     }
 
-    template <typename U = E, typename = std::void_t<decltype(std::declval<U>().what())>>
+    template <typename U = E, typename = ResultUtil::VoidT<decltype(std::declval<U>().what())>>
     inline const T& Expect(const char* msg) const
     {
         if (m_Valid)
