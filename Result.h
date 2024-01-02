@@ -195,7 +195,7 @@ using Err = Error<std::size_t>;
 
 namespace ResultUtil
 {
-    template <class... Types> // for C++14 compatibility
+    template <class... Types> // std::void_t from C++17
     using VoidT = void;
 
     template <typename E, typename = void>
