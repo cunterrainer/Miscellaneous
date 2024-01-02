@@ -201,8 +201,10 @@ namespace ResultUtil
     struct ErrorHasTypeFunction<E, VoidT<decltype(std::declval<E>().type())>> : std::true_type {};
 }
 
-
 template <typename T, typename E = Err>
+class Result;
+
+template <typename T, typename E>
 class Result
 {
     static_assert(std::is_copy_assignable<E>::value, "Result::Error has to be copy assignable");
@@ -347,4 +349,103 @@ inline Result<T, Err> Ok(Args&&... args)
 {
     return T(std::forward<Args>(args)...);
 }
+
+
+template <typename E = Err>
+inline Result<void, E> Ok()
+{
+    return Result<void, E>();
+}
+
+
+template <typename E>
+class Result<void, E>
+{
+    static_assert(std::is_copy_assignable<E>::value, "Result<void>::Error has to be copy assignable");
+    static_assert(std::is_move_assignable<E>::value, "Result<void>::Error type has to be move assignable");
+    static_assert(std::is_copy_constructible<E>::value, "Result<void>::Error type has to be copiable");
+    static_assert(std::is_move_constructible<E>::value, "Result<void>::Error type has to be movable");
+private:
+    E m_Error;
+    bool m_Valid;
+public:
+    inline Result(const E& e) : m_Error(e), m_Valid(false) {}
+    inline Result() : m_Valid(true) {}
+
+    Result(const Result& other) : m_Valid(other.m_Valid)
+    {
+        m_Error = other.m_Error;
+    }
+
+    Result(Result&& other) noexcept : m_Valid(other.m_Valid)
+    {
+        m_Error = std::move(other.m_Error);
+    }
+
+    Result& operator=(const Result& other)
+    {
+        if (this != &other)
+        {
+            m_Valid = other.m_Valid;
+            m_Error = other.m_Error;
+        }
+        return *this;
+    }
+
+    Result& operator=(Result&& other) noexcept
+    {
+        if (this != &other)
+        {
+            m_Valid = other.m_Valid;
+            m_Error = std::move(other.m_Error);
+        }
+        return *this;
+    }
+
+    inline const E& Err() const noexcept
+    {
+        return m_Error;
+    }
+
+    template <typename U = E, typename std::enable_if<ResultUtil::ErrorHasType<U>::value && ResultUtil::ErrorHasTypeFunction<U>::value>::type = 0>
+    inline typename U::Type ErrType() const noexcept
+    {
+        return m_Error.type();
+    }
+
+    explicit operator bool() const noexcept
+    {
+        return m_Valid;
+    }
+
+    inline bool IsOk() const noexcept
+    {
+        return m_Valid;
+    }
+
+    inline bool IsErr() const noexcept
+    {
+        return !m_Valid;
+    }
+
+    inline void Unwrap() const
+    {
+        if (!m_Valid)
+            throw m_Error;
+    }
+
+    template <typename Func, typename... Args>
+    inline void UnwrapOrElse(const Func& f, Args&&... args) const
+    {
+        if (!m_Valid)
+            return f(std::forward<Args>(args)...);
+    }
+
+    template <typename U = E, typename = ResultUtil::VoidT<decltype(std::declval<U>().what())>>
+    inline void Expect(const char* msg) const
+    {
+        if (!m_Valid)
+            throw E(msg + m_Error.what());
+    }
+};
 #endif // RESULT_H
