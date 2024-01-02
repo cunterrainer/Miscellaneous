@@ -282,7 +282,7 @@ public:
         return m_Error;
     }
 
-    template <typename U = E, typename = std::enable_if_t<ResultUtil::ErrorHasType<U>::value && ResultUtil::ErrorHasTypeFunction<U>::value>>
+    template <typename U = E, typename std::enable_if<ResultUtil::ErrorHasType<U>::value && ResultUtil::ErrorHasTypeFunction<U>::value>::type = 0>
     inline typename U::Type ErrType() const noexcept
     {
         return m_Error.type();
