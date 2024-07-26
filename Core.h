@@ -140,7 +140,18 @@ CORE_HW_SIMD_[PLAT] Check if SIMD for [PLAT] supported
     - arm
     - ppc
 
-CORE_ARCH_WORD_BITS Detects the native word size, in bits, for the current architecture
+For all above you can always check the version of the tools e.g.
+int main()
+{
+  if (CORE_COMP_GNUC >= CORE_VERSION_NUMBER(4,0,0))
+    std::cout << "GCC compiler is at least version 4.0.0" << std::endl;
+  else
+    std::cout << "GCC compiler is at older than version 4.0.0, or not a GCC compiler" << std::endl;
+  return 0;
+}
+
+CORE_ARCH_WORD_BITS Detects the native word size, in bits, for the current architecture, also
+CORE_ARCH_WORD_BITS_64, CORE_ARCH_WORD_BITS_32, CORE_ARCH_WORD_BITS_16, CORE_ARCH_WORD_BITS (0) available
 
 Detection of endian memory ordering. There are four defined macros
 in this header that define the various generally possible endian
@@ -204,23 +215,6 @@ int main()
     return 0;
 }
 
-CORE_ARCH_NAME gives the name of my arch
-CORE_ARCH_WORD_BITS Detects the native word size, in bits, for the current architecture
-
-
-Detection of endian memory ordering. There are four defined macros
-in this header that define the various generally possible endian
-memory orderings:
-
-* `CORE_ENDIAN_BIG_BYTE`, byte-swapped big-endian.
-* `CORE_ENDIAN_BIG_WORD`, word-swapped big-endian.
-* `CORE_ENDIAN_LITTLE_BYTE`, byte-swapped little-endian.
-* `CORE_ENDIAN_LITTLE_WORD`, word-swapped little-endian.
-
-Req:
-    - Other : arch os plat library
-    - platform : os
-
 To reduce compile time turn on/off what is needed.
 OS Can NOT be turned off because platform depends on it, if platform is turned off so is OS.
 Other includes endianes and wordsize
@@ -232,7 +226,7 @@ Other includes endianes and wordsize
 #define CORE_ENABLE_LANGUAGE     1
 #define CORE_ENABLE_LIBRARY      1
 #define CORE_ENABLE_PLATFORM     1
-#define CORE_ENABLE_OTHER        1 && (defined(CORE_ENABLE_ARCHITECTURE) && defined(CORE_ENABLE_PLATFORM) && defined(CORE_ENABLE_LIBRARY))
+#define CORE_ENABLE_OTHER        1 && (CORE_ENABLE_ARCHITECTURE && CORE_ENABLE_PLATFORM && CORE_ENABLE_LIBRARY)
 
 
 /*
@@ -319,6 +313,7 @@ DEALINGS IN THE SOFTWARE.
 // Mode end ///////////////////////////////////////////////////////////////////////////////////////
 
 
+#if CORE_ENABLE_ARCHITECTURE
 // Architecture start /////////////////////////////////////////////////////////////////////////////
 // Architecture WASM /////////////////////////////////////////////////////////////
 #ifdef __wasm32__
@@ -814,15 +809,15 @@ DEALINGS IN THE SOFTWARE.
     #define CORE_ARCH_NAME "z/Architecture"
 #endif
 // Architecture z end ////////////////////////////////////////////////////////////
+#endif // CORE_ENABLE_ARCHITECTURE
 
-
-// Default CORE_ARCH_NAME value
-#if !defined(CORE_ARCH_NAME)
-#define CORE_ARCH_NAME "Unknown"
+#if !defined(CORE_ARCH_NAME) // Default CORE_ARCH_NAME value
+    #define CORE_ARCH_NAME "Unknown"
 #endif
 // Architecture end ///////////////////////////////////////////////////////////////////////////////
 
 
+#if CORE_ENABLE_COMPILER
 // Compiler start /////////////////////////////////////////////////////////////////////////////////
 // Compiler Borland //////////////////////////////////////////////////////////////
 #if defined(__BORLANDC__) || defined(__CODEGEARC__)
@@ -1614,15 +1609,15 @@ DEALINGS IN THE SOFTWARE.
     #endif
 #endif
 // Compiler digital mars end /////////////////////////////////////////////////////
+#endif // CORE_ENABLE_COMPILER
 
-
-// Default CORE_COMP_NAME value
-#if !defined(CORE_COMP_NAME)
-#define CORE_COMP_NAME "Unknown"
+#if !defined(CORE_COMP_NAME) // Default CORE_COMP_NAME value
+    #define CORE_COMP_NAME "Unknown"
 #endif
 // Compiler end ///////////////////////////////////////////////////////////////////////////////////
 
 
+#if CORE_ENABLE_LANGUAGE
 // Language ///////////////////////////////////////////////////////////////////////////////////////
 // Language stdc /////////////////////////////////////////////////////////////////
 #if defined(__STDC__)
@@ -1652,10 +1647,9 @@ DEALINGS IN THE SOFTWARE.
     #if !defined(CORE_LANG_STDC_NAME)
         #define CORE_LANG_STDC_NAME "Standard C"
     #endif
-#endif
 
-#if !defined(CORE_LANG_STDC_NAME)
-    #define CORE_LANG_STDC_NAME "Unknown"
+    #undef CORE_LANG_NAME
+    #define CORE_LANG_NAME "C"
 #endif
 // Language stdc end /////////////////////////////////////////////////////////////
 
@@ -1687,10 +1681,9 @@ DEALINGS IN THE SOFTWARE.
     #if !defined(CORE_LANG_STDCPP_NAME)
         #define CORE_LANG_STDCPP_NAME "Standard C++"
     #endif
-#endif
 
-#if !defined(CORE_LANG_STDCPP_NAME)
-    #define CORE_LANG_STDCPP_NAME "Unknown"
+    #undef CORE_LANG_NAME
+    #define CORE_LANG_NAME "C++"
 #endif
 
 #define CORE_LANG_STDCPPCLI_NAME "Standard C++/CLI"
@@ -1700,11 +1693,17 @@ DEALINGS IN THE SOFTWARE.
     #else
         #define CORE_LANG_STDCPPCLI CORE_VERSION_NUMBER_AVAILABLE
     #endif
+
+    #undef CORE_LANG_NAME
+    #define CORE_LANG_NAME "C++/CLI"
 #endif
 
 #define CORE_LANG_STDECPP_NAME "Standard Embedded C++"
 #if defined(__embedded_cplusplus)
     #define CORE_LANG_STDECPP CORE_VERSION_NUMBER_AVAILABLE
+    
+    #undef CORE_LANG_NAME
+    #define CORE_LANG_NAME "Embedded C++"
 #endif
 // Language stdcpp end ///////////////////////////////////////////////////////////
 
@@ -1713,6 +1712,9 @@ DEALINGS IN THE SOFTWARE.
 #define CORE_LANG_OBJC_NAME "Objective-C"
 #if defined(__OBJC__)
     #define CORE_LANG_OBJC CORE_VERSION_NUMBER_AVAILABLE
+
+    #undef CORE_LANG_NAME
+    #define CORE_LANG_NAME "Objective-C"
 #endif
 // Language objc end /////////////////////////////////////////////////////////////
 
@@ -1726,11 +1728,28 @@ DEALINGS IN THE SOFTWARE.
     #else
         #define CORE_LANG_CUDA CORE_VERSION_NUMBER_AVAILABLE
     #endif
+
+    #undef CORE_LANG_NAME
+    #define CORE_LANG_NAME "CUDA C/C++"
 #endif
 // Language cuda end /////////////////////////////////////////////////////////////
+#endif // CORE_ENABLE_LANGUAGE
+
+#ifndef CORE_LANG_NAME
+    #define CORE_LANG_NAME "Unknown"
+#endif
+
+#ifndef CORE_LANG_STDC_NAME
+    #define CORE_LANG_STDC_NAME "Unknown"
+#endif
+
+#ifndef CORE_LANG_STDCPP_NAME
+    #define CORE_LANG_STDCPP_NAME "Unknown"
+#endif
 // Language end ///////////////////////////////////////////////////////////////////////////////////
 
 
+#if CORE_ENABLE_LIBRARY
 // Library std ////////////////////////////////////////////////////////////////////////////////////
 #if defined(__cplusplus)
 #include <exception>
@@ -1845,7 +1864,7 @@ DEALINGS IN THE SOFTWARE.
         #define CORE_LIB_STD_GNU CORE_PREDEF_MAKE_YYYYMMDD(__GLIBCPP__)
     #endif
     #undef CORE_LIB_STD_NAME
-    #define CORE_LIB_STD_NAME CORE_LIB_STD_GNU
+    #define CORE_LIB_STD_NAME CORE_LIB_STD_NAME
 #endif
 // Library std sgi end ///////////////////////////////////////////////////////////
 
@@ -1880,7 +1899,7 @@ DEALINGS IN THE SOFTWARE.
 
 // Default CORE_LIB_STD_NAME value
 #ifndef CORE_LIB_STD_NAME
-#define CORE_LIB_STD_NAME "Unknown"
+    #define CORE_LIB_STD_NAME "Unknown"
 #endif
 // Library std end ////////////////////////////////////////////////////////////////////////////////
 
@@ -1962,15 +1981,16 @@ DEALINGS IN THE SOFTWARE.
     #define CORE_LIB_C_NAME CORE_LIB_C_ZOS_NAME
 #endif
 // Language c zos end ////////////////////////////////////////////////////////////
-
+#endif // CORE_ENABLE_LIBRARY
 
 // Default CORE_LIB_C_NAME value
 #ifndef CORE_LIB_C_NAME
-#define CORE_LIB_C_NAME "Unknown"
+    #define CORE_LIB_C_NAME "Unknown"
 #endif
 // Library c end //////////////////////////////////////////////////////////////////////////////////
 
 
+#if CORE_ENABLE_PLATFORM
 // OS /////////////////////////////////////////////////////////////////////////////////////////////
 // OS aix ////////////////////////////////////////////////////////////////////////
 #if !defined(CORE_PREDEF_DETAIL_OS_DETECTED) && (defined(_AIX) || defined(__TOS_AIX__))
@@ -2488,6 +2508,22 @@ DEALINGS IN THE SOFTWARE.
 // OS irix end ///////////////////////////////////////////////////////////////////
 
 
+// OS unix ///////////////////////////////////////////////////////////////////////
+#if defined(unix) || defined(__unix) || defined(_XOPEN_SOURCE) || defined(_POSIX_SOURCE)
+    #define CORE_OS_UNIX CORE_VERSION_NUMBER_AVAILABLE
+#endif
+
+#define CORE_OS_UNIX_NAME "Unix Environment"
+#ifdef CORE_OS_UNIX
+    #undef CORE_OS_NAME
+    #define CORE_OS_NAME CORE_OS_UNIX_NAME  
+    #ifndef CORE_PREDEF_DETAIL_OS_DETECTED
+    #define CORE_PREDEF_DETAIL_OS_DETECTED 1
+    #endif
+#endif
+// OS unix end ///////////////////////////////////////////////////////////////////
+
+
 // OS android ////////////////////////////////////////////////////////////////////
 #if !defined(CORE_PREDEF_DETAIL_OS_DETECTED) && (defined(__ANDROID__))
     #define CORE_OS_ANDROID CORE_VERSION_NUMBER_AVAILABLE
@@ -2576,22 +2612,6 @@ DEALINGS IN THE SOFTWARE.
 // OS solaris end ////////////////////////////////////////////////////////////////
 
 
-// OS unix ///////////////////////////////////////////////////////////////////////
-#if defined(unix) || defined(__unix) || defined(_XOPEN_SOURCE) || defined(_POSIX_SOURCE)
-    #define CORE_OS_UNIX CORE_VERSION_NUMBER_AVAILABLE
-#endif
-
-#define CORE_OS_UNIX_NAME "Unix Environment"
-#ifdef CORE_OS_UNIX
-    #undef CORE_OS_NAME
-    #define CORE_OS_NAME CORE_OS_UNIX_NAME  
-    #ifndef CORE_PREDEF_DETAIL_OS_DETECTED
-    #define CORE_PREDEF_DETAIL_OS_DETECTED 1
-    #endif
-#endif
-// OS unix end ///////////////////////////////////////////////////////////////////
-
-
 // OS vms ////////////////////////////////////////////////////////////////////////
 #if !defined(CORE_PREDEF_DETAIL_OS_DETECTED) && (defined(VMS) || defined(__VMS))
     #if defined(__VMS_VER)
@@ -2626,12 +2646,6 @@ DEALINGS IN THE SOFTWARE.
     #endif
 #endif
 // OS windows end ////////////////////////////////////////////////////////////////
-
-
-// Default CORE_OS_NAME value
-#ifndef CORE_OS_NAME
-#define CORE_OS_NAME "Unknown"
-#endif
 // OS end /////////////////////////////////////////////////////////////////////////////////////////
 
 
@@ -2947,15 +2961,21 @@ DEALINGS IN THE SOFTWARE.
     #endif
 #endif
 // Platform windows system end ///////////////////////////////////////////////////
+#endif CORE_ENABLE_PLATFORM
 
+// Default CORE_OS_NAME value
+#ifndef CORE_OS_NAME
+    #define CORE_OS_NAME "Unknown"
+#endif
 
 // Default CORE_PLAT_NAME value
 #ifndef CORE_PLAT_NAME
-#define CORE_PLAT_NAME "Unknown"
+    #define CORE_PLAT_NAME "Unknown"
 #endif
 // Platform end ///////////////////////////////////////////////////////////////////////////////////
 
 
+#if CORE_ENABLE_OTHER
 // Other //////////////////////////////////////////////////////////////////////////////////////////
 // Other endian //////////////////////////////////////////////////////////////////
 #if !CORE_ENDIAN_BIG_BYTE && !CORE_ENDIAN_BIG_WORD && !CORE_ENDIAN_LITTLE_BYTE && !CORE_ENDIAN_LITTLE_WORD
@@ -3077,10 +3097,6 @@ DEALINGS IN THE SOFTWARE.
 #if CORE_ENDIAN_LITTLE_WORD
     #define CORE_ENDIAN_NAME CORE_ENDIAN_LITTLE_WORD_NAME
 #endif
-
-#ifndef CORE_ENDIAN_NAME
-#define CORE_ENDIAN_NAME "Unknown"
-#endif
 // Other endian end //////////////////////////////////////////////////////////////
 
 
@@ -3106,15 +3122,20 @@ DEALINGS IN THE SOFTWARE.
     #define CORE_ARCH_WORD_BITS_NAME CORE_ARCH_WORD_BITS_0_NAME
     #define CORE_ARCH_WORD_BITS 0
 #endif
+// Other wordsize end ////////////////////////////////////////////////////////////
+#endif // CORE_ENABLE_OTHER
 
+#ifndef CORE_ENDIAN_NAME
+    #define CORE_ENDIAN_NAME "Unknown"
+#endif
 
 #ifndef CORE_ARCH_WORD_BITS_NAME
-#define CORE_ARCH_WORD_BITS_NAME "Unknown"
+    #define CORE_ARCH_WORD_BITS_NAME "Unknown"
 #endif
-// Other wordsize end ////////////////////////////////////////////////////////////
 // Other end //////////////////////////////////////////////////////////////////////////////////////
 
 
+#if CORE_ENABLE_HARDWARE
 // Hardware SIMD //////////////////////////////////////////////////////////////////////////////////
 // Hardware SIMD ARM /////////////////////////////////////////////////////////////
 // The https://en.wikipedia.org/wiki/ARM_architecture#Advanced_SIMD_.28NEON.29[NEON] ARM extension version number.
@@ -3228,11 +3249,9 @@ DEALINGS IN THE SOFTWARE.
 
 #endif
 // Hardware SIMD x86 arm end /////////////////////////////////////////////////////
-
-
-// Default CORE_ARCH_WORD_BITS_NAME value
-#ifndef CORE_ARCH_WORD_BITS_NAME
-#define CORE_ARCH_WORD_BITS_NAME "Unknown"
-#endif
 // Hardware SIMD end //////////////////////////////////////////////////////////////////////////////
+#endif // CORE_ENABLE_HARDWARE
+#ifndef CORE_HW_SIMD_NAME
+    #define CORE_HW_SIMD_NAME "Unknown"
+#endif
 #endif // CORE_H
