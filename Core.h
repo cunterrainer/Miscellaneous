@@ -1864,7 +1864,7 @@ DEALINGS IN THE SOFTWARE.
         #define CORE_LIB_STD_GNU CORE_PREDEF_MAKE_YYYYMMDD(__GLIBCPP__)
     #endif
     #undef CORE_LIB_STD_NAME
-    #define CORE_LIB_STD_NAME CORE_LIB_STD_NAME
+    #define CORE_LIB_STD_NAME CORE_LIB_STD_GNU_NAME
 #endif
 // Library std sgi end ///////////////////////////////////////////////////////////
 
@@ -2961,7 +2961,7 @@ DEALINGS IN THE SOFTWARE.
     #endif
 #endif
 // Platform windows system end ///////////////////////////////////////////////////
-#endif CORE_ENABLE_PLATFORM
+#endif // CORE_ENABLE_PLATFORM
 
 // Default CORE_OS_NAME value
 #ifndef CORE_OS_NAME
