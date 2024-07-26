@@ -49,6 +49,63 @@ Generate tests for the hash implementations in [Hash.h](#hashh-cc)
 ## Hash.dart
 Sha256 implementation in Dart
 
+## Core.h
+Defines macros to check for things like operating system, platform, compiler, architecture and more.  
+Documentation is in the [file](https://github.com/cunterrainer/Miscellaneous/blob/main/Core.h)
+
+Example
+``` c++
+#include <stdio.h>
+#include "Core.h"
+
+int main()
+{
+    #if CORE_ARCH_X64 // you can use either #if or #ifdef
+    puts("X64 Processor");
+    #endif
+
+    #if CORE_OS_WINDOWS
+    puts("I'm on windows");
+    #endif
+
+    #if CORE_PLATFORM_WEB
+    puts("Building for web assembly");
+    #endif
+
+    #if CORE_COMP_CLANG
+    puts("Using clang");
+    #endif
+
+    #if CORE_LANG_STDCPP_C17
+    puts("Using C++ 17");
+    #endif
+
+    #if CORE_LIB_STD_CXX
+    puts("Using libc++ as stdlib");
+    #endif
+
+    #if CORE_MODE_RELEASE
+    puts("In release mode");
+    #endif
+
+    #if CORE_HW_SIMD_X86
+    puts("Simd x86 supported");
+    #endif
+
+    #if CORE_LANG_STDC_C99
+    puts("Using version C 99");
+    #endif
+
+    #if CORE_LIB_C_GNU
+    puts("Using gnu libc");
+    #endif
+
+    // Alternatively, works for all types
+    puts(CORE_OS_NAME)
+    return 0;
+}
+```
+
 ## Profiler.h
 Measure the execution time of code snippets e.g. in loops.  
 Example (simplified, from hash_benchmark.cpp)
