@@ -106,6 +106,10 @@ int main()
 }
 ```
 
+## AssetFinder.cpp
+Extract assets embedded into files e.g. images or sounds in executables or dlls etc.  
+Documentation in the help page `assesfinder.exe --help`
+
 ## Profiler.h
 Measure the execution time of code snippets e.g. in loops.  
 Example (simplified, from hash_benchmark.cpp)
