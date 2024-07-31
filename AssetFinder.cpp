@@ -97,7 +97,8 @@ struct Config
 
 void PrintHelp(const char* program)
 {
-    puts  ("Asset extractor");
+    puts  ("Asset Finder");
+    puts  ("Disclamer!: False positives are normal just skip them");
     printf("Usage: %s [input file] [options]\n", program);
     puts  ("       --help           | -h        Show this help section");
     puts  ("       --no-file        | -f        Don't write found files to the disk only print their locations");
@@ -154,6 +155,7 @@ Config ParseCmd(int argc, const char* argv[])
         {
             PrintHelp(argv[0]);
             cfg.valid = false;
+            return cfg;
         }
         else if (arg == "-no-skip" || arg == "-s")
         {
@@ -214,6 +216,7 @@ Config ParseCmd(int argc, const char* argv[])
             {
                 cfg.valid = false;
                 printf("Unknown disable type: '%s'\nType has to be one of 'Supported file types'\nTry '--help' for additional information\n", fileType.c_str());
+                return cfg;
             }
         }
         else if (strncmp(argv[i], "--enable=", 9) == 0 || strncmp(argv[i], "-e=", 3) == 0)
@@ -267,6 +270,7 @@ Config ParseCmd(int argc, const char* argv[])
             {
                 cfg.valid = false;
                 printf("Unknown enable type: '%s'\nType has to be one of 'Supported file types'\nTry '--help' for additional information\n", fileType.c_str());
+                return cfg;
             }
         }
         else
