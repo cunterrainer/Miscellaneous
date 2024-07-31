@@ -9,6 +9,12 @@
 #include <iostream>
 #include <algorithm>
 
+#define STB_IMAGE_IMPLEMENTATION
+#define STBI_ONLY_JPEG
+#define STBI_ONLY_PNG
+#define STBI_ONLY_BMP
+#include "stb_image.h"
+
 #define PRINT_OFFSET(fileFormat, offset) std::cout << "Found " << fileFormat << " at: 0x" << std::hex << std::uppercase << std::setw(8) << std::setfill('0') << offset << '\n'
 
 volatile bool IsLittleEndian()
@@ -78,6 +84,7 @@ struct Config
     std::string inputFile;
     bool skip = true;
     bool write = true;
+    bool check = false;
 
     bool png = true;
     bool jpg = true;
@@ -99,11 +106,14 @@ void PrintHelp(const char* program)
 {
     puts  ("Asset Finder");
     puts  ("Disclamer!: False positives are normal just skip them");
+    puts  ("Jpegs are especially prone to be false positive, try to use '--check' if you get to many of them");
     printf("Usage: %s [input file] [options]\n", program);
     puts  ("       --help           | -h        Show this help section");
     puts  ("       --no-file        | -f        Don't write found files to the disk only print their locations");
     puts  ("       --no-skip        | -s        Don't skip forward after finding a file. This is usefull to avoid files");
     puts  ("                                    not being detected, however more false positives will be found");
+    puts  ("       --check          | -c        Verify that file is not corrupt, only works for jpeg, png and bmp.");
+    puts  ("                                    May not support all subtypes some files may be missed");
     puts  ("       --disable=[type] | -d=[type] Don't look for file type, type is one of 'Supported file types'");
     puts  ("                                    Disabling any type using the RIFF format implicitly disables RIFF");
     puts  ("                                    To enable RIFF use '--enable=riff'");
@@ -157,11 +167,15 @@ Config ParseCmd(int argc, const char* argv[])
             cfg.valid = false;
             return cfg;
         }
-        else if (arg == "-no-skip" || arg == "-s")
+        else if (arg == "--check" || arg == "-c")
+        {
+            cfg.check = true;
+        }
+        else if (arg == "--no-skip" || arg == "-s")
         {
             cfg.skip = false;
         }
-        else if (arg == "-no-file" || arg == "-f")
+        else if (arg == "--no-file" || arg == "-f")
         {
             cfg.write = false;
         }
@@ -330,6 +344,17 @@ int main(int argc, const char* argv[])
             {
                 if (buffer[k] == 0x49 && buffer[k+1] == 0x45 && buffer[k+2] == 0x4E && buffer[k+3] == 0x44 && buffer[k+4] == 0xAE && buffer[k+5] == 0x42 && buffer[k+6] == 0x60 && buffer[k+7] == 0x82)
                 {
+                    if (cfg.check)
+                    {
+                        int x, y, z;
+                        stbi_uc* tmp = stbi_load_from_memory(&buffer[i], k+8-i, &x, &y, &z, 1);
+                        if (tmp == NULL)
+                        {
+                            break;
+                        }
+                        stbi_image_free(tmp);
+                    }
+
                     PRINT_OFFSET("PNG", i);
                     WriteToFile("PNG" + std::to_string(i) + ".png", buffer, i, k+8, cfg.write);
                     if (cfg.skip)
@@ -346,6 +371,17 @@ int main(int argc, const char* argv[])
             {
                 if (buffer[k] == 0xFF && buffer[k+1] == 0xD9)
                 {
+                    if (cfg.check)
+                    {
+                        int x, y, z;
+                        stbi_uc* tmp = stbi_load_from_memory(&buffer[i], k+2-i, &x, &y, &z, 1);
+                        if (tmp == NULL)
+                        {
+                            break;
+                        }
+                        stbi_image_free(tmp);
+                    }
+
                     PRINT_OFFSET("JPEG", i);
                     WriteToFile("JPEG" + std::to_string(i) + ".jpeg", buffer, i, k+2, cfg.write);
                     if (cfg.skip)
@@ -369,6 +405,18 @@ int main(int argc, const char* argv[])
             {
                 i += 9;
                 continue;
+            }
+
+            if (cfg.check)
+            {
+                int x, y, z;
+                stbi_uc* tmp = stbi_load_from_memory(&buffer[i], fileSize, &x, &y, &z, 1);
+                if (tmp == NULL)
+                {
+                    i += 9;
+                    continue;
+                }
+                stbi_image_free(tmp);
             }
 
             PRINT_OFFSET("BMP", i);
