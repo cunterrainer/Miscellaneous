@@ -108,6 +108,7 @@ int main()
 
 ## AssetFinder.cpp
 Extract assets embedded into files e.g. images or sounds in executables or dlls etc.  
+Prerequisites [stb_image.h](https://github.com/nothings/stb/blob/master/stb_image.h)  
 Documentation in the help page `assesfinder.exe --help`
 
 ## Profiler.h
