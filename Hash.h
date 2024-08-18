@@ -1042,7 +1042,7 @@ HASH_INLINE const char* hash_sha1_file_easy(const char* path, const char* mode)
 #endif // HASH_ENABLE_SHA1
 
 
-#if HASH_ENABLE_MD5
+#if HASH_ENABLE_MD5 == 1
 // =================================Hash_MD5====================================
 #define HASH_PRIVATE_MD5_BLOCKSIZE 64
 typedef struct
@@ -1381,7 +1381,7 @@ HASH_INLINE const char* hash_md5_file_easy(const char* path, const char* mode)
 
 
 
-#ifdef HASH_ENABLE_SHA3
+#if HASH_ENABLE_SHA3 == 1
 // ================================Hash_Sha3====================================
 #define HASH_PRIVATE_KECCAK_SPONGE_WORDS (((1600)/8/*bits to byte*/)/sizeof(uint64_t))
 
@@ -1435,7 +1435,7 @@ HASH_INLINE void hash_private_sha3_keccakf(uint64_t s[25])
 
 
     uint64_t bc[5];
-    constexpr uint8_t KeccakRounds = 24;
+    const uint8_t KeccakRounds = 24;
 
     for(uint8_t round = 0; round < KeccakRounds; round++)
     {
