@@ -141,12 +141,16 @@ bool ParseArgs(int argc, char** argv, fs::path& source, fs::path& dest)
             std::cout << "       -p | --progress    Show progress bar" << std::endl;
             std::cout << "       -e | --empty       Delete empty folders in backup folder (can take a lot more time for large folders)" << std::endl;
             std::cout << "       -k | --check       Only check how many files are out of date without copying/deleting anything" << std::endl;
-            std::cout << "       -s | --seconds     By how many seconds can the timestamps of different files differ" << std::endl;
-            std::cout << "                          when copying a file or if different filesystems are involved, timestamps" << std::endl;
-            std::cout << "                          of files can differ by a couple seconds. Next parameter is the seconds threshold" << std::endl;
+            std::cout << "       -s | --seconds     By how many seconds can the last modification time of two files differ before copying them" << std::endl;
+            std::cout << "                          Different filesystems on different hard drives (e.g. exFat4 and NTFS) can have" << std::endl;
+            std::cout << "                          slightly different timestamps, for files despite them being an exact copy" << std::endl;
+            std::cout << "                          To aviod copying all files due to them not having the same timestamp specify a threshold" << std::endl;
             std::cout << "                          Default: " << g_ThresholdSeconds << " seconds" << std::endl;
             std::cout << "       -w | --wait        Wait for --seconds threshold before showing a done message," << std::endl;
             std::cout << "                          thus the next backup can safely be done with the same threshold" << std::endl;
+            std::cout << "                          When modifing the files to soon the next backup might not notice them" << std::endl;
+            std::cout << "A folders content can be modified after the program has finished indexing the directory," << std::endl;
+            std::cout << "however changes won't be a part of the backup" << std::endl;
             return false;
         }
         else if (arg == "-v" || arg == "--verbose")
@@ -216,7 +220,7 @@ bool ParseArgs(int argc, char** argv, fs::path& source, fs::path& dest)
 }
 
 
-void SetLastWriteTime(const fs::path& path, const fs::file_time_type& timestamp, const char* s)
+void SetLastWriteTime(const fs::path& path, const fs::file_time_type& timestamp)
 {
     try
     {
@@ -224,7 +228,7 @@ void SetLastWriteTime(const fs::path& path, const fs::file_time_type& timestamp,
     }
     catch (const fs::filesystem_error& e)
     {
-        std::cerr << s << "Failed to set last write time for " << path << ": " << e.what() << std::endl;
+        std::cerr << "Failed to set last write time for " << path << ": " << e.what() << std::endl;
     }
 }
 
@@ -236,7 +240,7 @@ bool CopyFile(const FileInfo& source, const fs::path& dest)
         if (!g_OnlyCheck && !source.isDirectory)
         {
             fs::create_directories(dest.parent_path());
-            SetLastWriteTime(dest.parent_path(), fs::last_write_time(source.path.parent_path()), "1: ");
+            SetLastWriteTime(dest.parent_path(), fs::last_write_time(source.path.parent_path()));
         }
     }
     catch(const fs::filesystem_error& e)
@@ -266,7 +270,7 @@ bool CopyFile(const FileInfo& source, const fs::path& dest)
                 fs::copy_file(source.path, dest, fs::copy_options::overwrite_existing);
             }
 
-            SetLastWriteTime(dest, source.timestamp, "2: ");
+            SetLastWriteTime(dest, source.timestamp);
         }
 
         if (g_OutputMode == OutputMode::Verbose || g_OutputMode == OutputMode::CopyOnly)
