@@ -1,204 +1,125 @@
-#include <ctime>
 #include <chrono>
 #include <string>
 #include <vector>
+#include <thread>
 #include <cstdint>
 #include <sstream>
 #include <iomanip>
+#include <fstream>
+#include <cstring>
 #include <optional>
 #include <iostream>
+#include <algorithm>
 #include <filesystem>
 #include <unordered_set>
 
-namespace fs = std::filesystem;
+#include "ProgressBar.h"
 
-std::optional<std::pair<std::string, std::chrono::time_point<fs::file_time_type::clock>>> GetMostRecentFile(const fs::path& folderPath, std::unordered_set<std::string>& destFiles)
+using namespace std;
+namespace fs = filesystem;
+
+struct FileInfo
 {
-    std::optional<std::pair<std::string, std::chrono::time_point<fs::file_time_type::clock>>> mostRecentFile = std::nullopt;
-    std::chrono::time_point<fs::file_time_type::clock> latestTime = std::chrono::time_point<fs::file_time_type::clock>::min();
+    fs::path path;
+    fs::file_time_type timestamp;
+    bool isEmpty;
+    bool isDirectory;
 
+    bool operator==(const FileInfo& other) const
+    {
+        return path == other.path;
+    }
+};
+
+struct FileInfoHash
+{
+    size_t operator()(const FileInfo& fi) const
+    {
+        return hash<string>()(fi.path.string());
+    }
+};
+
+unordered_set<FileInfo, FileInfoHash> GetFilesInFolder(const fs::path& folderPath)
+{
+    unordered_set<FileInfo, FileInfoHash> files;
     uint64_t failedFiles = 0;
+
     for (const auto& entry : fs::recursive_directory_iterator(folderPath))
     {
         try
         {
-            if (fs::is_regular_file(entry))
+            const bool isDir = fs::is_directory(entry);
+            if (fs::is_regular_file(entry) || (isDir && fs::is_empty(entry)))
             {
-                auto lastWriteTime = fs::last_write_time(entry);
-
                 const fs::path relativePath = fs::relative(entry.path(), folderPath);
-                destFiles.insert(relativePath.string());
-
-                if (lastWriteTime > latestTime)
-                {
-                    mostRecentFile = { fs::absolute(entry.path()).lexically_normal().string(), lastWriteTime };
-                    latestTime = lastWriteTime;
-                }
+                FileInfo info;
+                info.path = relativePath;
+                info.timestamp = fs::last_write_time(entry);
+                info.isEmpty = fs::is_empty(entry); // can't do empty check befor if-clause because symlinks fail empty check
+                info.isDirectory = isDir;
+                files.emplace(std::move(info));
             }
         }
-        catch (const std::filesystem::filesystem_error& e)
+        catch (const fs::filesystem_error& e)
         {
             try
             {
                 failedFiles++;
-                std::cerr << "Error processing file: " << entry.path() << ": " << e.what() << std::endl;
+                cerr << "Error indexing file: " << fs::absolute(entry.path()) << ": " << e.what() << endl;
             }
-            catch(const std::filesystem::filesystem_error& r)
+            catch(const fs::filesystem_error& r)
             {
-                std::cerr << "Error processing file, can't print file path: " << e.what() << std::endl;
+                cerr << "Error indexing file, can't print file path: " << e.what() << endl;
             }
         }
     }
 
-    std::cout << "Failed to process " << failedFiles << " files" << std::endl;
-    return mostRecentFile;
+    if (failedFiles > 0)
+        cout << "Failed to index " << failedFiles << " files" << endl;
+    return files;
 }
 
 
-bool FolderExists(const fs::path& path)
+enum class OutputMode
 {
-    if (!fs::exists(path) || !fs::is_directory(path))
+    None,
+    Verbose,
+    CopyOnly,
+    DeleteOnly,
+    Numbers,
+    ProgressBar
+};
+OutputMode g_OutputMode = OutputMode::None;
+bool g_OnlyCheck = false;
+bool g_DeleteEmptyFolders = false;
+bool g_WaitForThreshold = false;
+int64_t g_ThresholdSeconds = 5;
+
+bool FolderExists(const fs::path& path, bool printErrMsg)
+{
+    try
     {
-        std::cerr << "Invalid folder path: " << path << std::endl;
+        if (!fs::exists(path) || !fs::is_directory(path))
+        {
+            if (printErrMsg)
+                std::cerr << "Invalid folder path: " << path << std::endl;
+            return false;
+        }
+    }
+    catch(const std::exception& e)
+    {
+        std::cerr << "Failed to check folders existence " << path << ": " << e.what() << std::endl;
         return false;
     }
     return true;
 }
 
 
-std::string TimestampToString(const std::chrono::time_point<fs::file_time_type::clock>& timestamp)
-{
-    const auto systemTimePoint = std::chrono::time_point_cast<std::chrono::system_clock::duration>(timestamp- std::filesystem::file_time_type::clock::now() + std::chrono::system_clock::now());
-    const std::time_t cftime = std::chrono::system_clock::to_time_t(systemTimePoint);
-    return std::asctime(std::localtime(&cftime));
-}
-
-
-bool checkOnly = false; // only show out of date files
-int verboseMode = 0; // 0 = not verbose, 1 = print numbers, 2 = print every file, 3 = only copied, 4 = only deleted
-void DeleteFiles(const std::unordered_set<std::string> destFiles, const fs::path& dest)
-{
-    uint64_t failedFiles = 0;
-    uint64_t deletedFiles = 0;
-    if (verboseMode == 1)
-        std::cout << "Deleted files:\n";
-
-    for (const auto& relativePath : destFiles)
-    {
-        fs::path obsoleteFile = dest / relativePath;
-        std::error_code ec;
-        if (!checkOnly)
-            fs::remove(obsoleteFile, ec);
-        if (ec)
-        {
-            failedFiles++;
-            std::cerr << "Failed to delete " << obsoleteFile << ": " << ec.message() << '\n';
-        }
-        else
-        {
-            if (verboseMode == 2 || verboseMode == 4)
-                std::cout << "Deleted obsolete file: " << obsoleteFile << '\n';
-
-            deletedFiles++;
-            if (verboseMode == 1)
-                std::cout << deletedFiles << '\r';
-        }
-    }
-    
-    if (verboseMode == 1)
-        std::cout << std::endl;
-
-    std::cout << "Failed to delete " << failedFiles << " files" << std::endl;
-}
-
-
-void BackupFolder(const std::chrono::time_point<fs::file_time_type::clock>& timestamp, const fs::path& source, const fs::path& dest, std::unordered_set<std::string>& destFiles)
-{
-    // if source has a file newer than newest file in backup folder, back it up
-
-    uint64_t failedFiles = 0;
-    uint64_t copiedFiles = 0;
-    if (verboseMode == 1)
-        std::cout << "Copied files:\n";
-
-    for (const auto& entry : fs::recursive_directory_iterator(source))
-    {
-        try
-        {
-            if (fs::is_regular_file(entry))
-            {
-                const fs::path relativePath = fs::relative(entry.path(), source);
-                fs::path destinationPath = dest / relativePath;
-
-                // Remove from the set, indicating it still exists in the source
-                destFiles.erase(relativePath.string());
-
-                auto lastWriteTime = fs::last_write_time(entry);
-                if (lastWriteTime > timestamp) // copy file
-                {
-                    std::error_code ec;
-                    if (!checkOnly)
-                        fs::create_directories(destinationPath.parent_path(), ec);
-                    if (ec)
-                    {
-                        std::cerr << "Failed to create directories for " << destinationPath.parent_path() << ": " << ec.message() << '\n';
-                        continue; // Skip to the next file
-                    }
-
-                    try
-                    {
-                        if (!checkOnly)
-                            fs::copy_file(entry.path(), destinationPath, fs::copy_options::overwrite_existing);
-
-                        if (verboseMode == 2 || verboseMode == 3)
-                            std::cout << "Copied file " << entry.path() << " to " << destinationPath << '\n';
-
-                        copiedFiles++;
-                        if (verboseMode == 1)
-                            std::cout << copiedFiles << '\r';
-                    }
-                    catch(const fs::filesystem_error& e)
-                    {
-                        failedFiles++;
-                        std::cerr << "Failed to copy " << entry.path() << " to " << destinationPath << ": " << e.what() << '\n';
-                    }
-                }
-            }
-        }
-        catch (const std::filesystem::filesystem_error& e)
-        {
-            try
-            {
-                failedFiles++;
-                std::cerr << "Error backing up file: " << entry.path() << ": " << e.what() << std::endl;
-            }
-            catch(const std::filesystem::filesystem_error& r)
-            {
-                std::cerr << "Error backing up file, can't print file path: " << e.what() << std::endl;
-            }
-        }
-    }
-
-    if (verboseMode == 1)
-        std::cout << '\n' << std::endl;
-
-    std::cout << "Failed to backup " << failedFiles << " files" << std::endl;
-    DeleteFiles(destFiles, dest);
-}
-
-
-bool ParseArgs(int argc, char** argv, fs::path& source, fs::path& dest, std::optional<std::chrono::time_point<fs::file_time_type::clock>>& timestamp)
+bool ParseArgs(int argc, char** argv, fs::path& source, fs::path& dest)
 {
     if (argc < 3)
     {
-        std::cout << "Usage: " << argv[0] << " <source> <destination> <option>" << std::endl;
-        std::cout << "       -v | --verbose     Print every copied/deleted file" << std::endl;
-        std::cout << "       -c | --copy        Print every copied file" << std::endl;
-        std::cout << "       -d | --delete      Print every deleted" << std::endl;
-        std::cout << "       -n | --number      Print the number of files copied/deleted to see progress" << std::endl;
-        std::cout << "       -t | --time <str>  <str> specifies a time string of the following format 'DD.MM.YYYY HH:MM:SS', to backup all files older than that" << std::endl;
-        std::cout << "                          should be used if the program crashed for some reason, as there might be a more recent file backed up by then" << std::endl;
-        std::cout << "       --check            Only check how many files are out of date without copying/deleting anything" << std::endl;
+        std::cout << "Usage: " << argv[0] << " <source> <destination> <options>" << std::endl;
         return false;
     }
 
@@ -208,83 +129,394 @@ bool ParseArgs(int argc, char** argv, fs::path& source, fs::path& dest, std::opt
     for (int i = 3; i < argc; ++i)
     {
         std::string arg(argv[i]);
-        if (arg == "-v" || arg == "--verbose")
-            verboseMode = 2;
+        std::transform(arg.begin(), arg.end(), arg.begin(),[](unsigned char c){ return std::tolower(c); });
+
+        if (arg == "-h" || arg == "--help")
+        {
+            std::cout << "Usage: " << argv[0] << " <source> <destination> <option>" << std::endl;
+            std::cout << "       -v | --verbose     Print every copied/deleted file" << std::endl;
+            std::cout << "       -c | --copy        Print every copied file" << std::endl;
+            std::cout << "       -d | --delete      Print every deleted" << std::endl;
+            std::cout << "       -n | --number      Print the number of files copied/deleted" << std::endl;
+            std::cout << "       -p | --progress    Show progress bar" << std::endl;
+            std::cout << "       -e | --empty       Delete empty folders in backup folder (can take a lot more time for large folders)" << std::endl;
+            std::cout << "       -k | --check       Only check how many files are out of date without copying/deleting anything" << std::endl;
+            std::cout << "       -s | --seconds     By how many seconds can the last modification time of two files differ before copying them" << std::endl;
+            std::cout << "                          Different filesystems on different hard drives (e.g. exFat4 and NTFS) can have" << std::endl;
+            std::cout << "                          slightly different timestamps, for files despite them being an exact copy" << std::endl;
+            std::cout << "                          To aviod copying all files due to them not having the same timestamp specify a threshold" << std::endl;
+            std::cout << "                          Default: " << g_ThresholdSeconds << " seconds" << std::endl;
+            std::cout << "       -w | --wait        Wait for --seconds threshold before showing a done message," << std::endl;
+            std::cout << "                          thus the next backup can safely be done with the same threshold" << std::endl;
+            std::cout << "                          When modifing the files to soon the next backup might not notice them" << std::endl;
+            std::cout << "A folders content can be modified after the program has finished indexing the directory," << std::endl;
+            std::cout << "however changes won't be a part of the backup" << std::endl;
+            return false;
+        }
+        else if (arg == "-v" || arg == "--verbose")
+            g_OutputMode = OutputMode::Verbose;
         else if (arg == "-n" || arg == "--number")
-            verboseMode = 1;
+            g_OutputMode = OutputMode::Numbers;
         else if (arg == "-c" || arg == "--copy")
-            verboseMode = 3;
+            g_OutputMode = OutputMode::CopyOnly;
         else if (arg == "-d" || arg == "--delete")
-            verboseMode = 4;
-        else if (arg == "--check")
-            checkOnly = true;
-        else if (arg == "-t" || arg == "--time")
+            g_OutputMode = OutputMode::DeleteOnly;
+        else if (arg == "-p" || arg == "--progress")
+            g_OutputMode = OutputMode::ProgressBar;
+        else if (arg == "-k" || arg == "--check")
+            g_OnlyCheck = true;
+        else if (arg == "-e" || arg == "--empty")
+            g_DeleteEmptyFolders = true;
+        else if (arg == "-w" || arg == "--wait")
+            g_WaitForThreshold = true;
+        else if (arg == "-s" || arg == "--seconds")
         {
             if (i + 1 >= argc)
             {
-                std::cerr << "Error: Missing time string for " << arg << std::endl;
+                std::cerr << "Error: Missing value for " << arg << std::endl;
+                std::cerr << "Try " << argv[0] << ' ' << argv[1] << ' ' << argv[2] << " -s <seconds value>" << std::endl;
                 return false;
             }
 
-            const std::string timeString = argv[++i];
-            std::istringstream timeStream(timeString);
+            char* endPtr = nullptr;
+            const char* input = argv[i + 1];
+            g_ThresholdSeconds = std::strtoll(input, &endPtr, 10);
 
-            std::tm tmTime;
-            timeStream >> std::get_time(&tmTime, "%d.%m.%Y %H:%M:%S");
-            if (timeStream.fail() || tmTime.tm_year < 70)
+            if (endPtr == input || *endPtr != '\0')
             {
-                std::cerr << "Error: Invalid time format. Expected format: 'DD.MM.YYYY HH:MM:SS', use 4-digit years" << std::endl;
+                std::cerr << "Error: Invalid value for " << arg << ": " << input << ", expected an integer" << std::endl;
                 return false;
             }
 
-            // Explicitly set tm_isdst to -1 so mktime determines DST automatically
-            tmTime.tm_isdst = -1;
-            const std::time_t timeT = std::mktime(&tmTime);
-            if (timeT == -1)
+            if (g_ThresholdSeconds < 0)
             {
-                std::cerr << "Error: Unable to convert time string to time_t" << std::endl;
+                std::cerr << "Error: Value for " << arg << " must be greater than or equal to 0" << std::endl;
                 return false;
             }
-
-            timestamp = std::chrono::time_point_cast<fs::file_time_type::clock::duration>(std::chrono::system_clock::from_time_t(timeT) - std::chrono::system_clock::now() + fs::file_time_type::clock::now());
-            std::cout << "Specified time (small discrepancies are normal): " << TimestampToString(*timestamp) << std::flush;
+            ++i;
         }
         else
         {
             std::cerr << "Unknown argument: " << arg << std::endl;
+            std::cerr << "Try " << argv[0] << " . . --help for additional information" << std::endl;
             return false;
         }
     }
 
-    return FolderExists(source) && FolderExists(dest);
+    if (!FolderExists(dest, false))
+    {
+        try
+        {
+            fs::create_directories(dest);
+        }
+        catch(const std::exception& e)
+        {
+            std::cerr << "Failed to create destination folder " << dest << ": " << e.what() << std::endl;
+            return false;
+        }
+        
+    }
+    return FolderExists(source, true);
+}
+
+
+void SetLastWriteTime(const fs::path& path, const fs::file_time_type& timestamp)
+{
+    try
+    {
+        fs::last_write_time(path, timestamp);
+    }
+    catch (const fs::filesystem_error& e)
+    {
+        std::cerr << "Failed to set last write time for " << path << ": " << e.what() << std::endl;
+    }
+}
+
+
+bool CopyFile(const FileInfo& source, const fs::path& dest)
+{
+    try
+    {
+        if (!g_OnlyCheck && !source.isDirectory)
+        {
+            fs::create_directories(dest.parent_path());
+            SetLastWriteTime(dest.parent_path(), fs::last_write_time(source.path.parent_path()));
+        }
+    }
+    catch(const fs::filesystem_error& e)
+    {
+        std::cerr << "Faile to create folder '" << dest.parent_path() << "': " << e.what() << std::endl;
+        return false; // skip to next file
+    }
+
+    try
+    {
+        if (!g_OnlyCheck)
+        {
+            if (source.isDirectory) // is an empty directory
+            {
+                fs::create_directories(dest);
+            }
+            else if (source.isEmpty)
+            {
+                std::ofstream file(dest);
+                if (!file)
+                {
+                    std::cerr << "Failed to create empty file: " << dest << ": " << std::strerror(errno) << std::endl;
+                }
+            }
+            else
+            {
+                fs::copy_file(source.path, dest, fs::copy_options::overwrite_existing);
+            }
+
+            SetLastWriteTime(dest, source.timestamp);
+        }
+
+        if (g_OutputMode == OutputMode::Verbose || g_OutputMode == OutputMode::CopyOnly)
+        {
+            std::cout << "Copied file " << source.path << " to " << dest << '\n';
+        }
+        return true;
+    }
+    catch(const fs::filesystem_error& e)
+    {
+        std::cerr << "Failed to copy '" << source.path << "' to '" << dest << "': " << e.what() << std::endl;
+        return false;
+    }
+}
+
+
+bool DeleteFile(const fs::path& path)
+{
+    try
+    {
+        if (!g_OnlyCheck)
+            fs::remove(path);
+        
+        if (g_OutputMode == OutputMode::Verbose || g_OutputMode == OutputMode::DeleteOnly)
+        {
+            std::cout << "Deleted file: " << path << '\n';
+        }
+        return true;
+    }
+    catch(const std::exception& e)
+    {
+        std::cerr << "Failed to delete file '" << path << "': " << e.what() << '\n';
+        return false;
+    }
+}
+
+
+void CopyAllFiles(const unordered_set<FileInfo, FileInfoHash>& sourceFiles, const unordered_set<FileInfo, FileInfoHash>& destFiles, const fs::path& srcDir, const fs::path& destDir)
+{
+    if (g_OutputMode != OutputMode::None)
+    {
+        ProgressBarInit();
+        std::cout << "Copying..." << std::endl;
+    }
+
+    uint64_t failedFiles = 0;
+    uint64_t copiedFiles = 0;
+    uint64_t didntCopyFiles = 0;
+    for (const auto& sourcefile : sourceFiles)
+    {
+        auto it = destFiles.find(sourcefile);
+        FileInfo srcInfo;
+        srcInfo.path = srcDir / sourcefile.path;
+        srcInfo.isEmpty = sourcefile.isEmpty;
+        srcInfo.timestamp = sourcefile.timestamp;
+        srcInfo.isDirectory = sourcefile.isDirectory;
+
+        bool copiedFile = false;
+        if (it != destFiles.end()) // file already exists in backup drive
+        {
+            const std::chrono::seconds differenceSeconds = std::chrono::duration_cast<std::chrono::seconds>(sourcefile.timestamp - it->timestamp);
+
+            if (std::abs(differenceSeconds.count()) > g_ThresholdSeconds)
+            {
+                const fs::path destAbsolutePath = destDir / it->path;
+                copiedFile = CopyFile(srcInfo, destAbsolutePath);
+            }
+            else
+            {
+                didntCopyFiles++;
+                copiedFile = false;
+                failedFiles--; // we have to increment otherwise we increment failed files despite nothing failing
+            }
+        }
+        else // file doesn't exist in backup drive
+        {
+            const fs::path destAbsolutePath = destDir / sourcefile.path; // sourcefile.path already is a relative path
+            copiedFile = CopyFile(srcInfo, destAbsolutePath);
+        }
+
+        if (copiedFile)
+        {
+            copiedFiles++;
+        }
+        else
+        {
+            failedFiles++;
+        }
+
+        if (g_OutputMode == OutputMode::Numbers)
+        {
+            std::cout << "Copying files: " << copiedFiles << '\r';
+        }
+        else if (g_OutputMode == OutputMode::ProgressBar)
+        {
+            ProgressBar(copiedFiles+failedFiles+didntCopyFiles, sourceFiles.size());
+            std::fflush(stdout);
+        }
+    }
+    std::cout << (g_OutputMode != OutputMode::None && g_OutputMode != OutputMode::ProgressBar ? "\n" : "") << "Copied " << copiedFiles << " files" << std::endl;
+    std::cout << "Failed to copy " << failedFiles << " files" << std::endl;
+    std::cout << "Didn't copy " << didntCopyFiles << " files, due to them being up to date" << std::endl;
+}
+
+
+void DeleteAllFiles(const unordered_set<FileInfo, FileInfoHash>& sourceFiles, const unordered_set<FileInfo, FileInfoHash>& destFiles, const fs::path& destDir)
+{
+    if (g_OutputMode != OutputMode::None)
+    {
+        ProgressBarInit();
+        std::cout << "Deleting..." << std::endl;
+    }
+
+    uint64_t failedFiles = 0;
+    uint64_t deletedFiles = 0;
+    uint64_t bufferFilesProgressBar = 0;
+    for (const auto& destfile : destFiles)
+    {
+        if (sourceFiles.find(destfile) == sourceFiles.end()) // didn't find 
+        {
+            const fs::path destAbsolutePath = destDir / destfile.path;
+            if (DeleteFile(destAbsolutePath))
+                deletedFiles++;
+            else
+                failedFiles++;
+        }
+        else
+        {
+            bufferFilesProgressBar++;
+        }
+
+        if (g_OutputMode == OutputMode::Numbers)
+        {
+            std::cout << "Deleting files: " << deletedFiles << '\r';
+        }
+        else if (g_OutputMode == OutputMode::ProgressBar)
+        {
+            ProgressBar(deletedFiles+bufferFilesProgressBar, destFiles.size());
+            std::fflush(stdout);
+        }
+    }
+    std::cout << (g_OutputMode != OutputMode::None && g_OutputMode != OutputMode::ProgressBar ? "\n" : "") << "Deleted " << deletedFiles << " files" << std::endl;
+    std::cout << "Failed to delete " << failedFiles << " files" << std::endl;
+}
+
+
+vector<fs::path> GetEmptyFolders(const fs::path& path)
+{
+    std::vector<fs::path> foldersToDelete;
+    for (const auto& entry : fs::recursive_directory_iterator(path))
+    {
+        if (fs::is_directory(entry) && fs::is_empty(entry))
+        {
+            foldersToDelete.push_back(entry);
+        }
+    }
+    return foldersToDelete;
+}
+
+
+void DeleteEmptyFolders(const fs::path& dest)
+{
+    if (!g_DeleteEmptyFolders || g_OnlyCheck)
+        return;
+    cout << "Deleting empty folders..." << endl;
+
+    uint64_t failedFolders = 0;
+    uint64_t deletedFolders = 0;
+
+    vector<fs::path> foldersToDelete = GetEmptyFolders(dest);
+    while (!foldersToDelete.empty())
+    {
+        for (const auto& entry : foldersToDelete)
+        {
+            try
+            {
+                fs::remove(entry);
+                ++deletedFolders;
+
+                if (g_OutputMode == OutputMode::Numbers || g_OutputMode == OutputMode::ProgressBar)
+                {
+                    cout << "Deleting empty folders: " << deletedFolders << '\r' << flush;
+                }
+                else if (g_OutputMode == OutputMode::Verbose)
+                {
+                    cout << "Deleting empty folder: " << entry << endl;
+                }
+            }
+            catch(const fs::filesystem_error& e)
+            {
+                failedFolders++;
+                try
+                {
+                    cerr << "Error deleting empty folder: " << entry << ": " << e.what() << endl;
+                }
+                catch(const fs::filesystem_error& r)
+                {
+                    cerr << "Error deleting empty folder, can't print file path: " << e.what() << endl;
+                }
+            }
+            
+        }
+        foldersToDelete = GetEmptyFolders(dest);
+    }
+    
+    std::cout << (g_OutputMode != OutputMode::None && g_OutputMode != OutputMode::ProgressBar ? "\n" : "") << "Deleted " << deletedFolders << " empty folders" << std::endl;
+    std::cout << "Failed to delete " << failedFolders << " empty folders" << std::endl;
+}
+
+
+void PrintInfo(const fs::path& src, const fs::path& dest)
+{
+    std::cout << "------------------------------------------------------------" << std::endl;
+    std::cout << "Info: " << std::endl;
+    std::cout << "Check only: " << std::boolalpha << g_OnlyCheck << std::endl;
+    std::cout << "Src directory: " << src << std::endl;
+    std::cout << "Dst directory: " << dest << std::endl;
+    std::cout << "Seconds threshold: " << g_ThresholdSeconds << std::endl;
+    std::cout << "Delete empty folders: " << std::boolalpha << g_DeleteEmptyFolders << std::endl;
+    std::cout << "Wait for " << g_ThresholdSeconds << " seconds after finishing: " << std::boolalpha << g_WaitForThreshold << std::endl;
+    std::cout << "------------------------------------------------------------" << std::endl << std::endl;
 }
 
 
 int main(int argc, char** argv)
 {
-    std::ios_base::sync_with_stdio(false);
+    fs::path sourceDir, destDir;
+    if (!ParseArgs(argc, argv, sourceDir, destDir))
+        return 0;
+    PrintInfo(sourceDir, destDir);
 
-    fs::path backupSource, backupDest;
-    std::optional<std::chrono::time_point<fs::file_time_type::clock>> customTimestamp = std::nullopt;
-    if (!ParseArgs(argc, argv, backupSource, backupDest, customTimestamp))
-        return 1;
+    unordered_set<FileInfo, FileInfoHash> sourceFiles = GetFilesInFolder(sourceDir);
+    std::cout << "Finished indexing source directory: " << sourceDir << std::endl;
+    unordered_set<FileInfo, FileInfoHash> destFiles = GetFilesInFolder(destDir);
+    std::cout << "Finished indexing destination directory: " << destDir << std::endl;
+    std::cout << "Starting backup" << std::endl;
 
-    std::unordered_set<std::string> destFiles;
-    auto mostRecentFile = GetMostRecentFile(backupDest, destFiles);
-    if (customTimestamp)
+    CopyAllFiles(sourceFiles, destFiles, sourceDir, destDir);
+    DeleteAllFiles(sourceFiles, destFiles, destDir);
+    DeleteEmptyFolders(destDir);
+
+    if (!g_OnlyCheck && g_WaitForThreshold)
     {
-        std::cout << "Starting backup from custom time stamp: " << TimestampToString(*customTimestamp) << std::endl;
-        BackupFolder(*customTimestamp, backupSource, backupDest, destFiles);
+        std::cout << "Waiting for " << g_ThresholdSeconds << " seconds..." << std::endl;
+        std::this_thread::sleep_for(std::chrono::seconds(g_ThresholdSeconds));
     }
-    else if (mostRecentFile)
-    {
-        std::cout << "Most recent file in backup destination: " << mostRecentFile->first << ' ' << TimestampToString(mostRecentFile->second) << std::endl; // asctime has \n
-        BackupFolder(mostRecentFile->second, backupSource, backupDest, destFiles);
-    }
-    else
-    {
-        std::cout << "Starting backup\n" << std::endl;
-        BackupFolder(std::chrono::time_point<fs::file_time_type::clock>::min(), backupSource, backupDest, destFiles);
-    }
+    std::cout << "Finished backup" << std::endl;
     return 0;
 }
