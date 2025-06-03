@@ -49,6 +49,9 @@ Generate tests for the hash implementations in [Hash.h](#hashh-cc)
 ## Hash.dart
 Sha256 implementation in Dart
 
+## Repacker.cpp
+Pack all necessary files for your program into e single exe, e.g. dlls, images, audios, all in a single exe. Requirements: Hash.h
+
 ## Core.h
 Defines macros to check for things like operating system, platform, compiler, architecture and more.  
 Documentation is in the [file](https://github.com/cunterrainer/Miscellaneous/blob/main/Core.h)
