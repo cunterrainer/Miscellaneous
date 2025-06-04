@@ -498,6 +498,7 @@ struct Settings
     std::vector<fs::path> files;
     std::string cc = "g++";
     std::string args;
+    bool includeFolder = false;
     bool adminMode = false;
     bool leaveIntermediate = false;
     bool ok = false;
@@ -515,6 +516,7 @@ void PrintHelp(const char* name)
     std::cout << "          -c | --cc             Selected C++ compiler (Default: GCC/Clang/MSVC etc.)\n";
     std::cout << "          -g | --debug          Don't optimize the wrapper program (Not strictly necessary)\n";
     std::cout << "          -i | --intermediate   Get the generated C files (Doesn't compile it for you)\n";
+    std::cout << "          -f | --folder         This automatically option includes all the files that are in your programs directory\n";
     std::cout << "          -a | --arguments      Provide custom compiler arguments, no defaults will be used\n";
     std::cout << "                                Default: -static -static-libgcc -static-libstdc++ -std=c++17 (-O2 dependend on -g)\n";
 }
@@ -549,6 +551,10 @@ Settings ParseCmd(int args, const char** argv)
         else if (arg == "-i" || arg == "--intermediate")
         {
             s.leaveIntermediate = true;
+        }
+        else if (arg == "-f" || arg == "--folder")
+        {
+            s.includeFolder = true;
         }
         else if (arg == "-s" || arg == "--sudo")
         {
@@ -609,6 +615,18 @@ Settings ParseCmd(int args, const char** argv)
                 s.args += " /O2";
             else
                 s.args += " -O2";
+        }
+    }
+
+    if (s.includeFolder)
+    {
+        for (const auto& entry : fs::directory_iterator(s.files[0].parent_path().empty() ? "." : s.files[0].parent_path()))
+        {
+            if (fs::is_regular_file(entry.status()) || fs::is_directory(entry.status()))
+            {
+                if (entry.path() != s.files[0])
+                    s.files.push_back(entry.path());
+            }
         }
     }
 
