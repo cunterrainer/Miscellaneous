@@ -1,30 +1,25 @@
 const readline = require('readline');
 
-function ask(msg)
-{
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout
-  });
-
-  return new Promise(resolve => rl.question(msg, answer => {
-    rl.close();
-    resolve(answer);
-  }));
-}
-
 async function get_input(msg)
 {
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout
+    });
+
     while (true)
     {
-        const line = await ask(msg)
-        const num = parseInt(line.trim(), 10)
+      const line = await new Promise(resolve =>
+        rl.question(msg, resolve)
+      );
 
-        if (!isNaN(num))
-        {
-            return num
-        }
-    }
+      const num = parseInt(line.trim(), 10);
+      if (!isNaN(num))
+      {
+        rl.close();
+        return num;
+      }
+  }
 }
 
 async function main()
