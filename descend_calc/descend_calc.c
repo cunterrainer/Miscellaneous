@@ -47,9 +47,9 @@ int main()
     const float descend_distance = altitude_to_lose + speed_knots + (tail_wind == 1 ? wind_speed : -wind_speed);
 
     puts("------------------------------");
-    printf("Altitude to lose nm: %.2f\n", altitude_to_lose);
-    printf("Speed nm: %.2f\n", speed_knots);
-    printf("Wind  nm: %.2f\n", wind_speed);
-    printf("Total distance: %.2f\n", descend_distance);
+    printf("Altitude to lose nm: %g\n", altitude_to_lose);
+    printf("Speed nm: %g\n", speed_knots);
+    printf("Wind  nm: %g\n", wind_speed);
+    printf("Total distance: %g\n", descend_distance);
     return 0;
 }
