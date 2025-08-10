@@ -9,8 +9,6 @@ get_input()
         if [[ "$num" =~ ^-?[0-9]+$ ]]; then
             echo "$num"
             return
-        else
-            echo "Please enter a valid integer."
         fi
     done
 }
