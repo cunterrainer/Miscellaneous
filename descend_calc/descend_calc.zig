@@ -23,14 +23,12 @@ fn get_input(msg: []const u8) !i32
             {
                 return num;
             }
-            // Invalid number
         }
     }
 }
 
 pub fn main() !void
 {
-
     const current_altitude: i32 = try get_input("Current altitude: ");
     const airport_altitude: i32 = try get_input("Airport altitude: ");
 
