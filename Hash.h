@@ -154,31 +154,65 @@ HASH_INLINE char* hash_util_load_file(const char* path, const char* mode, long* 
 }
 
 
-#define HASH_DEFINE_UTIL_SWAP_ENDIAN(type) \
-    HASH_INLINE type hash_util_swap_endian_##type(type u) \
-    { \
-        assert(CHAR_BIT == 8 && "CHAR_BIT != 8"); \
- \
-        union \
-        { \
-            type u; \
-            unsigned char u8[sizeof(type)]; \
-        } source, dest; \
-        source.u = u; \
- \
-        for (size_t k = 0; k < sizeof(type); k++) \
-            dest.u8[k] = source.u8[sizeof(type) - k - 1]; \
- \
-        return dest.u; \
-    }
-HASH_DEFINE_UTIL_SWAP_ENDIAN(uint32_t)
-HASH_DEFINE_UTIL_SWAP_ENDIAN(uint64_t)
+HASH_INLINE uint32_t hash_util_swap_endian_uint32_t(uint32_t u)
+{
+    #if defined(__clang__) || defined(__GNUC__)
+        return __builtin_bswap32(u);
+    #elif defined(_MSC_VER)
+        return _byteswap_ulong(u);
+    #else
+        // Generic fallback - reverse bytes manually
+        union
+        {
+            uint32_t u;
+            uint8_t u8[sizeof(uint32_t)];
+        } source, dest;
 
+        source.u = u;
+        for (int k = 0; k < sizeof(uint32_t); ++k)
+        {
+            dest.u8[k] = source.u8[sizeof(uint32_t) - k - 1];
+        }
+        return dest.u;
+    #endif
+}
+
+
+HASH_INLINE uint64_t hash_util_swap_endian_uint64_t(uint64_t u)
+{
+    #if defined(__clang__) || defined(__GNUC__)
+        return __builtin_bswap64(u);
+    #elif defined(_MSC_VER)
+        return _byteswap_uint64(u);
+    #else
+        // Generic fallback - reverse bytes manually
+        union
+        {
+            uint64_t u;
+            uint8_t u8[sizeof(uint64_t)];
+        } source, dest;
+
+        source.u = u;
+        for (int k = 0; k < sizeof(uint64_t); ++k)
+        {
+            dest.u8[k] = source.u8[sizeof(uint64_t) - k - 1];
+        }
+        return dest.u;
+    #endif
+}
 
 HASH_INLINE int hash_util_is_little_endian()
 {
-    int32_t num = 1;
-    return *(char*)&num == 1;
+    #if defined(_MSC_VER)
+        return 1; // Windows x86/x64 is always little endian
+    #elif defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+        return 1;
+    #elif defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+        return 0;
+    #else
+        assert(0 && "Unknown endianness");
+        return 0;
+    #endif
 }
 
 HASH_INLINE uint32_t hash_util_right_rotate_u32(uint32_t n, size_t c)
@@ -1968,26 +2002,80 @@ namespace Hash
         template <typename T>
         constexpr T SwapEndian(T u) noexcept
         {
-            static_assert (CHAR_BIT == 8, "CHAR_BIT != 8");
+            static_assert(CHAR_BIT == 8, "CHAR_BIT != 8");
+            static_assert(std::is_integral_v<T>, "SwapEndian requires integral type");
 
+            #if defined(__clang__) || defined(__GNUC__)
+                if constexpr (sizeof(T) == 1)
+                {
+                    return u; // no swap needed for 1 byte
+                }
+                else if constexpr (sizeof(T) == 2)
+                {
+                    return __builtin_bswap16(u);
+                }
+                else if constexpr (sizeof(T) == 4)
+                {
+                    return __builtin_bswap32(u);
+                }
+                else if constexpr (sizeof(T) == 8)
+                {
+                    return __builtin_bswap64(u);
+                }
+                else
+                {
+                    // fallback for uncommon sizes
+                }
+            #elif defined(_MSC_VER)
+                if constexpr (sizeof(T) == 1)
+                {
+                    return u; // no swap needed
+                }
+                else if constexpr (sizeof(T) == 2)
+                {
+                    return static_cast<T>(_byteswap_ushort(static_cast<std::uint16_t>(u)));
+                }
+                else if constexpr (sizeof(T) == 4)
+                {
+                    return static_cast<T>(_byteswap_ulong(static_cast<std::uint32_t>(u)));
+                }
+                else if constexpr (sizeof(T) == 8)
+                {
+                    return static_cast<T>(_byteswap_uint64(static_cast<std::uint64_t>(u)));
+                }
+                else
+                {
+                    // fallback for uncommon sizes
+                }
+            #endif
+            // Generic fallback - reverse bytes manually
             union
             {
                 T u;
                 std::uint8_t u8[sizeof(T)];
             } source, dest;
+
             source.u = u;
-
-            for (std::size_t k = 0; k < sizeof(T); k++)
+            for (std::size_t k = 0; k < sizeof(T); ++k)
+            {
                 dest.u8[k] = source.u8[sizeof(T) - k - 1];
-
+            }
             return dest.u;
         }
 
 
-        inline bool IsLittleEndian() noexcept
+        constexpr bool IsLittleEndian() noexcept
         {
-            std::int32_t num = 1;
-            return *reinterpret_cast<char*>(&num) == 1;
+            #if defined(_MSC_VER)
+                return true; // Windows x86/x64 is always little endian
+            #elif defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+                return true;
+            #elif defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+                return false;
+            #else
+                static_assert(false, "Unknown endianness");
+                return false;
+            #endif
         }
 
         template <typename T> constexpr T RightRotate(T n, std::size_t c) noexcept
