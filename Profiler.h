@@ -18,7 +18,7 @@ public:
         static constexpr long double Hours = 2.777777777E-13;
     };
 private:
-    static inline std::chrono::steady_clock::time_point StartTime;
+    static inline std::chrono::high_resolution_clock::time_point StartTime;
     static inline std::chrono::nanoseconds AccumulatedTime = std::chrono::nanoseconds::zero();
     static inline std::uint64_t Counter = 0;
     static inline std::unordered_map<long double, const char*> TimeAbbreviations
@@ -33,12 +33,12 @@ private:
 public:
     static inline void Start()
     {
-        StartTime = std::chrono::steady_clock::now();
+        StartTime = std::chrono::high_resolution_clock::now();
     }
 
     static inline void End(bool increaseCounter = true)
     {
-        const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+        const std::chrono::high_resolution_clock::time_point now = std::chrono::high_resolution_clock::now();
         AccumulatedTime += std::chrono::duration_cast<std::chrono::nanoseconds>(now - StartTime);
         if (increaseCounter)
             ++Counter;
@@ -63,7 +63,7 @@ public:
     {
         Counter = 0;
         AccumulatedTime = std::chrono::nanoseconds::zero();
-        StartTime = std::chrono::steady_clock::time_point();
+        StartTime = std::chrono::high_resolution_clock::time_point();
     }
 
     static inline bool Log(long double nanosecConversion = Conversion::Nanoseconds, const char* name = "", bool resetOnLog = true)
