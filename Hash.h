@@ -1153,7 +1153,7 @@ HASH_INLINE const char* hash_sha1_hexdigest(const Hash_Sha1 s, char* buffer)
 {
     static char hex[HASH_SHA1_SIZE+1]; // use max allowed size to avoid memory allocation
     char* buff = buffer == NULL ? hex : buffer;
-    for (size_t i = 0; i < 5; ++i)
+    for (int i = 0; i < 5; ++i)
     {
         snprintf(&buff[i * 8], HASH_SHA1_SIZE+1, "%08" PRIx32, s->h[i]);
     }
@@ -2979,7 +2979,7 @@ namespace Hash
         inline std::string Hexdigest() const
         {
             char buff[Size+1];
-            for (std::size_t i = 0; i < 5; ++i)
+            for (int i = 0; i < 5; ++i)
             {
                 std::snprintf(&buff[i * 8], Size+1, "%08" PRIx32, m_H[i]);
             }
