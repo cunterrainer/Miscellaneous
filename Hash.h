@@ -48,6 +48,7 @@
 #define HASH_ENABLE_C_INTERFACE   1
 #define HASH_ENABLE_CPP_INTERFACE 1
 #define HASH_KECCAK_LITTLE_ENDIAN 1 // true for most systems (e.g. windows, linux, macos)
+#define HASH_ENABLE_LOOP_UNROLLING 1 // On some systems not manually unrolling the loops might be faster, if the compiler is able to vectorize properly, see hash_benchmark.cpp, can also be achieved by disabling vectorization
 #define HASH_FILE_READ_BUFFER_SIZE 4069
 #define HASH_SHAKE_128_MALLOC_LIMIT 64 // if outsizeBytes is greater and no buffer is provided we will heap allocate
 #define HASH_SHAKE_256_MALLOC_LIMIT 64 // if outsizeBytes is greater and no buffer is provided we will heap allocate
@@ -98,6 +99,7 @@
 #define HASH_SHA3_256_SIZE 64
 #define HASH_SHA3_384_SIZE 96
 #define HASH_SHA3_512_SIZE 128
+#define HASH_MIN(a, b) (((a)<(b))?(a):(b))
 // ================================Util====================================
 HASH_INLINE void hash_util_char_array_to_hex_string(unsigned char* data, size_t size, char* out)
 {
@@ -901,31 +903,52 @@ HASH_INLINE const char* hash_sha384_file_easy(const char* path, const char* mode
 // ================================Hash_Sha1====================================
 typedef struct
 {
-    uint64_t bitlen;
-    uint8_t bufferSize;
-    uint8_t buffer[64];
+    size_t   bitlen;
+    int      bufferSize;
+    uint8_t  buffer[64];
     uint32_t h[5];
 } Hash_Private_Sha1;
 typedef Hash_Private_Sha1 Hash_Sha1[1];
 
 
-HASH_INLINE void hash_private_hash_sha1_transform(Hash_Sha1 s)
+static void hash_private_hash_sha1_transform(Hash_Sha1 s)
 {
     uint32_t w[80];
-    for (size_t i = 0; i < 16; ++i)
+    for (int i = 0; i < 16; ++i)
     {
-        uint8_t* ptr = (uint8_t*)&w[i];
-        ptr[0] = s->buffer[4 * i];
-        ptr[1] = s->buffer[4 * i + 1];
-        ptr[2] = s->buffer[4 * i + 2];
-        ptr[3] = s->buffer[4 * i + 3];
-        w[i] = hash_util_is_little_endian() ? hash_util_swap_endian_uint32_t(w[i]) : w[i];
+        /*
+            This code does the same as the memcpy
+            uint8_t* ptr = (uint8_t*)&w[i];
+            ptr[0] = s->buffer[4 * i];
+            ptr[1] = s->buffer[4 * i + 1];
+            ptr[2] = s->buffer[4 * i + 2];
+            ptr[3] = s->buffer[4 * i + 3];
+        */
+        memcpy(&w[i], s->buffer + 4 * i, sizeof(uint32_t));
+        if (hash_util_is_little_endian())
+        {
+            w[i] = hash_util_swap_endian_uint32_t(w[i]);
+        }
     }
 
-    for (size_t i = 16; i < 80; ++i)
-    {
-        w[i] = (hash_util_left_rotate_u32(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1));
-    }
+    #if HASH_ENABLE_LOOP_UNROLLING
+        for (int i = 16; i < 80; i += 8)
+        {
+            w[i] = hash_util_left_rotate_u32(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1);
+            w[i+1] = hash_util_left_rotate_u32(w[i+1 - 3] ^ w[i+1 - 8] ^ w[i+1 - 14] ^ w[i+1 - 16], 1);
+            w[i+2] = hash_util_left_rotate_u32(w[i+2 - 3] ^ w[i+2 - 8] ^ w[i+2 - 14] ^ w[i+2 - 16], 1);
+            w[i+3] = hash_util_left_rotate_u32(w[i+3 - 3] ^ w[i+3 - 8] ^ w[i+3 - 14] ^ w[i+3 - 16], 1);
+            w[i+4] = hash_util_left_rotate_u32(w[i+4 - 3] ^ w[i+4 - 8] ^ w[i+4 - 14] ^ w[i+4 - 16], 1);
+            w[i+5] = hash_util_left_rotate_u32(w[i+5 - 3] ^ w[i+5 - 8] ^ w[i+5 - 14] ^ w[i+5 - 16], 1);
+            w[i+6] = hash_util_left_rotate_u32(w[i+6 - 3] ^ w[i+6 - 8] ^ w[i+6 - 14] ^ w[i+6 - 16], 1);
+            w[i+7] = hash_util_left_rotate_u32(w[i+7 - 3] ^ w[i+7 - 8] ^ w[i+7 - 14] ^ w[i+7 - 16], 1);
+        }
+    #else
+        for (int i = 16; i < 80; ++i)
+        {
+            w[i] = hash_util_left_rotate_u32(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1);
+        }
+    #endif
 
     uint32_t a = s->h[0];
     uint32_t b = s->h[1];
@@ -934,28 +957,49 @@ HASH_INLINE void hash_private_hash_sha1_transform(Hash_Sha1 s)
     uint32_t e = s->h[4];
     uint32_t k, f;
 
-    for (size_t i = 0; i <= 79; ++i)
+    for (int i = 0; i < 20; ++i)
     {
-        if (i <= 19)
-        {
-            f = (b & c) | ((~b) & d);
-            k = UINT32_C(0x5A827999);
-        }
-        else if (i >= 20 && i <= 39)
-        {
-            f = b ^ c ^ d;
-            k = UINT32_C(0x6ED9EBA1);
-        }
-        else if (i >= 40 && i <= 59)
-        {
-            f = (b & c) | (b & d) | (c & d);
-            k = UINT32_C(0x8F1BBCDC);
-        }
-        else
-        {
-            f = b ^ c ^ d;
-            k = UINT32_C(0xCA62C1D6);
-        }
+        f = (b & c) | ((~b) & d);
+        k = UINT32_C(0x5A827999);
+
+        const uint32_t tmp = hash_util_left_rotate_u32(a, 5) + f + e + k + w[i];
+        e = d;
+        d = c;
+        c = hash_util_left_rotate_u32(b, 30);
+        b = a;
+        a = tmp;
+    }
+
+    for (int i = 20; i < 40; ++i)
+    {
+        f = b ^ c ^ d;
+        k = UINT32_C(0x6ED9EBA1);
+
+        const uint32_t tmp = hash_util_left_rotate_u32(a, 5) + f + e + k + w[i];
+        e = d;
+        d = c;
+        c = hash_util_left_rotate_u32(b, 30);
+        b = a;
+        a = tmp;
+    }
+
+    for (int i = 40; i < 60; ++i)
+    {
+        f = (b & c) | (b & d) | (c & d);
+        k = UINT32_C(0x8F1BBCDC);
+
+        const uint32_t tmp = hash_util_left_rotate_u32(a, 5) + f + e + k + w[i];
+        e = d;
+        d = c;
+        c = hash_util_left_rotate_u32(b, 30);
+        b = a;
+        a = tmp;
+    }
+
+    for (int i = 60; i < 80; ++i)
+    {
+        f = b ^ c ^ d;
+        k = UINT32_C(0xCA62C1D6);
 
         const uint32_t tmp = hash_util_left_rotate_u32(a, 5) + f + e + k + w[i];
         e = d;
@@ -987,18 +1031,51 @@ HASH_INLINE void hash_sha1_init(Hash_Sha1 s)
 }
 
 
-HASH_INLINE void hash_sha1_update_binary(Hash_Sha1 s, const char* data, size_t size)
+static void hash_sha1_update_binary(Hash_Sha1 s, const char* data, size_t size)
 {
-    const uint8_t* d = (const uint8_t*)data;
-    for (size_t i = 0; i < size; ++i)
+    /*
+        The code below does the same as this loop just more efficient
+        const uint8_t* d = (const uint8_t*)data;
+        for (size_t i = 0; i < size; ++i)
+        {
+            s->buffer[s->bufferSize++] = d[i];
+            if (s->bufferSize == 64)
+            {
+                hash_private_hash_sha1_transform(s);
+                s->bufferSize = 0;
+                s->bitlen += 512;
+            }
+        }
+    */
+    if (s->bufferSize)
     {
-        s->buffer[s->bufferSize++] = d[i];
+        size_t toCopy = HASH_MIN(64 - s->bufferSize, size);
+        memcpy(s->buffer + s->bufferSize, data, toCopy);
+        s->bufferSize += toCopy;
+        data += toCopy;
+        size -= toCopy;
+
         if (s->bufferSize == 64)
         {
             hash_private_hash_sha1_transform(s);
-            s->bufferSize = 0;
             s->bitlen += 512;
+            s->bufferSize = 0;
         }
+    }
+
+    while (size >= 64)
+    {
+        memcpy(s->buffer, data, 64);
+        hash_private_hash_sha1_transform(s);
+        s->bitlen += 512;
+        data += 64;
+        size -= 64;
+    }
+
+    if (size > 0)
+    {
+        memcpy(s->buffer, data, size);
+        s->bufferSize = size;
     }
 }
 
@@ -1009,7 +1086,7 @@ HASH_INLINE void hash_sha1_update(Hash_Sha1 s, const char* data)
 }
 
 
-HASH_INLINE void hash_sha1_finalize(Hash_Sha1 s)
+static void hash_sha1_finalize(Hash_Sha1 s)
 {
     uint8_t start = s->bufferSize;
     uint8_t end = s->bufferSize < 56 ? 56 : 64;
@@ -2000,7 +2077,7 @@ namespace Hash
 
 
         template <typename T>
-        constexpr T SwapEndian(T u) noexcept
+        constexpr inline T SwapEndian(T u) noexcept
         {
             static_assert(CHAR_BIT == 8, "CHAR_BIT != 8");
             static_assert(std::is_integral_v<T>, "SwapEndian requires integral type");
@@ -2064,7 +2141,7 @@ namespace Hash
         }
 
 
-        constexpr bool IsLittleEndian() noexcept
+        constexpr inline bool IsLittleEndian() noexcept
         {
             #if defined(_MSC_VER)
                 return true; // Windows x86/x64 is always little endian
@@ -2078,7 +2155,7 @@ namespace Hash
             #endif
         }
 
-        template <typename T> constexpr T RightRotate(T n, std::size_t c) noexcept
+        template <typename T> constexpr inline T RightRotate(T n, std::size_t c) noexcept
         {
             //const unsigned int mask = (CHAR_BIT * sizeof(n) - 1); // doesn't loose bits
             //c &= mask;
@@ -2086,7 +2163,7 @@ namespace Hash
             return (n >> c) | (n << (std::numeric_limits<T>::digits - c));
         }
 
-        template <typename T> constexpr T LeftRotate(T n, std::size_t c) noexcept
+        template <typename T> constexpr inline T LeftRotate(T n, std::size_t c) noexcept
         {
             //const unsigned int mask = (CHAR_BIT * sizeof(n) - 1); // doesn't loose bits
             //c &= mask;
@@ -2619,9 +2696,10 @@ namespace Hash
     public:
         static constexpr std::size_t Size = 40;
     private:
-        std::uint64_t m_Bitlen = 0;
-        std::uint8_t m_BufferSize = 0;
-        std::uint8_t m_Buffer[64];
+        static constexpr int BufferSize = 64;
+        std::size_t  m_Bitlen = 0;
+        int          m_BufferSize = 0;
+        std::uint8_t m_Buffer[BufferSize];
 
         std::uint32_t m_H[5] =
         {
@@ -2632,23 +2710,45 @@ namespace Hash
             UINT32_C(0xC3D2E1F0)
         };
     private:
-        inline void Transform() noexcept
+        void Transform() noexcept
         {
             std::uint32_t w[80];
-            for (std::size_t i = 0; i < 16; ++i)
+            for (int i = 0; i < 16; ++i)
             {
-                std::uint8_t* ptr = reinterpret_cast<std::uint8_t*>(&w[i]);
-                ptr[0] = m_Buffer[4 * i];
-                ptr[1] = m_Buffer[4 * i + 1];
-                ptr[2] = m_Buffer[4 * i + 2];
-                ptr[3] = m_Buffer[4 * i + 3];
-                w[i] = Util::IsLittleEndian() ? Util::SwapEndian<std::uint32_t>(w[i]) : w[i];
+                /*
+                    This code does the same as the memcpy
+                    std::uint8_t* ptr = reinterpret_cast<std::uint8_t*>(&w[i]);
+                    ptr[0] = m_Buffer[4 * i];
+                    ptr[1] = m_Buffer[4 * i + 1];
+                    ptr[2] = m_Buffer[4 * i + 2];
+                    ptr[3] = m_Buffer[4 * i + 3];
+                */
+                std::memcpy(&w[i], m_Buffer + 4 * i, sizeof(uint32_t));
+                if constexpr (Util::IsLittleEndian())
+                {
+                    w[i] = Util::SwapEndian(w[i]);
+                }
             }
 
-            for (std::size_t i = 16; i < 80; ++i)
-            {
-                w[i] = (Util::LeftRotate(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1));
-            }
+            #if HASH_ENABLE_LOOP_UNROLLING
+                for (int i = 16; i < 80; i += 8)
+                {
+                    w[i] = (Util::LeftRotate(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1));
+                    w[i+1] = (Util::LeftRotate(w[i+1 - 3] ^ w[i+1 - 8] ^ w[i+1 - 14] ^ w[i+1 - 16], 1));
+                    w[i+2] = (Util::LeftRotate(w[i+2 - 3] ^ w[i+2 - 8] ^ w[i+2 - 14] ^ w[i+2 - 16], 1));
+                    w[i+3] = (Util::LeftRotate(w[i+3 - 3] ^ w[i+3 - 8] ^ w[i+3 - 14] ^ w[i+3 - 16], 1));
+                    w[i+4] = (Util::LeftRotate(w[i+4 - 3] ^ w[i+4 - 8] ^ w[i+4 - 14] ^ w[i+4 - 16], 1));
+                    w[i+5] = (Util::LeftRotate(w[i+5 - 3] ^ w[i+5 - 8] ^ w[i+5 - 14] ^ w[i+5 - 16], 1));
+                    w[i+6] = (Util::LeftRotate(w[i+6 - 3] ^ w[i+6 - 8] ^ w[i+6 - 14] ^ w[i+6 - 16], 1));
+                    w[i+7] = (Util::LeftRotate(w[i+7 - 3] ^ w[i+7 - 8] ^ w[i+7 - 14] ^ w[i+7 - 16], 1));
+                }
+            #else
+                for (int i = 16; i < 80; ++i)
+                {
+                    w[i] = (Util::LeftRotate(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1));
+                }
+            #endif
+
 
             std::uint32_t a = m_H[0];
             std::uint32_t b = m_H[1];
@@ -2657,29 +2757,49 @@ namespace Hash
             std::uint32_t e = m_H[4];
             std::uint32_t k, f;
 
-            for (std::size_t i = 0; i <= 79; ++i)
+            for (int i = 0; i < 20; ++i)
             {
-                if (i <= 19)
-                {
-                    f = (b & c) | ((~b) & d);
-                    k = UINT32_C(0x5A827999);
-                }
-                else if (i >= 20 && i <= 39)
-                {
-                    f = b ^ c ^ d;
-                    k = UINT32_C(0x6ED9EBA1);
-                }
-                else if (i >= 40 && i <= 59)
-                {
-                    f = (b & c) | (b & d) | (c & d);
-                    k = UINT32_C(0x8F1BBCDC);
-                }
-                else
-                    //else if (i >= 60 && i <= 79)
-                {
-                    f = b ^ c ^ d;
-                    k = UINT32_C(0xCA62C1D6);
-                }
+                f = (b & c) | ((~b) & d);
+                k = UINT32_C(0x5A827999);
+
+                const std::uint32_t tmp = Util::LeftRotate(a, 5) + f + e + k + w[i];
+                e = d;
+                d = c;
+                c = Util::LeftRotate(b, 30);
+                b = a;
+                a = tmp;
+            }
+
+            for (int i = 20; i < 40; ++i)
+            {
+                f = b ^ c ^ d;
+                k = UINT32_C(0x6ED9EBA1);
+
+                const std::uint32_t tmp = Util::LeftRotate(a, 5) + f + e + k + w[i];
+                e = d;
+                d = c;
+                c = Util::LeftRotate(b, 30);
+                b = a;
+                a = tmp;
+            }
+
+            for (int i = 40; i < 60; ++i)
+            {
+                f = (b & c) | (b & d) | (c & d);
+                k = UINT32_C(0x8F1BBCDC);
+
+                const std::uint32_t tmp = Util::LeftRotate(a, 5) + f + e + k + w[i];
+                e = d;
+                d = c;
+                c = Util::LeftRotate(b, 30);
+                b = a;
+                a = tmp;
+            }
+
+            for (int i = 60; i < 80; ++i)
+            {
+                f = b ^ c ^ d;
+                k = UINT32_C(0xCA62C1D6);
 
                 const std::uint32_t tmp = Util::LeftRotate(a, 5) + f + e + k + w[i];
                 e = d;
@@ -2696,17 +2816,50 @@ namespace Hash
             m_H[4] = m_H[4] + e;
         }
     public:
-        inline void Update(const std::uint8_t* data, std::size_t size) noexcept
+        void Update(const std::uint8_t* data, std::size_t size) noexcept
         {
-            for (std::size_t i = 0; i < size; ++i)
+            /*
+                The code below does the same as this loop just more efficient
+                for (std::size_t i = 0; i < size; ++i)
+                {
+                    m_Buffer[m_BufferSize++] = data[i];
+                    if (m_BufferSize == 64)
+                    {
+                        Transform();
+                        m_BufferSize = 0;
+                        m_Bitlen += 512;
+                    }
+                }
+            */
+            if (m_BufferSize)
             {
-                m_Buffer[m_BufferSize++] = data[i];
-                if (m_BufferSize == 64)
+                std::size_t toCopy = std::min<std::size_t>(BufferSize - m_BufferSize, size);
+                std::memcpy(m_Buffer + m_BufferSize, data, toCopy);
+                m_BufferSize += toCopy;
+                data += toCopy;
+                size -= toCopy;
+
+                if (m_BufferSize == BufferSize)
                 {
                     Transform();
-                    m_BufferSize = 0;
                     m_Bitlen += 512;
+                    m_BufferSize = 0;
                 }
+            }
+
+            while (size >= BufferSize)
+            {
+                std::memcpy(m_Buffer, data, BufferSize);
+                Transform();
+                m_Bitlen += 512;
+                data += BufferSize;
+                size -= BufferSize;
+            }
+
+            if (size > 0)
+            {
+                std::memcpy(m_Buffer, data, size);
+                m_BufferSize = size;
             }
         }
 
@@ -2720,7 +2873,7 @@ namespace Hash
             Update(reinterpret_cast<const std::uint8_t*>(data.data()), data.size());
         }
 
-        inline void Finalize() noexcept
+        void Finalize() noexcept
         {
             std::uint8_t start = m_BufferSize;
             std::uint8_t end = m_BufferSize < 56 ? 56 : 64;
@@ -3900,6 +4053,7 @@ HASH_INLINE void hash_private_keccak_Keccak(unsigned int rate, unsigned int capa
 #endif // HASH_ENABLE_SHAKE
 #endif // HASH_H
 
+#undef HASH_MIN
 #undef HASH_INLINE
 #undef HASH_ENABLE_MD5
 #undef HASH_ENABLE_SHA1
@@ -3910,6 +4064,7 @@ HASH_INLINE void hash_private_keccak_Keccak(unsigned int rate, unsigned int capa
 #undef HASH_ENABLE_CPP_INTERFACE
 #undef HASH_KECCAK_LITTLE_ENDIAN
 #undef HASH_FILE_READ_BUFFER_SIZE
+#undef HASH_ENABLE_LOOP_UNROLLING
 #undef HASH_SHAKE_128_MALLOC_LIMIT
 #undef HASH_SHAKE_256_MALLOC_LIMIT
 #undef HASH_DEFINE_UTIL_SWAP_ENDIAN
