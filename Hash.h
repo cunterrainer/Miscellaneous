@@ -244,15 +244,15 @@ HASH_INLINE uint64_t hash_util_left_rotate_u64(uint64_t n, size_t c)
 // ===============================Hash_Sha256===================================
 typedef struct
 {
-    uint64_t bitlen;
-    uint8_t bufferSize;
-    uint8_t buffer[64];
+    size_t   bitlen;
+    int      bufferSize;
+    uint8_t  buffer[64];
     uint32_t h[8];
 } Hash_Private_Sha256;
 typedef Hash_Private_Sha256 Hash_Sha256[1];
 
 
-HASH_INLINE void hash_private_sha256_compress(Hash_Sha256 s, const uint32_t* const w)
+static void hash_private_sha256_compress(Hash_Sha256 s, const uint32_t* const w)
 {
     static const uint32_t k[64] =
     {
@@ -302,17 +302,24 @@ HASH_INLINE void hash_private_sha256_compress(Hash_Sha256 s, const uint32_t* con
 }
 
 
-HASH_INLINE void hash_private_sha256_transform(Hash_Sha256 s)
+static void hash_private_sha256_transform(Hash_Sha256 s)
 {
     uint32_t w[64];
     for (size_t i = 0; i < 16; ++i)
     {
-        uint8_t* c = (uint8_t*)&w[i];
-        c[0] = s->buffer[4 * i];
-        c[1] = s->buffer[4 * i + 1];
-        c[2] = s->buffer[4 * i + 2];
-        c[3] = s->buffer[4 * i + 3];
-        w[i] = hash_util_is_little_endian() ? hash_util_swap_endian_uint32_t(w[i]) : w[i];
+        /*
+            This code does the same as the memcpy
+            uint8_t* c = (uint8_t*)&w[i];
+            c[0] = s->buffer[4 * i];
+            c[1] = s->buffer[4 * i + 1];
+            c[2] = s->buffer[4 * i + 2];
+            c[3] = s->buffer[4 * i + 3];
+        */
+        memcpy(&w[i], s->buffer + 4 * i, sizeof(uint32_t));
+        if (hash_util_is_little_endian())
+        {
+            w[i] = hash_util_swap_endian_uint32_t(w[i]);
+        }
     }
 
     for (size_t i = 16; i < 64; ++i)
@@ -342,18 +349,51 @@ HASH_INLINE void hash_sha256_init(Hash_Sha256 s)
 };
 
 
-HASH_INLINE void hash_sha256_update_binary(Hash_Sha256 s, const char* data, size_t size)
+static void hash_sha256_update_binary(Hash_Sha256 s, const char* data, size_t size)
 {
-    const uint8_t* d = (const uint8_t*)data;
-    for (size_t i = 0; i < size; ++i)
+    /*
+        The code below does the same as this loop just more efficient
+        const uint8_t* d = (const uint8_t*)data;
+        for (size_t i = 0; i < size; ++i)
+        {
+            s->buffer[s->bufferSize++] = d[i];
+            if (s->bufferSize == 64)
+            {
+                hash_private_sha256_transform(s);
+                s->bufferSize = 0;
+                s->bitlen += 512;
+            }
+        }
+    */
+    if (s->bufferSize)
     {
-        s->buffer[s->bufferSize++] = d[i];
+        size_t toCopy = HASH_MIN(64 - s->bufferSize, size);
+        memcpy(s->buffer + s->bufferSize, data, toCopy);
+        s->bufferSize += toCopy;
+        data += toCopy;
+        size -= toCopy;
+
         if (s->bufferSize == 64)
         {
             hash_private_sha256_transform(s);
-            s->bufferSize = 0;
             s->bitlen += 512;
+            s->bufferSize = 0;
         }
+    }
+
+    while (size >= 64)
+    {
+        memcpy(s->buffer, data, 64);
+        hash_private_sha256_transform(s);
+        s->bitlen += 512;
+        data += 64;
+        size -= 64;
+    }
+
+    if (size > 0)
+    {
+        memcpy(s->buffer, data, size);
+        s->bufferSize = size;
     }
 }
 
@@ -364,7 +404,7 @@ HASH_INLINE void hash_sha256_update(Hash_Sha256 s, const char* data)
 }
 
 
-HASH_INLINE void hash_sha256_finalize(Hash_Sha256 s)
+static void hash_sha256_finalize(Hash_Sha256 s)
 {
     uint8_t start = s->bufferSize;
     uint8_t end = s->bufferSize < 56 ? 56 : 64;
@@ -390,7 +430,7 @@ HASH_INLINE const char* hash_sha256_hexdigest(const Hash_Sha256 s, char* buffer)
 {
     static char hex[HASH_SHA256_SIZE+1];
     char* buff = buffer == NULL ? hex : buffer;
-    for (size_t i = 0; i < 8; ++i)
+    for (int i = 0; i < 8; ++i)
     {
         snprintf(&buff[i * 8], HASH_SHA256_SIZE+1, "%08" PRIx32, s->h[i]);
     }
@@ -469,7 +509,7 @@ HASH_INLINE const char* hash_sha224_hexdigest(const Hash_Sha224 s, char* buffer)
 {
     static char hex[HASH_SHA224_SIZE+1];
     char* buff = buffer == NULL ? hex : buffer;
-    for (size_t i = 0; i < 7; ++i)
+    for (int i = 0; i < 7; ++i)
     {
         snprintf(&buff[i * 8], HASH_SHA224_SIZE+1, "%08" PRIx32, s->h[i]);
     }
@@ -2179,9 +2219,10 @@ namespace Hash
     public:
         static constexpr std::size_t Size = 64;
     private:
+        static constexpr int BufferSize = 64;
         std::uint64_t m_Bitlen = 0;
-        std::uint8_t m_BufferSize = 0;
-        std::uint8_t m_Buffer[64];
+        int           m_BufferSize = 0;
+        std::uint8_t  m_Buffer[BufferSize];
     protected:
         // FracPartsSqareRoots
         std::uint32_t m_H[8] =
@@ -2209,7 +2250,7 @@ namespace Hash
             UINT32_C(0x748f82ee), UINT32_C(0x78a5636f), UINT32_C(0x84c87814), UINT32_C(0x8cc70208), UINT32_C(0x90befffa), UINT32_C(0xa4506ceb), UINT32_C(0xbef9a3f7), UINT32_C(0xc67178f2)
         };
     private:
-        inline void Compress(const std::uint32_t* const w) noexcept
+        void Compress(const std::uint32_t* const w) noexcept
         {
             std::uint32_t a = m_H[0];
             std::uint32_t b = m_H[1];
@@ -2247,17 +2288,24 @@ namespace Hash
         }
 
 
-        inline void Transform() noexcept
+        void Transform() noexcept
         {
             std::uint32_t w[64];
             for (std::size_t i = 0; i < 16; ++i)
             {
-                std::uint8_t* c = reinterpret_cast<std::uint8_t*>(&w[i]);
-                c[0] = m_Buffer[4 * i];
-                c[1] = m_Buffer[4 * i + 1];
-                c[2] = m_Buffer[4 * i + 2];
-                c[3] = m_Buffer[4 * i + 3];
-                w[i] = Util::IsLittleEndian() ? Util::SwapEndian(w[i]) : w[i];
+                /*
+                    This code does the same as the memcpy
+                    std::uint8_t* ptr = reinterpret_cast<std::uint8_t*>(&w[i]);
+                    ptr[0] = m_Buffer[4 * i];
+                    ptr[1] = m_Buffer[4 * i + 1];
+                    ptr[2] = m_Buffer[4 * i + 2];
+                    ptr[3] = m_Buffer[4 * i + 3];
+                */
+                std::memcpy(&w[i], m_Buffer + 4 * i, sizeof(std::uint32_t));
+                if constexpr (Util::IsLittleEndian())
+                {
+                    w[i] = Util::SwapEndian(w[i]);
+                }
             }
 
             for (std::size_t i = 16; i < 64; ++i)
@@ -2272,17 +2320,50 @@ namespace Hash
         inline Sha256() noexcept = default;
         inline Sha256(std::uint32_t h0, std::uint32_t h1, std::uint32_t h2, std::uint32_t h3, std::uint32_t h4, std::uint32_t h5, std::uint32_t h6, std::uint32_t h7) noexcept : m_H{ h0, h1, h2, h3, h4, h5, h6, h7 } {}
 
-        inline void Update(const std::uint8_t* data, std::size_t size) noexcept
+        void Update(const std::uint8_t* data, std::size_t size) noexcept
         {
-            for (std::size_t i = 0; i < size; ++i)
+            /*
+                The code below does the same as this loop just more efficient
+                for (std::size_t i = 0; i < size; ++i)
+                {
+                    m_Buffer[m_BufferSize++] = data[i];
+                    if (m_BufferSize == 64)
+                    {
+                        Transform();
+                        m_BufferSize = 0;
+                        m_Bitlen += 512;
+                    }
+                }
+            */
+            if (m_BufferSize)
             {
-                m_Buffer[m_BufferSize++] = data[i];
-                if (m_BufferSize == 64)
+                std::size_t toCopy = std::min<std::size_t>(BufferSize - m_BufferSize, size);
+                std::memcpy(m_Buffer + m_BufferSize, data, toCopy);
+                m_BufferSize += toCopy;
+                data += toCopy;
+                size -= toCopy;
+
+                if (m_BufferSize == BufferSize)
                 {
                     Transform();
-                    m_BufferSize = 0;
                     m_Bitlen += 512;
+                    m_BufferSize = 0;
                 }
+            }
+
+            while (size >= BufferSize)
+            {
+                std::memcpy(m_Buffer, data, BufferSize);
+                Transform();
+                m_Bitlen += 512;
+                data += BufferSize;
+                size -= BufferSize;
+            }
+
+            if (size > 0)
+            {
+                std::memcpy(m_Buffer, data, size);
+                m_BufferSize = size;
             }
         }
 
@@ -2297,7 +2378,7 @@ namespace Hash
         }
 
 
-        inline void Finalize() noexcept
+        void Finalize() noexcept
         {
             std::uint8_t start = m_BufferSize;
             std::uint8_t end = m_BufferSize < 56 ? 56 : 64;
@@ -2321,7 +2402,7 @@ namespace Hash
         inline std::string Hexdigest() const
         {
             char buff[Size+1];
-            for (std::size_t i = 0; i < 8; ++i)
+            for (int i = 0; i < 8; ++i)
             {
                 std::snprintf(&buff[i * 8], Size+1, "%08" PRIx32, m_H[i]);
             }
@@ -2356,7 +2437,7 @@ namespace Hash
         inline std::string Hexdigest() const
         {
             char buff[Size+1];
-            for (std::size_t i = 0; i < 7; ++i)
+            for (int i = 0; i < 7; ++i)
             {
                 std::snprintf(&buff[i * 8], Size+1, "%08" PRIx32, m_H[i]);
             }
@@ -2724,7 +2805,7 @@ namespace Hash
                     ptr[2] = m_Buffer[4 * i + 2];
                     ptr[3] = m_Buffer[4 * i + 3];
                 */
-                std::memcpy(&w[i], m_Buffer + 4 * i, sizeof(uint32_t));
+                std::memcpy(&w[i], m_Buffer + 4 * i, sizeof(std::uint32_t));
                 if constexpr (Util::IsLittleEndian())
                 {
                     w[i] = Util::SwapEndian(w[i]);
