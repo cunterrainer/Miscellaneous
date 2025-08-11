@@ -2105,7 +2105,6 @@ namespace Hash
     public:
         inline Sha256() noexcept = default;
         inline Sha256(std::uint32_t h0, std::uint32_t h1, std::uint32_t h2, std::uint32_t h3, std::uint32_t h4, std::uint32_t h5, std::uint32_t h6, std::uint32_t h7) noexcept : m_H{ h0, h1, h2, h3, h4, h5, h6, h7 } {}
-        inline virtual ~Sha256() noexcept = default;
 
         inline void Update(const std::uint8_t* data, std::size_t size) noexcept
         {
@@ -2132,7 +2131,7 @@ namespace Hash
         }
 
 
-        inline virtual void Finalize() noexcept
+        inline void Finalize() noexcept
         {
             std::uint8_t start = m_BufferSize;
             std::uint8_t end = m_BufferSize < 56 ? 56 : 64;
@@ -2153,7 +2152,7 @@ namespace Hash
         }
 
 
-        inline virtual std::string Hexdigest() const
+        inline std::string Hexdigest() const
         {
             char buff[Size+1];
             for (std::size_t i = 0; i < 8; ++i)
@@ -2188,7 +2187,7 @@ namespace Hash
         static constexpr std::size_t Size = 56;
     public:
         inline Sha224() noexcept : Sha256(UINT32_C(0xC1059ED8), UINT32_C(0x367CD507), UINT32_C(0x3070DD17), UINT32_C(0xF70E5939), UINT32_C(0xFFC00B31), UINT32_C(0x68581511), UINT32_C(0x64F98FA7), UINT32_C(0xBEFA4FA4)) {}
-        inline std::string Hexdigest() const override
+        inline std::string Hexdigest() const
         {
             char buff[Size+1];
             for (std::size_t i = 0; i < 7; ++i)
@@ -2325,7 +2324,6 @@ namespace Hash
     public:
         inline Sha512() noexcept = default;
         inline explicit Sha512(std::uint64_t h0, std::uint64_t h1, std::uint64_t h2, std::uint64_t h3, std::uint64_t h4, std::uint64_t h5, std::uint64_t h6, std::uint64_t h7) noexcept : m_H{ h0, h1, h2, h3, h4, h5, h6, h7 } {}
-        inline virtual ~Sha512() noexcept = default;
 
         inline void Reset() noexcept
         {
@@ -2379,7 +2377,7 @@ namespace Hash
         }
 
 
-        inline virtual std::string Hexdigest() const
+        inline std::string Hexdigest() const
         {
             char buff[Size+1];
             for (std::size_t i = 0; i < 8; ++i)
@@ -2412,11 +2410,6 @@ namespace Hash
     {
     private:
         std::size_t m_T;
-    private:
-        inline std::string HexdigestFull() const
-        {
-            return Sha512::Hexdigest();
-        }
     public:
         inline explicit Sha512T(std::size_t t) : Sha512(UINT64_C(0xcfac43c256196cad), UINT64_C(0x1ec20b20216f029e), UINT64_C(0x99cb56d75b315d8e), UINT64_C(0x00ea509ffab89354), UINT64_C(0xf4abf7da08432774), UINT64_C(0x3ea0cd298e9bc9ba), UINT64_C(0xba267c0e5ee418ce), UINT64_C(0xfe4568bcb6db84dc)), m_T(t)
         {
@@ -2426,7 +2419,7 @@ namespace Hash
             std::string s = "SHA-512/" + std::to_string(m_T);
             Update(s);
             Finalize();
-            s = HexdigestFull();
+            s = Sha512::Hexdigest();
             Reset();
 
             std::size_t k = 0;
@@ -2438,7 +2431,7 @@ namespace Hash
             }
         }
 
-        inline std::string Hexdigest() const override
+        inline std::string Hexdigest() const
         {
             return Sha512::Hexdigest().substr(0, m_T / 4);
         }
@@ -2503,7 +2496,7 @@ namespace Hash
         static constexpr std::size_t Size = 96;
     public:
         inline Sha384() noexcept : Sha512(UINT64_C(0xcbbb9d5dc1059ed8), UINT64_C(0x629a292a367cd507), UINT64_C(0x9159015a3070dd17), UINT64_C(0x152fecd8f70e5939), UINT64_C(0x67332667ffc00b31), UINT64_C(0x8eb44a8768581511), UINT64_C(0xdb0c2e0d64f98fa7), UINT64_C(0x47b5481dbefa4fa4)) {}
-        inline std::string Hexdigest() const override
+        inline std::string Hexdigest() const
         {
             char buff[Size+1];
             for (std::size_t i = 0; i < 6; ++i)
