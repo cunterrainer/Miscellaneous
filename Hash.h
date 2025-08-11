@@ -56,6 +56,7 @@
 #ifdef _MSC_VER
 #pragma warning( push )
 #pragma warning( disable : 4996) // fopen is deprecated
+#include <intrin.h> // compiler intrinsics for endian swap and rotate
 #endif
 
 #if defined(__cplusplus) && HASH_ENABLE_CPP_INTERFACE == 1
