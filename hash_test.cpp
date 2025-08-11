@@ -2,7 +2,6 @@
 #include <string>
 #include <vector>
 #include <utility>
-#include <cstdio>
 #include <iostream>
 
 #include "Hash.h"
@@ -15058,13 +15057,12 @@ bool check_hash(const std::string& hash, const std::string& real_hash, const cha
 {
     if (hash != real_hash)
     {
-        printf("[Test %zu/%zu]:%zu Failed %s hash doesn't match\nReal: %s\nOwn: %s\n", test_num, test_max_num, test_identifier, hash_name, real_hash.c_str(), hash.c_str());
-        fflush(stdout);
+        std::cerr << "[Test " << test_num << '/' << test_max_num << "]:" << test_identifier << " Failed " << hash_name << " hash doesn't match\nReal: " << real_hash << "\nOwn: " << hash << std::endl;
         return false;
     }
     else
     {
-        printf("[Test %zu/%zu]:%zu Passed %s\n", test_num, test_max_num, test_identifier, hash_name);
+        std::cout << "[Test " << test_num << '/' << test_max_num << "]:" << test_identifier << " Passed " << hash_name << '\n';
         return true;
     }
 }
@@ -15082,6 +15080,12 @@ bool test(const char* name, size_t hash_ident, cpp_easy cppef, easy_fun ef, init
         
         const std::pair<std::string, std::string> chunk_str = test_chunks<CPPHasher, CHasher, CPPHasher::Size>(hp.str, infunc, uf, ff, hf);
         const std::pair<std::string, std::string> chunk_str_2 = test_chunks<CPPHasher, CHasher, 10>(hp.str, infunc, uf, ff, hf);
+        const std::pair<std::string, std::string> chunk_str_3 = test_chunks<CPPHasher, CHasher, 1>(hp.str, infunc, uf, ff, hf);
+        const std::pair<std::string, std::string> chunk_str_4 = test_chunks<CPPHasher, CHasher, 60>(hp.str, infunc, uf, ff, hf);
+        const std::pair<std::string, std::string> chunk_str_5 = test_chunks<CPPHasher, CHasher, 65>(hp.str, infunc, uf, ff, hf);
+        const std::pair<std::string, std::string> chunk_str_6 = test_chunks<CPPHasher, CHasher, 100>(hp.str, infunc, uf, ff, hf);
+        const std::pair<std::string, std::string> chunk_str_7 = test_chunks<CPPHasher, CHasher, 1000>(hp.str, infunc, uf, ff, hf);
+        const std::pair<std::string, std::string> chunk_str_8 = test_chunks<CPPHasher, CHasher, 10000>(hp.str, infunc, uf, ff, hf);
 
         std::string real_hash;
         switch (hash_ident)
@@ -15105,6 +15109,18 @@ bool test(const char* name, size_t hash_ident, cpp_easy cppef, easy_fun ef, init
         CHECK(chunk_str.second, real_hash, name, num, hash_pairs.size(), 4);
         CHECK(chunk_str_2.first, real_hash, name, num, hash_pairs.size(), 5);
         CHECK(chunk_str_2.second, real_hash, name, num, hash_pairs.size(), 6);
+        CHECK(chunk_str_3.first, real_hash, name, num, hash_pairs.size(), 7);
+        CHECK(chunk_str_3.second, real_hash, name, num, hash_pairs.size(), 8);
+        CHECK(chunk_str_4.first, real_hash, name, num, hash_pairs.size(), 9);
+        CHECK(chunk_str_4.second, real_hash, name, num, hash_pairs.size(), 10);
+        CHECK(chunk_str_5.first, real_hash, name, num, hash_pairs.size(), 11);
+        CHECK(chunk_str_5.second, real_hash, name, num, hash_pairs.size(), 12);
+        CHECK(chunk_str_6.first, real_hash, name, num, hash_pairs.size(), 13);
+        CHECK(chunk_str_6.second, real_hash, name, num, hash_pairs.size(), 14);
+        CHECK(chunk_str_7.first, real_hash, name, num, hash_pairs.size(), 15);
+        CHECK(chunk_str_7.second, real_hash, name, num, hash_pairs.size(), 16);
+        CHECK(chunk_str_8.first, real_hash, name, num, hash_pairs.size(), 17);
+        CHECK(chunk_str_8.second, real_hash, name, num, hash_pairs.size(), 18);
         num++;
     }
     return true;
@@ -15125,5 +15141,5 @@ int main()
     CHECK_TEST((test<Hash::Sha3_256, Hash_Sha3_256>("Sha3_256", 7, Hash::sha3_256, hash_sha3_256_easy, hash_sha3_256_init, hash_sha3_256_update_binary, hash_sha3_256_finalize, hash_sha3_256_hexdigest)))
     CHECK_TEST((test<Hash::Sha3_384, Hash_Sha3_384>("Sha3_384", 8, Hash::sha3_384, hash_sha3_384_easy, hash_sha3_384_init, hash_sha3_384_update_binary, hash_sha3_384_finalize, hash_sha3_384_hexdigest)))
     CHECK_TEST((test<Hash::Sha3_512, Hash_Sha3_512>("Sha3_512", 9, Hash::sha3_512, hash_sha3_512_easy, hash_sha3_512_init, hash_sha3_512_update_binary, hash_sha3_512_finalize, hash_sha3_512_hexdigest)))
-    puts("All tests passed");
+    std::cout << "All tests passed" << std::endl;
 }
