@@ -78,6 +78,7 @@ std::vector<std::string> GenerateStrings(size_t count, size_t* total_bytes)
 
 int main()
 {
+    std::ios_base::sync_with_stdio(false);
     Profiler::Start();
     size_t total_bytes = 0;
     std::vector<std::pair<double, std::string>> times;
