@@ -245,7 +245,7 @@ HASH_INLINE uint64_t hash_util_left_rotate_u64(uint64_t n, size_t c)
 typedef struct
 {
     size_t   bitlen;
-    int      bufferSize;
+    int32_t  bufferSize;
     uint8_t  buffer[64];
     uint32_t h[8];
 } Hash_Private_Sha256;
@@ -274,7 +274,7 @@ static void hash_private_sha256_compress(Hash_Sha256 s, const uint32_t* const w)
     uint32_t f = s->h[5];
     uint32_t g = s->h[6];
     uint32_t h = s->h[7];
-    for (size_t i = 0; i < 64; ++i)
+    for (int32_t i = 0; i < 64; ++i)
     {
         const uint32_t s1 = hash_util_right_rotate_u32(e, 6) ^ hash_util_right_rotate_u32(e, 11) ^ hash_util_right_rotate_u32(e, 25);
         const uint32_t ch = (e & f) ^ (~e & g);
@@ -305,7 +305,7 @@ static void hash_private_sha256_compress(Hash_Sha256 s, const uint32_t* const w)
 static void hash_private_sha256_transform(Hash_Sha256 s)
 {
     uint32_t w[64];
-    for (size_t i = 0; i < 16; ++i)
+    for (int32_t i = 0; i < 16; ++i)
     {
         /*
             This code does the same as the memcpy
@@ -322,7 +322,7 @@ static void hash_private_sha256_transform(Hash_Sha256 s)
         }
     }
 
-    for (size_t i = 16; i < 64; ++i)
+    for (int32_t i = 16; i < 64; ++i)
     {
         const uint32_t s0 = hash_util_right_rotate_u32(w[i - 15], 7) ^ hash_util_right_rotate_u32(w[i - 15], 18) ^ (w[i - 15] >> 3);
         const uint32_t s1 = hash_util_right_rotate_u32(w[i - 2], 17) ^ hash_util_right_rotate_u32(w[i - 2], 19) ^ (w[i - 2] >> 10);
@@ -406,8 +406,8 @@ HASH_INLINE void hash_sha256_update(Hash_Sha256 s, const char* data)
 
 static void hash_sha256_finalize(Hash_Sha256 s)
 {
-    uint8_t start = s->bufferSize;
-    uint8_t end = s->bufferSize < 56 ? 56 : 64;
+    int32_t start = s->bufferSize;
+    int32_t end = s->bufferSize < 56 ? 56 : 64;
 
     s->buffer[start++] = 0b10000000;
     memset(&s->buffer[start], 0, end - start);
@@ -430,7 +430,7 @@ HASH_INLINE const char* hash_sha256_hexdigest(const Hash_Sha256 s, char* buffer)
 {
     static char hex[HASH_SHA256_SIZE+1];
     char* buff = buffer == NULL ? hex : buffer;
-    for (int i = 0; i < 8; ++i)
+    for (int32_t i = 0; i < 8; ++i)
     {
         snprintf(&buff[i * 8], HASH_SHA256_SIZE+1, "%08" PRIx32, s->h[i]);
     }
@@ -509,7 +509,7 @@ HASH_INLINE const char* hash_sha224_hexdigest(const Hash_Sha224 s, char* buffer)
 {
     static char hex[HASH_SHA224_SIZE+1];
     char* buff = buffer == NULL ? hex : buffer;
-    for (int i = 0; i < 7; ++i)
+    for (int32_t i = 0; i < 7; ++i)
     {
         snprintf(&buff[i * 8], HASH_SHA224_SIZE+1, "%08" PRIx32, s->h[i]);
     }
@@ -985,7 +985,7 @@ HASH_INLINE const char* hash_sha384_file_easy(const char* path, const char* mode
 typedef struct
 {
     size_t   bitlen;
-    int      bufferSize;
+    int32_t  bufferSize;
     uint8_t  buffer[64];
     uint32_t h[5];
 } Hash_Private_Sha1;
@@ -995,7 +995,7 @@ typedef Hash_Private_Sha1 Hash_Sha1[1];
 static void hash_private_hash_sha1_transform(Hash_Sha1 s)
 {
     uint32_t w[80];
-    for (int i = 0; i < 16; ++i)
+    for (int32_t i = 0; i < 16; ++i)
     {
         /*
             This code does the same as the memcpy
@@ -1013,7 +1013,7 @@ static void hash_private_hash_sha1_transform(Hash_Sha1 s)
     }
 
     #if HASH_ENABLE_LOOP_UNROLLING
-        for (int i = 16; i < 80; i += 8)
+        for (int32_t i = 16; i < 80; i += 8)
         {
             w[i] = hash_util_left_rotate_u32(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1);
             w[i+1] = hash_util_left_rotate_u32(w[i+1 - 3] ^ w[i+1 - 8] ^ w[i+1 - 14] ^ w[i+1 - 16], 1);
@@ -1025,7 +1025,7 @@ static void hash_private_hash_sha1_transform(Hash_Sha1 s)
             w[i+7] = hash_util_left_rotate_u32(w[i+7 - 3] ^ w[i+7 - 8] ^ w[i+7 - 14] ^ w[i+7 - 16], 1);
         }
     #else
-        for (int i = 16; i < 80; ++i)
+        for (int32_t i = 16; i < 80; ++i)
         {
             w[i] = hash_util_left_rotate_u32(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1);
         }
@@ -1038,7 +1038,7 @@ static void hash_private_hash_sha1_transform(Hash_Sha1 s)
     uint32_t e = s->h[4];
     uint32_t k, f;
 
-    for (int i = 0; i < 20; ++i)
+    for (int32_t i = 0; i < 20; ++i)
     {
         f = (b & c) | ((~b) & d);
         k = UINT32_C(0x5A827999);
@@ -1051,7 +1051,7 @@ static void hash_private_hash_sha1_transform(Hash_Sha1 s)
         a = tmp;
     }
 
-    for (int i = 20; i < 40; ++i)
+    for (int32_t i = 20; i < 40; ++i)
     {
         f = b ^ c ^ d;
         k = UINT32_C(0x6ED9EBA1);
@@ -1064,7 +1064,7 @@ static void hash_private_hash_sha1_transform(Hash_Sha1 s)
         a = tmp;
     }
 
-    for (int i = 40; i < 60; ++i)
+    for (int32_t i = 40; i < 60; ++i)
     {
         f = (b & c) | (b & d) | (c & d);
         k = UINT32_C(0x8F1BBCDC);
@@ -1077,7 +1077,7 @@ static void hash_private_hash_sha1_transform(Hash_Sha1 s)
         a = tmp;
     }
 
-    for (int i = 60; i < 80; ++i)
+    for (int32_t i = 60; i < 80; ++i)
     {
         f = b ^ c ^ d;
         k = UINT32_C(0xCA62C1D6);
@@ -1169,8 +1169,8 @@ HASH_INLINE void hash_sha1_update(Hash_Sha1 s, const char* data)
 
 static void hash_sha1_finalize(Hash_Sha1 s)
 {
-    uint8_t start = s->bufferSize;
-    uint8_t end = s->bufferSize < 56 ? 56 : 64;
+    int32_t start = s->bufferSize;
+    int32_t end = s->bufferSize < 56 ? 56 : 64;
 
     s->buffer[start++] = 0b10000000;
     memset(&s->buffer[start], 0, end - start);
@@ -1193,7 +1193,7 @@ HASH_INLINE const char* hash_sha1_hexdigest(const Hash_Sha1 s, char* buffer)
 {
     static char hex[HASH_SHA1_SIZE+1]; // use max allowed size to avoid memory allocation
     char* buff = buffer == NULL ? hex : buffer;
-    for (int i = 0; i < 5; ++i)
+    for (int32_t i = 0; i < 5; ++i)
     {
         snprintf(&buff[i * 8], HASH_SHA1_SIZE+1, "%08" PRIx32, s->h[i]);
     }
@@ -2260,9 +2260,9 @@ namespace Hash
         static constexpr std::size_t Size = 64;
     private:
         static constexpr int BufferSize = 64;
-        std::uint64_t m_Bitlen = 0;
-        int           m_BufferSize = 0;
-        std::uint8_t  m_Buffer[BufferSize];
+        std::size_t  m_Bitlen = 0;
+        std::int32_t m_BufferSize = 0;
+        std::uint8_t m_Buffer[BufferSize];
     protected:
         // FracPartsSqareRoots
         std::uint32_t m_H[8] =
@@ -2300,7 +2300,7 @@ namespace Hash
             std::uint32_t f = m_H[5];
             std::uint32_t g = m_H[6];
             std::uint32_t h = m_H[7];
-            for (std::size_t i = 0; i < 64; ++i)
+            for (std::int32_t i = 0; i < 64; ++i)
             {
                 const std::uint32_t s1 = Util::RightRotate(e, 6) ^ Util::RightRotate(e, 11) ^ Util::RightRotate(e, 25);
                 const std::uint32_t ch = (e & f) ^ (~e & g);
@@ -2331,7 +2331,7 @@ namespace Hash
         void Transform() noexcept
         {
             std::uint32_t w[64];
-            for (std::size_t i = 0; i < 16; ++i)
+            for (std::int32_t i = 0; i < 16; ++i)
             {
                 /*
                     This code does the same as the memcpy
@@ -2348,7 +2348,7 @@ namespace Hash
                 }
             }
 
-            for (std::size_t i = 16; i < 64; ++i)
+            for (std::int32_t i = 16; i < 64; ++i)
             {
                 const std::uint32_t s0 = Util::RightRotate(w[i - 15], 7) ^ Util::RightRotate(w[i - 15], 18) ^ (w[i - 15] >> 3);
                 const std::uint32_t s1 = Util::RightRotate(w[i - 2], 17) ^ Util::RightRotate(w[i - 2], 19) ^ (w[i - 2] >> 10);
@@ -2420,8 +2420,8 @@ namespace Hash
 
         void Finalize() noexcept
         {
-            std::uint8_t start = m_BufferSize;
-            std::uint8_t end = m_BufferSize < 56 ? 56 : 64;
+            std::int32_t start = m_BufferSize;
+            std::int32_t end = m_BufferSize < 56 ? 56 : 64;
 
             m_Buffer[start++] = 0b10000000;
             std::memset(&m_Buffer[start], 0, end - start);
@@ -2442,7 +2442,7 @@ namespace Hash
         inline std::string Hexdigest() const
         {
             char buff[Size+1];
-            for (int i = 0; i < 8; ++i)
+            for (std::int32_t i = 0; i < 8; ++i)
             {
                 std::snprintf(&buff[i * 8], Size+1, "%08" PRIx32, m_H[i]);
             }
@@ -2477,7 +2477,7 @@ namespace Hash
         inline std::string Hexdigest() const
         {
             char buff[Size+1];
-            for (int i = 0; i < 7; ++i)
+            for (std::int32_t i = 0; i < 7; ++i)
             {
                 std::snprintf(&buff[i * 8], Size+1, "%08" PRIx32, m_H[i]);
             }
@@ -2861,7 +2861,7 @@ namespace Hash
     private:
         static constexpr int BufferSize = 64;
         std::size_t  m_Bitlen = 0;
-        int          m_BufferSize = 0;
+        std::int32_t m_BufferSize = 0;
         std::uint8_t m_Buffer[BufferSize];
 
         std::uint32_t m_H[5] =
@@ -2876,7 +2876,7 @@ namespace Hash
         void Transform() noexcept
         {
             std::uint32_t w[80];
-            for (int i = 0; i < 16; ++i)
+            for (std::int32_t i = 0; i < 16; ++i)
             {
                 /*
                     This code does the same as the memcpy
@@ -2894,7 +2894,7 @@ namespace Hash
             }
 
             #if HASH_ENABLE_LOOP_UNROLLING
-                for (int i = 16; i < 80; i += 8)
+                for (std::int32_t i = 16; i < 80; i += 8)
                 {
                     w[i] = (Util::LeftRotate(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1));
                     w[i+1] = (Util::LeftRotate(w[i+1 - 3] ^ w[i+1 - 8] ^ w[i+1 - 14] ^ w[i+1 - 16], 1));
@@ -2906,7 +2906,7 @@ namespace Hash
                     w[i+7] = (Util::LeftRotate(w[i+7 - 3] ^ w[i+7 - 8] ^ w[i+7 - 14] ^ w[i+7 - 16], 1));
                 }
             #else
-                for (int i = 16; i < 80; ++i)
+                for (std::int32_t i = 16; i < 80; ++i)
                 {
                     w[i] = (Util::LeftRotate(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1));
                 }
@@ -2920,7 +2920,7 @@ namespace Hash
             std::uint32_t e = m_H[4];
             std::uint32_t k, f;
 
-            for (int i = 0; i < 20; ++i)
+            for (std::int32_t i = 0; i < 20; ++i)
             {
                 f = (b & c) | ((~b) & d);
                 k = UINT32_C(0x5A827999);
@@ -2933,7 +2933,7 @@ namespace Hash
                 a = tmp;
             }
 
-            for (int i = 20; i < 40; ++i)
+            for (std::int32_t i = 20; i < 40; ++i)
             {
                 f = b ^ c ^ d;
                 k = UINT32_C(0x6ED9EBA1);
@@ -2946,7 +2946,7 @@ namespace Hash
                 a = tmp;
             }
 
-            for (int i = 40; i < 60; ++i)
+            for (std::int32_t i = 40; i < 60; ++i)
             {
                 f = (b & c) | (b & d) | (c & d);
                 k = UINT32_C(0x8F1BBCDC);
@@ -2959,7 +2959,7 @@ namespace Hash
                 a = tmp;
             }
 
-            for (int i = 60; i < 80; ++i)
+            for (std::int32_t i = 60; i < 80; ++i)
             {
                 f = b ^ c ^ d;
                 k = UINT32_C(0xCA62C1D6);
@@ -3038,8 +3038,8 @@ namespace Hash
 
         void Finalize() noexcept
         {
-            std::uint8_t start = m_BufferSize;
-            std::uint8_t end = m_BufferSize < 56 ? 56 : 64;
+            std::int32_t start = m_BufferSize;
+            std::int32_t end = m_BufferSize < 56 ? 56 : 64;
 
             m_Buffer[start++] = 0b10000000;
             std::memset(&m_Buffer[start], 0, end - start);
@@ -3060,7 +3060,7 @@ namespace Hash
         inline std::string Hexdigest() const
         {
             char buff[Size+1];
-            for (int i = 0; i < 5; ++i)
+            for (std::int32_t i = 0; i < 5; ++i)
             {
                 std::snprintf(&buff[i * 8], Size+1, "%08" PRIx32, m_H[i]);
             }
