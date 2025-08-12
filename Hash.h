@@ -3408,22 +3408,22 @@ namespace Hash
         // low level logic operations
         ///////////////////////////////////////////////
         // F, G, H and I are basic Hash_MD5 functions.
-        inline std::uint32_t F(std::uint32_t x, std::uint32_t y, std::uint32_t z) const noexcept
+        constexpr inline std::uint32_t F(std::uint32_t x, std::uint32_t y, std::uint32_t z) const noexcept
         {
             return (x & y) | (~x & z);
         }
 
-        inline std::uint32_t G(std::uint32_t x, std::uint32_t y, std::uint32_t z) const noexcept
+        constexpr inline std::uint32_t G(std::uint32_t x, std::uint32_t y, std::uint32_t z) const noexcept
         {
             return (x & z) | (y & ~z);
         }
 
-        inline std::uint32_t H(std::uint32_t x, std::uint32_t y, std::uint32_t z) const noexcept
+        constexpr inline std::uint32_t H(std::uint32_t x, std::uint32_t y, std::uint32_t z) const noexcept
         {
             return x ^ y ^ z;
         }
 
-        inline std::uint32_t I(std::uint32_t x, std::uint32_t y, std::uint32_t z) const noexcept
+        constexpr inline std::uint32_t I(std::uint32_t x, std::uint32_t y, std::uint32_t z) const noexcept
         {
             return y ^ (x | ~z);
         }
@@ -3431,22 +3431,22 @@ namespace Hash
 
         // FF, GG, HH, and II transformations for rounds 1, 2, 3, and 4.
         // Rotation is separate from addition to prevent recomputation.
-        inline std::uint32_t FF(std::uint32_t a, std::uint32_t b, std::uint32_t c, std::uint32_t d, std::uint32_t x, std::uint32_t s, std::uint32_t ac) const noexcept
+        constexpr inline std::uint32_t FF(std::uint32_t a, std::uint32_t b, std::uint32_t c, std::uint32_t d, std::uint32_t x, std::uint32_t s, std::uint32_t ac) const noexcept
         {
             return Util::LeftRotate<std::uint32_t>(a + F(b, c, d) + x + ac, s) + b;
         }
 
-        inline std::uint32_t GG(std::uint32_t a, std::uint32_t b, std::uint32_t c, std::uint32_t d, std::uint32_t x, std::uint32_t s, std::uint32_t ac) const noexcept
+        constexpr inline std::uint32_t GG(std::uint32_t a, std::uint32_t b, std::uint32_t c, std::uint32_t d, std::uint32_t x, std::uint32_t s, std::uint32_t ac) const noexcept
         {
             return Util::LeftRotate<std::uint32_t>(a + G(b, c, d) + x + ac, s) + b;
         }
 
-        inline std::uint32_t HH(std::uint32_t a, std::uint32_t b, std::uint32_t c, std::uint32_t d, std::uint32_t x, std::uint32_t s, std::uint32_t ac) const noexcept
+        constexpr inline std::uint32_t HH(std::uint32_t a, std::uint32_t b, std::uint32_t c, std::uint32_t d, std::uint32_t x, std::uint32_t s, std::uint32_t ac) const noexcept
         {
             return Util::LeftRotate<std::uint32_t>(a + H(b, c, d) + x + ac, s) + b;
         }
 
-        inline std::uint32_t II(std::uint32_t a, std::uint32_t b, std::uint32_t c, std::uint32_t d, std::uint32_t x, std::uint32_t s, std::uint32_t ac) const noexcept
+        constexpr inline std::uint32_t II(std::uint32_t a, std::uint32_t b, std::uint32_t c, std::uint32_t d, std::uint32_t x, std::uint32_t s, std::uint32_t ac) const noexcept
         {
             return Util::LeftRotate<std::uint32_t>(a + I(b, c, d) + x + ac, s) + b;
         }
