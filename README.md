@@ -115,6 +115,9 @@ int main()
 ## CWave
 A real-time terminal audio visualizer. Windows only.
 
+## Tetris
+A fully-featured Tetris clone that runs in your terminal
+
 ## AssetFinder.cpp
 Extract assets embedded into files e.g. images or sounds in executables or dlls etc.  
 Prerequisites [stb_image.h](https://github.com/nothings/stb/blob/master/stb_image.h)  
