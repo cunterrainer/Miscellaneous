@@ -20,10 +20,18 @@
 
 #include "visualizer.h"
 #include "config.h"
+#include "platform/platform.h"
 
-#include <windows.h>
-#include <io.h>          // _setmode, _fileno
-#include <fcntl.h>       // _O_BINARY
+#ifdef PLATFORM_WINDOWS
+  #include <windows.h>
+  #include <io.h>     // _setmode, _fileno
+  #include <fcntl.h>  // _O_BINARY
+#endif
+
+#ifdef PLATFORM_MACOS
+  #include <sys/ioctl.h>
+  #include <unistd.h>
+#endif
 
 #include <cstdio>
 #include <cstring>
@@ -52,6 +60,7 @@ Visualizer::~Visualizer() { Shutdown(); }
 // ============================================================
 bool Visualizer::Init()
 {
+#ifdef PLATFORM_WINDOWS
     // --- Enable ANSI escape code processing (Windows 10+) ---
     HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
     if (hOut == INVALID_HANDLE_VALUE) return false;
@@ -68,6 +77,8 @@ bool Visualizer::Init()
     // Switch stdout to binary mode to prevent Windows CRLF translation
     // (we emit \r\n ourselves when needed)
     _setmode(_fileno(stdout), _O_BINARY);
+#endif
+    // macOS: ANSI codes and UTF-8 are supported natively; no setup needed.
 
     // Query initial size
     UpdateDimensions();
@@ -110,11 +121,21 @@ bool Visualizer::UpdateDimensions()
     int newWidth  = m_width;
     int newHeight = m_height;
 
+#ifdef PLATFORM_WINDOWS
     CONSOLE_SCREEN_BUFFER_INFO csbi{};
     if (GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi)) {
         newWidth  = csbi.srWindow.Right  - csbi.srWindow.Left + 1;
         newHeight = csbi.srWindow.Bottom - csbi.srWindow.Top  + 1;
     }
+#endif
+
+#ifdef PLATFORM_MACOS
+    struct winsize ws{};
+    if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0) {
+        newWidth  = ws.ws_col;
+        newHeight = ws.ws_row;
+    }
+#endif
 
     // Clamp width to [4, MAX_BANDS] and height to a sane minimum.
     // MAX_BANDS is a safety cap; it's set high enough (300) that it

@@ -2,7 +2,7 @@
 // main.cpp - Audio Visualizer entry point & main loop
 //
 // Orchestration:
-//   1. Init audio capture (WASAPI loopback on default output)
+//   1. Init audio capture (platform backend on default device)
 //   2. Init terminal visualizer
 //   3. Accumulate samples into an overlap-add FFT window
 //   4. Apply Hann window → run FFT → compute magnitudes
@@ -11,10 +11,19 @@
 //
 // Thread model:
 //   Main thread   : FFT + render (~60 fps)
-//   Capture thread: WASAPI polling + ring-buffer fill (in AudioCapture)
+//   Capture thread: audio polling + ring-buffer fill (in AudioCaptureBase)
 // ============================================================
 
-#include <windows.h>
+#include "platform/platform.h"
+
+#ifdef PLATFORM_WINDOWS
+  #include <windows.h>
+#endif
+
+#ifdef PLATFORM_MACOS
+  #include <csignal>
+  #include <sys/resource.h>
+#endif
 
 #include <cstdio>
 #include <cstring>
@@ -22,6 +31,7 @@
 #include <chrono>
 #include <thread>
 #include <atomic>
+#include <memory>
 
 #include "audio_capture.h"
 #include "fft.h"
@@ -36,12 +46,13 @@ static constexpr int FRAME_MS = 1000 / TARGET_FPS;
 static constexpr int HOP_SIZE    = FFT_SIZE / 2;
 
 // ---- Global shutdown flag ----
-// Set by the Ctrl+C handler; checked in the main loop.
+// Set by the signal/Ctrl+C handler; checked in the main loop.
 static std::atomic<bool> g_running{true};
 
 // ============================================================
-// CtrlHandler - handles Ctrl+C / close events gracefully
+// Platform signal handlers
 // ============================================================
+#ifdef PLATFORM_WINDOWS
 static BOOL WINAPI CtrlHandler(DWORD dwCtrlType)
 {
     if (dwCtrlType == CTRL_C_EVENT || dwCtrlType == CTRL_CLOSE_EVENT) {
@@ -50,6 +61,14 @@ static BOOL WINAPI CtrlHandler(DWORD dwCtrlType)
     }
     return FALSE;
 }
+#endif
+
+#ifdef PLATFORM_MACOS
+static void SigHandler(int /*sig*/)
+{
+    g_running = false;
+}
+#endif
 
 // ============================================================
 // main
@@ -57,26 +76,36 @@ static BOOL WINAPI CtrlHandler(DWORD dwCtrlType)
 int main()
 {
     // Set process priority slightly above normal for smoother rendering
+#ifdef PLATFORM_WINDOWS
     SetPriorityClass(GetCurrentProcess(), ABOVE_NORMAL_PRIORITY_CLASS);
+#endif
+#ifdef PLATFORM_MACOS
+    setpriority(PRIO_PROCESS, 0, -10);
+#endif
 
-    // Register Ctrl+C handler before anything else
+    // Register signal handler before anything else
+#ifdef PLATFORM_WINDOWS
     SetConsoleCtrlHandler(CtrlHandler, TRUE);
+#endif
+#ifdef PLATFORM_MACOS
+    signal(SIGINT,  SigHandler);
+    signal(SIGTERM, SigHandler);
+#endif
 
     printf("Audio Visualizer - initialising...\n");
 
     // ----------------------------------------------------------
     // 1. Audio capture
     // ----------------------------------------------------------
-    AudioCapture audio;
-    if (!audio.Init()) {
+    std::unique_ptr<AudioCaptureBase> audio(AudioCapture::Create());
+    if (!audio->Init()) {
         fprintf(stderr,
             "\nCould not start audio capture.\n"
-            "Ensure a default audio output device is connected and working.\n"
-            "Tip: open the Windows Sound settings and check playback devices.\n");
+            "Ensure a default audio input device is connected and working.\n");
         return 1;
     }
 
-    DWORD sampleRate = audio.GetSampleRate();
+    uint32_t sampleRate = audio->GetSampleRate();
     printf("Sample rate : %u Hz\n", sampleRate);
     printf("Press Ctrl+C to exit.\n\n");
 
@@ -90,7 +119,7 @@ int main()
     Visualizer vis;
     if (!vis.Init()) {
         fprintf(stderr, "Failed to initialise the terminal visualizer.\n");
-        audio.Shutdown();
+        audio->Shutdown();
         return 1;
     }
 
@@ -122,7 +151,7 @@ int main()
         auto frameStart = std::chrono::steady_clock::now();
 
         // ---- Pull fresh samples from the capture ring buffer ----
-        int got = audio.GetSamples(pullBuf, PULL_SIZE);
+        int got = audio->GetSamples(pullBuf, PULL_SIZE);
 
         // ---- Append pulled samples to accumulation buffer ----
         // If the accumulation buffer is already full, we skip old
@@ -175,7 +204,7 @@ int main()
 
         // ---- If no new audio arrived (silence or stopped playback), zero the
         //      magnitudes so Render sees silence and decays the bars to zero.
-        //      Without this, Render is never called when WASAPI produces no
+        //      Without this, Render is never called when the audio backend produces no
         //      packets, and the bars freeze at their last values indefinitely.
         if (!fftRanThisFrame)
             memset(magnitudes, 0, sizeof(magnitudes));
@@ -194,7 +223,7 @@ int main()
     // 5. Clean shutdown
     // ----------------------------------------------------------
     vis.Shutdown();
-    audio.Shutdown();
+    audio->Shutdown();
 
     printf("Audio Visualizer stopped.\n");
     return 0;

@@ -1,5 +1,7 @@
 // ============================================================
-// audio_capture.cpp - WASAPI loopback capture implementation
+// platform/windows/audio_capture_wasapi.cpp
+//
+// WASAPI loopback capture implementation.
 //
 // How WASAPI loopback works:
 //   - Normally IAudioClient captures from a microphone (render→ADC).
@@ -17,13 +19,16 @@
 //     buffer without blocking.
 // ============================================================
 
-#include "audio_capture.h"
+#include "audio_capture_wasapi.h"
+#include "../../audio_capture.h"
 
 // Needed for WAVEFORMATEXTENSIBLE and its SubFormat GUIDs
 #include <mmreg.h>
 #include <cstdio>
 #include <cstring>
 #include <algorithm>
+#include <chrono>
+#include <thread>
 
 // GUID for IEEE float subformat (KSDATAFORMAT_SUBTYPE_IEEE_FLOAT)
 // Defined inline so we don't need ksmedia.h
@@ -32,20 +37,20 @@ static const GUID kIEEE_FLOAT_GUID =
       { 0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71 } };
 
 // Convenience macro: log the error and return false from Init()
-#define CHECKHR(hr, msg)                                                \
-    if (FAILED(hr)) {                                                   \
+#define CHECKHR(hr, msg)                                                          \
+    if (FAILED(hr)) {                                                             \
         fprintf(stderr, "[AudioCapture] %s  (hr=0x%08X)\n", msg, (unsigned)hr); \
-        return false;                                                   \
+        return false;                                                             \
     }
 
 // ============================================================
-AudioCapture::AudioCapture()  = default;
-AudioCapture::~AudioCapture() { Shutdown(); }
+AudioCaptureWASAPI::AudioCaptureWASAPI()  = default;
+AudioCaptureWASAPI::~AudioCaptureWASAPI() { Shutdown(); }
 
 // ============================================================
 // Init
 // ============================================================
-bool AudioCapture::Init()
+bool AudioCaptureWASAPI::Init()
 {
     HRESULT hr;
 
@@ -160,7 +165,7 @@ bool AudioCapture::Init()
     CHECKHR(hr, "IAudioClient::Start failed");
 
     m_running = true;
-    m_captureThread = std::thread(&AudioCapture::CaptureThread, this);
+    m_captureThread = std::thread(&AudioCaptureWASAPI::CaptureThread, this);
 
     return true;
 }
@@ -168,7 +173,7 @@ bool AudioCapture::Init()
 // ============================================================
 // Shutdown - stop capture, release all resources
 // ============================================================
-void AudioCapture::Shutdown()
+void AudioCaptureWASAPI::Shutdown()
 {
     // Signal the capture thread to exit and wait for it
     m_running = false;
@@ -194,7 +199,7 @@ void AudioCapture::Shutdown()
 // ============================================================
 // CaptureThread - background thread that drains WASAPI packets
 // ============================================================
-void AudioCapture::CaptureThread()
+void AudioCaptureWASAPI::CaptureThread()
 {
     // Raise this thread's priority slightly for low-latency capture
     SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
@@ -232,14 +237,14 @@ void AudioCapture::CaptureThread()
                 } else if (m_isFloat) {
                     // IEEE float32: sizeof(float) = 4 bytes per sample/channel
                     const float* fData = reinterpret_cast<const float*>(pData);
-                    for (WORD ch = 0; ch < m_channels; ch++)
+                    for (uint16_t ch = 0; ch < m_channels; ch++)
                         sample += fData[frame * m_channels + ch];
                     sample /= static_cast<float>(m_channels);
 
                 } else {
                     // 16-bit signed PCM fallback
                     const short* sData = reinterpret_cast<const short*>(pData);
-                    for (WORD ch = 0; ch < m_channels; ch++)
+                    for (uint16_t ch = 0; ch < m_channels; ch++)
                         sample += sData[frame * m_channels + ch] / 32768.0f;
                     sample /= static_cast<float>(m_channels);
                 }
@@ -260,14 +265,14 @@ void AudioCapture::CaptureThread()
         }
 
         // Sleep to yield CPU; 5 ms keeps latency low without spinning
-        Sleep(5);
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
 }
 
 // ============================================================
 // GetSamples - called from main thread to pull samples
 // ============================================================
-int AudioCapture::GetSamples(float* buf, int count)
+int AudioCaptureWASAPI::GetSamples(float* buf, int count)
 {
     int wp = m_writePos.load(std::memory_order_acquire);
     int rp = m_readPos.load(std::memory_order_relaxed);
@@ -283,4 +288,12 @@ int AudioCapture::GetSamples(float* buf, int count)
     m_readPos.store((rp + toRead) & (RING_SIZE - 1),
                     std::memory_order_release);
     return toRead;
+}
+
+// ============================================================
+// Factory - returns the Windows WASAPI implementation
+// ============================================================
+AudioCaptureBase* AudioCapture::Create()
+{
+    return new AudioCaptureWASAPI();
 }
