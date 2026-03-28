@@ -28,7 +28,7 @@
   #include <fcntl.h>  // _O_BINARY
 #endif
 
-#ifdef PLATFORM_MACOS
+#if defined(PLATFORM_MACOS) || defined(PLATFORM_LINUX)
   #include <sys/ioctl.h>
   #include <unistd.h>
 #endif
@@ -129,7 +129,7 @@ bool Visualizer::UpdateDimensions()
     }
 #endif
 
-#ifdef PLATFORM_MACOS
+#if defined(PLATFORM_MACOS) || defined(PLATFORM_LINUX)
     struct winsize ws{};
     if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0) {
         newWidth  = ws.ws_col;

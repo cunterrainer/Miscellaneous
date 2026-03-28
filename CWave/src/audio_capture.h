@@ -8,8 +8,9 @@
 // platform backends implement.
 //
 // Platform implementations live in:
-//   platform/windows/audio_capture_wasapi.*   (WASAPI loopback)
-//   platform/macos/audio_capture_coreaudio.*  (CoreAudio input)
+//   platform/windows/audio_capture_wasapi.*       (WASAPI loopback)
+//   platform/macos/audio_capture_coreaudio.*      (CoreAudio input)
+//   platform/linux/audio_capture_pulseaudio.*     (PulseAudio monitor)
 //
 // Usage:
 //   std::unique_ptr<AudioCaptureBase> audio(AudioCapture::Create());

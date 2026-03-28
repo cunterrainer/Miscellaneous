@@ -20,7 +20,7 @@
   #include <windows.h>
 #endif
 
-#ifdef PLATFORM_MACOS
+#if defined(PLATFORM_MACOS) || defined(PLATFORM_LINUX)
   #include <csignal>
   #include <sys/resource.h>
 #endif
@@ -63,7 +63,7 @@ static BOOL WINAPI CtrlHandler(DWORD dwCtrlType)
 }
 #endif
 
-#ifdef PLATFORM_MACOS
+#if defined(PLATFORM_MACOS) || defined(PLATFORM_LINUX)
 static void SigHandler(int /*sig*/)
 {
     g_running = false;
@@ -79,7 +79,7 @@ int main()
 #ifdef PLATFORM_WINDOWS
     SetPriorityClass(GetCurrentProcess(), ABOVE_NORMAL_PRIORITY_CLASS);
 #endif
-#ifdef PLATFORM_MACOS
+#if defined(PLATFORM_MACOS) || defined(PLATFORM_LINUX)
     setpriority(PRIO_PROCESS, 0, -10);
 #endif
 
@@ -87,7 +87,7 @@ int main()
 #ifdef PLATFORM_WINDOWS
     SetConsoleCtrlHandler(CtrlHandler, TRUE);
 #endif
-#ifdef PLATFORM_MACOS
+#if defined(PLATFORM_MACOS) || defined(PLATFORM_LINUX)
     signal(SIGINT,  SigHandler);
     signal(SIGTERM, SigHandler);
 #endif

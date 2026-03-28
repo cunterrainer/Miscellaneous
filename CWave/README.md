@@ -3,7 +3,7 @@
 A real-time terminal audio visualizer written in C++.
 Captures system audio output and renders a live frequency-domain bar chart directly in your terminal using ANSI escape codes.
 
-Runs on **Windows** and **macOS**. No external libraries required.
+Runs on **Windows**, **macOS**, and **Linux**. No external libraries required.
 
 ---
 
@@ -41,6 +41,14 @@ Runs on **Windows** and **macOS**. No external libraries required.
 - **CMake 3.15+**
 - **Xcode Command Line Tools**
 - **[BlackHole](https://github.com/ExistingSound/BlackHole)** virtual audio driver installed and set as the default input device
+
+### Linux
+- Any modern desktop distribution (Ubuntu, Fedora, Arch, etc.)
+- **PulseAudio** or **PipeWire** with PulseAudio compatibility (`pipewire-pulse`) — installed by default on most desktop distros
+- **libpulse development headers** (see build instructions below)
+- **CMake 3.15+**
+- **GCC 8+** or **Clang 7+** with C++17 support
+- **pkg-config**
 
 ---
 
@@ -99,6 +107,37 @@ cmake --build build -j$(sysctl -n hw.logicalcpu)
 
 ---
 
+### Linux
+
+#### 1. Install dependencies
+
+Debian / Ubuntu:
+```sh
+sudo apt install cmake g++ pkg-config libpulse-dev
+```
+
+Fedora:
+```sh
+sudo dnf install cmake gcc-c++ pkgconf-pkg-config pulseaudio-libs-devel
+```
+
+Arch Linux:
+```sh
+sudo pacman -S cmake gcc pkgconf libpulse
+```
+
+#### 2. Configure and build
+
+```sh
+cd cwave
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j$(nproc)
+```
+
+Executable: `build/bin/cwave`
+
+---
+
 ## Run
 
 ### Windows
@@ -132,6 +171,17 @@ build\bin\Release\cwave.exe
 ```sh
 ./build/bin/cwave
 ```
+
+### Linux
+
+1. Make sure audio is playing (music, video, browser tab, etc.).
+2. Run:
+
+```sh
+./build/bin/cwave
+```
+
+CWave automatically captures the default PulseAudio sink's monitor source — no additional configuration needed. On PipeWire systems, the PulseAudio compatibility layer handles this transparently.
 
 Press **Ctrl+C** to exit cleanly on all platforms.
 
@@ -172,9 +222,12 @@ cwave/
 │       ├── windows/
 │       │   ├── audio_capture_wasapi.h    WASAPI loopback (Windows)
 │       │   └── audio_capture_wasapi.cpp
-│       └── macos/
-│           ├── audio_capture_coreaudio_tap.mm   Native tap (macOS 14.2+)
-│           └── audio_capture_coreaudio.cpp      AudioQueue fallback
+│       ├── macos/
+│       │   ├── audio_capture_coreaudio_tap.mm   Native tap (macOS 14.2+)
+│       │   └── audio_capture_coreaudio.cpp      AudioQueue fallback
+│       └── linux/
+│           ├── audio_capture_pulseaudio.h       PulseAudio monitor (Linux)
+│           └── audio_capture_pulseaudio.cpp
 ├── CMakeLists.txt
 └── README.md
 ```
@@ -206,6 +259,17 @@ Every constant has a detailed explanation comment. Rebuild after any change.
 | Bars don't move (native loopback) | Grant **Screen & System Audio Recording** permission to your terminal app in System Settings → Privacy & Security. Restart the terminal after granting it. macOS silently delivers silence when permission is denied. |
 | "AudioHardwareCreateProcessTap failed" | Requires macOS 14.2+. Rebuild with `-DCWAVE_MACOS_NATIVE_LOOPBACK=OFF` for older systems. |
 | Bars don't move (input fallback) | Install [BlackHole](https://github.com/ExistingSound/BlackHole) and set it as the default macOS input device. |
+| Bars are too short | Increase `MAGNITUDE_SCALE` in `src/config.h` and rebuild. |
+| Bars clip at the top | Decrease `MAGNITUDE_SCALE` in `src/config.h` and rebuild. |
+
+### Linux
+
+| Problem | Solution |
+|---|---|
+| Build error: libpulse not found | Install `libpulse-dev` (Debian/Ubuntu), `pulseaudio-libs-devel` (Fedora), or `libpulse` (Arch). |
+| "PulseAudio connection failed" | Ensure PulseAudio or PipeWire (with `pipewire-pulse`) is running. Check with `pactl info`. |
+| "Could not find a default audio output device" | Check with `pactl list sinks short` and ensure a default output device is configured. |
+| Bars don't move | Verify audio is actually playing through the default sink. The monitor source only captures from the default output. |
 | Bars are too short | Increase `MAGNITUDE_SCALE` in `src/config.h` and rebuild. |
 | Bars clip at the top | Decrease `MAGNITUDE_SCALE` in `src/config.h` and rebuild. |
 
