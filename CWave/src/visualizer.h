@@ -24,6 +24,9 @@ public:
     Visualizer();
     ~Visualizer();
 
+    // Set runtime configuration (call before Init).
+    void SetConfig(const Config& cfg);
+
     // Enable ANSI codes, UTF-8 output, hide cursor, clear screen.
     bool Init();
 
@@ -57,4 +60,7 @@ private:
     int m_prevHeight= 0;   // height from last frame (resize detection)
 
     bool m_initialized = false;
+
+    // Runtime configuration (set via SetConfig before Init).
+    Config m_cfg;
 };

@@ -55,6 +55,8 @@ static const char PEAK_CHAR[]   = "\xe2\x80\x95";   // ― (peak-hold dot)
 Visualizer::Visualizer()  = default;
 Visualizer::~Visualizer() { Shutdown(); }
 
+void Visualizer::SetConfig(const Config& cfg) { m_cfg = cfg; }
+
 // ============================================================
 // Init
 // ============================================================
@@ -140,7 +142,7 @@ bool Visualizer::UpdateDimensions()
     // Clamp width to [4, MAX_BANDS] and height to a sane minimum.
     // MAX_BANDS is a safety cap; it's set high enough (300) that it
     // never limits a real terminal - see config.h.
-    newWidth  = std::max(4,  std::min(newWidth,  MAX_BANDS));
+    newWidth  = std::max(4,  std::min(newWidth,  m_cfg.maxBands));
     newHeight = std::max(4,  newHeight);
 
     if (newWidth == m_prevWidth && newHeight == m_prevHeight)
@@ -221,8 +223,8 @@ void Visualizer::Render(const float* magnitudes, int binCount, float sampleRate)
     //   binHigh  = freqHigh * binCount / (sampleRate/2)
     //   value    = average of |X[k]| for bins in [binLow, binHigh)
     // ----------------------------------------------------------
-    float minFreq  = MIN_FREQ_HZ;
-    float maxFreq  = std::min(MAX_FREQ_HZ, sampleRate * 0.5f);
+    float minFreq  = m_cfg.minFreqHz;
+    float maxFreq  = std::min(m_cfg.maxFreqHz, sampleRate * 0.5f);
     float logMin   = log10f(minFreq);
     float logMax   = log10f(maxFreq);
     float freqToBin = static_cast<float>(binCount) / (sampleRate * 0.5f);
@@ -255,10 +257,10 @@ void Visualizer::Render(const float* magnitudes, int binCount, float sampleRate)
         // produce similar bar heights.  Bass bands (fCenter < 100 Hz) get a
         // small attenuation instead, which prevents them from always clipping.
         float fCenter = sqrtf(fLow * fHigh);            // geometric mean
-        float emphasis = 1.0f + EMPHASIS_STRENGTH * log10f(std::max(fCenter, MIN_FREQ_HZ) / EMPHASIS_PIVOT_HZ);
+        float emphasis = 1.0f + m_cfg.emphasisStrength * log10f(std::max(fCenter, m_cfg.minFreqHz) / m_cfg.emphasisPivotHz);
         emphasis = std::max(0.5f, emphasis);            // floor at 0.5×
 
-        rawBands[b] = std::min(1.0f, peak * MAGNITUDE_SCALE * emphasis);
+        rawBands[b] = std::min(1.0f, peak * m_cfg.magnitudeScale * emphasis);
     }
 
     // ----------------------------------------------------------
@@ -277,22 +279,22 @@ void Visualizer::Render(const float* magnitudes, int binCount, float sampleRate)
 
         if (target > m_smoothed[b]) {
             // Rise: blend quickly toward new peak
-            m_smoothed[b] += RISE_ALPHA * (target - m_smoothed[b]);
+            m_smoothed[b] += m_cfg.riseAlpha * (target - m_smoothed[b]);
         } else {
             // Fall: exponential decay
-            m_smoothed[b] *= FALL_DECAY;
+            m_smoothed[b] *= m_cfg.fallDecay;
         }
         m_smoothed[b] = std::max(0.0f, std::min(1.0f, m_smoothed[b]));
 
         // Peak tracking
         if (m_smoothed[b] >= m_peaks[b]) {
             m_peaks[b]     = m_smoothed[b];
-            m_peakTimer[b] = PEAK_HOLD_FRAMES;
+            m_peakTimer[b] = m_cfg.peakHoldFrames;
         } else {
             if (m_peakTimer[b] > 0) {
                 --m_peakTimer[b];           // hold
             } else {
-                m_peaks[b] *= PEAK_DECAY_RATE;   // decay
+                m_peaks[b] *= m_cfg.peakDecayRate;   // decay
             }
         }
         m_peaks[b] = std::max(0.0f, std::min(1.0f, m_peaks[b]));
@@ -301,7 +303,7 @@ void Visualizer::Render(const float* magnitudes, int binCount, float sampleRate)
         // its peak to exactly zero.  Without this, exponential decay never
         // reaches zero, leaving a faint residual that renders as a solid
         // horizontal line of half-block characters and keeps peak dots floating.
-        if (m_smoothed[b] < SILENCE_THRESHOLD) {
+        if (m_smoothed[b] < m_cfg.silenceThreshold) {
             m_smoothed[b]  = 0.0f;
             m_peaks[b]     = 0.0f;
             m_peakTimer[b] = 0;

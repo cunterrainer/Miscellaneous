@@ -124,3 +124,29 @@ constexpr int PEAK_HOLD_FRAMES = 25;
 // the hold period expires.  Same range and logic as FALL_DECAY.
 //   0.90 = fast-falling peaks    0.93 = default    0.97 = very slow
 constexpr float PEAK_DECAY_RATE = 0.93f;
+
+
+// ------------------------------------------------------------
+// Runtime configuration struct
+// ------------------------------------------------------------
+// Holds runtime copies of every tuning parameter above.
+// Default-initialised from the constexpr values so that:
+//   - The help page always shows the compile-time defaults.
+//   - Command-line overrides only touch the fields the user specifies.
+//   - Changing a constexpr above automatically updates both.
+
+struct Config {
+    int   fftSize          = FFT_SIZE;
+    int   maxBands         = MAX_BANDS;
+    float minFreqHz        = MIN_FREQ_HZ;
+    float maxFreqHz        = MAX_FREQ_HZ;
+    int   targetFps        = TARGET_FPS;
+    float magnitudeScale   = MAGNITUDE_SCALE;
+    float emphasisStrength = EMPHASIS_STRENGTH;
+    float emphasisPivotHz  = EMPHASIS_PIVOT_HZ;
+    float riseAlpha        = RISE_ALPHA;
+    float fallDecay        = FALL_DECAY;
+    float silenceThreshold = SILENCE_THRESHOLD;
+    int   peakHoldFrames   = PEAK_HOLD_FRAMES;
+    float peakDecayRate    = PEAK_DECAY_RATE;
+};
