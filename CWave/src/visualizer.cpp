@@ -113,6 +113,18 @@ void Visualizer::Shutdown()
 }
 
 // ============================================================
+// OuterRadius - aspect-corrected radius for circular mode.
+// Terminal cells are ~2× taller than wide, so we halve the
+// horizontal extent to keep the circle visually round.
+// ============================================================
+float Visualizer::OuterRadius() const
+{
+    float halfW = static_cast<float>(m_width)  * 0.5f * 0.5f;  // aspect correction
+    float halfH = static_cast<float>(m_height) * 0.5f;
+    return std::min(halfW, halfH) - 1.0f;
+}
+
+// ============================================================
 // UpdateDimensions - query the live console window size.
 // Returns true when the terminal was resized since the last call.
 // On resize: clears the screen and resizes per-band state vectors
@@ -140,8 +152,6 @@ bool Visualizer::UpdateDimensions()
 #endif
 
     // Clamp width to [4, MAX_BANDS] and height to a sane minimum.
-    // MAX_BANDS is a safety cap; it's set high enough (300) that it
-    // never limits a real terminal - see config.h.
     newWidth  = std::max(4,  std::min(newWidth,  m_cfg.maxBands));
     newHeight = std::max(4,  newHeight);
 
@@ -153,16 +163,20 @@ bool Visualizer::UpdateDimensions()
     m_prevWidth  = newWidth;
     m_prevHeight = newHeight;
 
-    // The number of display bands equals the usable column count.
-    int numBands = std::max(1, m_width - 2);
+    int numBands;
+    if (m_cfg.circular) {
+        float outerR = OuterRadius();
+        numBands = std::max(8, static_cast<int>(2.0f * 3.14159265f * outerR));
+    } else {
+        numBands = std::max(1, m_width - 2);
+    }
 
     // Resize per-band vectors and zero them so bars don't jump on resize.
     m_smoothed .assign(numBands, 0.0f);
     m_peaks    .assign(numBands, 0.0f);
     m_peakTimer.assign(numBands, 0);
 
-    // Full clear so characters from the previous (wider/taller) layout
-    // don't leave ghost columns or rows on screen.
+    // Full clear so characters from the previous layout don't linger.
     fwrite("\033[2J\033[H", 1, 7, stdout);
     fflush(stdout);
 
@@ -190,48 +204,22 @@ const char* Visualizer::BandColor(int band, int numBands)
 }
 
 // ============================================================
-// Render - build and flush one display frame
+// ComputeBands - shared FFT bin → display band mapping
+//
+// Fills rawBands[0..numBands-1] with values in [0,1].
+// Applies log-frequency mapping, max-bin selection, and
+// high-frequency pre-emphasis.
 // ============================================================
-void Visualizer::Render(const float* magnitudes, int binCount, float sampleRate)
+void Visualizer::ComputeBands(const float* magnitudes, int binCount, float sampleRate,
+                               std::vector<float>& rawBands)
 {
-    if (!m_initialized) return;
+    int numBands = static_cast<int>(rawBands.size());
 
-    // Refresh terminal size; vectors are resized inside if dimensions changed.
-    UpdateDimensions();
-
-    // Number of display bands = usable terminal columns.
-    // Derived from the vector size (set by UpdateDimensions) so it always
-    // matches the allocated per-band state exactly.
-    int numBands = static_cast<int>(m_smoothed.size());
-    if (numBands < 1) return;
-
-    // Rows available for bar chart (header=2, footer=1, border=1)
-    int barRows = m_height - 4;
-    if (barRows < 2) barRows = 2;
-
-    // ----------------------------------------------------------
-    // Step 1: Map FFT bins → display bands (log-frequency scale)
-    //
-    // A linear mapping would waste most columns on bass and
-    // cram all highs together.  A log scale distributes bands
-    // perceptually evenly across the audible range.
-    //
-    // For band b:
-    //   freqLow  = minFreq * (maxFreq/minFreq)^(b/numBands)
-    //   freqHigh = minFreq * (maxFreq/minFreq)^((b+1)/numBands)
-    //   binLow   = freqLow  * binCount / (sampleRate/2)
-    //   binHigh  = freqHigh * binCount / (sampleRate/2)
-    //   value    = average of |X[k]| for bins in [binLow, binHigh)
-    // ----------------------------------------------------------
     float minFreq  = m_cfg.minFreqHz;
     float maxFreq  = std::min(m_cfg.maxFreqHz, sampleRate * 0.5f);
     float logMin   = log10f(minFreq);
     float logMax   = log10f(maxFreq);
     float freqToBin = static_cast<float>(binCount) / (sampleRate * 0.5f);
-
-    // Stack-allocate at the actual band count for this frame.
-    // numBands is always ≤ terminal width which is sane on any real system.
-    std::vector<float> rawBands(numBands, 0.0f);
 
     for (int b = 0; b < numBands; b++) {
         float fLow  = powf(10.0f, logMin + (logMax - logMin) *
@@ -242,67 +230,82 @@ void Visualizer::Render(const float* magnitudes, int binCount, float sampleRate)
         int kLow  = std::max(1,           static_cast<int>(fLow  * freqToBin));
         int kHigh = std::min(binCount - 1, static_cast<int>(fHigh * freqToBin) + 1);
 
-        // Use the MAXIMUM bin magnitude in this band rather than the average.
-        // Averaging dilutes narrow spectral peaks: a strong 10 kHz tone occupying
-        // one bin gets divided across ~50 bins at high frequencies, making it
-        // invisible. Max preserves any peak that falls within the band.
         float peak = 0.0f;
         for (int k = kLow; k <= kHigh; k++) {
             if (magnitudes[k] > peak) peak = magnitudes[k];
         }
 
-        // High-frequency pre-emphasis: music has far less energy per bin at
-        // high frequencies than at bass.  Boost by log10(fCenter/100) so that
-        // a 1 kHz signal and a 100 Hz signal of similar perceptual loudness
-        // produce similar bar heights.  Bass bands (fCenter < 100 Hz) get a
-        // small attenuation instead, which prevents them from always clipping.
-        float fCenter = sqrtf(fLow * fHigh);            // geometric mean
-        float emphasis = 1.0f + m_cfg.emphasisStrength * log10f(std::max(fCenter, m_cfg.minFreqHz) / m_cfg.emphasisPivotHz);
-        emphasis = std::max(0.5f, emphasis);            // floor at 0.5×
+        float fCenter  = sqrtf(fLow * fHigh);
+        float emphasis = 1.0f + m_cfg.emphasisStrength *
+                         log10f(std::max(fCenter, m_cfg.minFreqHz) / m_cfg.emphasisPivotHz);
+        emphasis = std::max(0.5f, emphasis);
 
         rawBands[b] = std::min(1.0f, peak * m_cfg.magnitudeScale * emphasis);
     }
+}
+
+// ============================================================
+// Render - dispatch to linear or circular renderer
+// ============================================================
+void Visualizer::Render(const float* magnitudes, int binCount, float sampleRate)
+{
+    if (!m_initialized) return;
+    UpdateDimensions();
+
+    if (m_cfg.circular)
+        RenderCircular(magnitudes, binCount, sampleRate);
+    else
+        RenderLinear(magnitudes, binCount, sampleRate);
+}
+
+// ============================================================
+// RenderLinear - build and flush one linear bar-chart frame
+// ============================================================
+void Visualizer::RenderLinear(const float* magnitudes, int binCount, float sampleRate)
+{
+    int numBands = static_cast<int>(m_smoothed.size());
+    if (numBands < 1) return;
+
+    // Rows available for bar chart (header=2, footer=1, border=1)
+    int barRows = m_height - 4;
+    if (barRows < 2) barRows = 2;
+
+    float minFreq = m_cfg.minFreqHz;
+    float maxFreq = std::min(m_cfg.maxFreqHz, sampleRate * 0.5f);
+    float logMin  = log10f(minFreq);
+    float logMax  = log10f(maxFreq);
+
+    // ----------------------------------------------------------
+    // Step 1: Map FFT bins → display bands
+    // ----------------------------------------------------------
+    std::vector<float> rawBands(numBands, 0.0f);
+    ComputeBands(magnitudes, binCount, sampleRate, rawBands);
 
     // ----------------------------------------------------------
     // Step 2: Smooth bar heights and track peaks
-    //
-    // Bars rise quickly (RISE_ALPHA) and fall slowly (FALL_DECAY)
-    // giving the characteristic "bounce" look.
-    //
-    // Peak dots:
-    //   When a bar exceeds the current peak, reset the hold timer.
-    //   The dot stays for PEAK_HOLD_FRAMES frames, then falls
-    //   at a gentle PEAK_DECAY rate.
     // ----------------------------------------------------------
     for (int b = 0; b < numBands; b++) {
         float target = rawBands[b];
 
         if (target > m_smoothed[b]) {
-            // Rise: blend quickly toward new peak
             m_smoothed[b] += m_cfg.riseAlpha * (target - m_smoothed[b]);
         } else {
-            // Fall: exponential decay
             m_smoothed[b] *= m_cfg.fallDecay;
         }
         m_smoothed[b] = std::max(0.0f, std::min(1.0f, m_smoothed[b]));
 
-        // Peak tracking
         if (m_smoothed[b] >= m_peaks[b]) {
             m_peaks[b]     = m_smoothed[b];
             m_peakTimer[b] = m_cfg.peakHoldFrames;
         } else {
             if (m_peakTimer[b] > 0) {
-                --m_peakTimer[b];           // hold
+                --m_peakTimer[b];
             } else {
-                m_peaks[b] *= m_cfg.peakDecayRate;   // decay
+                m_peaks[b] *= m_cfg.peakDecayRate;
             }
         }
         m_peaks[b] = std::max(0.0f, std::min(1.0f, m_peaks[b]));
 
-        // Silence threshold: once a bar decays below this floor, snap it and
-        // its peak to exactly zero.  Without this, exponential decay never
-        // reaches zero, leaving a faint residual that renders as a solid
-        // horizontal line of half-block characters and keeps peak dots floating.
         if (m_smoothed[b] < m_cfg.silenceThreshold) {
             m_smoothed[b]  = 0.0f;
             m_peaks[b]     = 0.0f;
@@ -312,25 +315,18 @@ void Visualizer::Render(const float* magnitudes, int binCount, float sampleRate)
 
     // ----------------------------------------------------------
     // Step 3: Build the frame string
-    //
-    // We write everything into a std::string and emit it in one
-    // fwrite() call.  This dramatically reduces the number of
-    // write() syscalls and keeps the frame visually coherent.
     // ----------------------------------------------------------
     std::string frame;
-    // Reserve enough space: ~16 bytes/column/row + escape codes
     frame.reserve(static_cast<size_t>(m_width) * m_height * 20);
 
-    // Move cursor to top-left (no erase → no flicker)
     frame += "\033[H";
 
     // ---- Header bar ----
-    frame += "\033[1;97m";   // bold bright-white
-    frame += " \xe2\x96\x88 cwave ";   // ▓ title
-    frame += "\033[0;90m";   // dark gray
-    // Pad header to full width
+    frame += "\033[1;97m";
+    frame += " \xe2\x96\x88 cwave ";
+    frame += "\033[0;90m";
     {
-        int hdrLen = 17; // length of " ▓ cwave " in display chars (approx)
+        int hdrLen = 17;
         for (int i = hdrLen; i < m_width - 1; i++) frame += '-';
     }
     frame += "\033[0m\r\n";
@@ -341,10 +337,7 @@ void Visualizer::Render(const float* magnitudes, int binCount, float sampleRate)
     frame += "\033[0m\r\n";
 
     // ---- Bar chart rows ----
-    // row 0 = top of the chart, row (barRows-1) = bottom
     for (int row = 0; row < barRows; row++) {
-        // Threshold: what fraction of the bar height corresponds to this row?
-        // Row 0 is the very top (high values); row barRows-1 is the floor.
         float rowTop    = 1.0f - static_cast<float>(row)     / barRows;
         float rowBottom = 1.0f - static_cast<float>(row + 1) / barRows;
         float rowMid    = (rowTop + rowBottom) * 0.5f;
@@ -353,21 +346,16 @@ void Visualizer::Render(const float* magnitudes, int binCount, float sampleRate)
             float val  = m_smoothed[b];
             float peak = m_peaks[b];
 
-            // Determine what to draw in this cell
             if (val >= rowTop) {
-                // Cell is fully inside the bar → full block
                 frame += BandColor(b, numBands);
                 frame += BLOCK_FULL;
             } else if (val >= rowMid) {
-                // Cell is at the top of the bar → lower-half block (sub-pixel)
                 frame += BandColor(b, numBands);
                 frame += BLOCK_LOWER;
             } else if (val == 0.0f && peak >= rowBottom && peak < rowTop) {
-                // Peak-hold indicator: draw a thin horizontal bar
-                frame += "\033[97m";   // bright white peak dot
+                frame += "\033[97m";
                 frame += PEAK_CHAR;
             } else {
-                // Empty cell
                 frame += "\033[0m ";
             }
         }
@@ -375,12 +363,9 @@ void Visualizer::Render(const float* magnitudes, int binCount, float sampleRate)
     }
 
     // ---- Frequency labels ----
-    // Show approximate Hz markers spread across the width.
-    // We precompute label positions based on log scale.
     {
-        frame += "\033[0;90m";   // dark gray labels
+        frame += "\033[0;90m";
 
-        // Create a row of spaces, then overlay frequency markers
         std::string labelRow(m_width, ' ');
 
         struct Label { float freq; const char* text; };
@@ -398,11 +383,9 @@ void Visualizer::Render(const float* magnitudes, int binCount, float sampleRate)
 
         for (const auto& lbl : kLabels) {
             if (lbl.freq > maxFreq) continue;
-            // Map frequency to column using same log formula
             float norm = (log10f(lbl.freq) - logMin) / (logMax - logMin);
             int   col  = static_cast<int>(norm * numBands);
             if (col < 0 || col + static_cast<int>(strlen(lbl.text)) >= m_width) continue;
-            // Write label text into the label row
             for (int c = 0; lbl.text[c] && (col + c) < m_width; c++)
                 labelRow[col + c] = lbl.text[c];
         }
@@ -415,7 +398,155 @@ void Visualizer::Render(const float* magnitudes, int binCount, float sampleRate)
     // Step 4: Flush the complete frame in one write
     // ----------------------------------------------------------
     fwrite(frame.c_str(), 1, frame.size(), stdout);
-    // fflush not needed every frame if stdout is already line-buffered
-    // but explicit flush ensures the terminal receives the data promptly
+    fflush(stdout);
+}
+
+// ============================================================
+// RenderCircular - centered circle with radiating frequency pillars
+//
+// Coordinate system:
+//   cx, cy = center of the terminal in character cells
+//   dx = (x - cx) * 0.5  (aspect correction: cells are ~2× taller than wide)
+//   dy = (y - cy)
+//   r  = sqrt(dx² + dy²)
+//   θ  = atan2(dx, -dy)  → 0 at 12-o'clock, clockwise positive
+//
+// Band mapping:
+//   band 0 (bass/red) at 12 o'clock, sweeping clockwise.
+//
+// Inner disk:
+//   r < innerR  → filled gray disk  (CenterStyle::Disk)
+//               → ring outline only (CenterStyle::Ring)
+//               → empty             (CenterStyle::Empty)
+// ============================================================
+void Visualizer::RenderCircular(const float* magnitudes, int binCount, float sampleRate)
+{
+    int numBands = static_cast<int>(m_smoothed.size());
+    if (numBands < 1) return;
+
+    // ----------------------------------------------------------
+    // Step 1: FFT bins → raw bands
+    // ----------------------------------------------------------
+    std::vector<float> rawBands(numBands, 0.0f);
+    ComputeBands(magnitudes, binCount, sampleRate, rawBands);
+
+    // ----------------------------------------------------------
+    // Step 2: Smooth and track peaks
+    // ----------------------------------------------------------
+    for (int b = 0; b < numBands; b++) {
+        float target = rawBands[b];
+
+        if (target > m_smoothed[b]) {
+            m_smoothed[b] += m_cfg.riseAlpha * (target - m_smoothed[b]);
+        } else {
+            m_smoothed[b] *= m_cfg.fallDecay;
+        }
+        m_smoothed[b] = std::max(0.0f, std::min(1.0f, m_smoothed[b]));
+
+        if (m_smoothed[b] >= m_peaks[b]) {
+            m_peaks[b]     = m_smoothed[b];
+            m_peakTimer[b] = m_cfg.peakHoldFrames;
+        } else {
+            if (m_peakTimer[b] > 0) {
+                --m_peakTimer[b];
+            } else {
+                m_peaks[b] *= m_cfg.peakDecayRate;
+            }
+        }
+        m_peaks[b] = std::max(0.0f, std::min(1.0f, m_peaks[b]));
+
+        if (m_smoothed[b] < m_cfg.silenceThreshold) {
+            m_smoothed[b]  = 0.0f;
+            m_peaks[b]     = 0.0f;
+            m_peakTimer[b] = 0;
+        }
+    }
+
+    // ----------------------------------------------------------
+    // Step 3: Geometry constants
+    // ----------------------------------------------------------
+    float cx = static_cast<float>(m_width)  * 0.5f;
+    float cy = static_cast<float>(m_height) * 0.5f;
+    float outerR  = OuterRadius();
+    // innerR: ~1/6 of outerR, minimum 2 character-radius units
+    float innerR  = std::max(2.0f, outerR * 0.18f);
+    float pillarMax = outerR - innerR - 0.5f;
+    if (pillarMax < 1.0f) pillarMax = 1.0f;
+
+    static constexpr float TWO_PI = 6.28318530f;
+
+    // ----------------------------------------------------------
+    // Step 4: Build frame row by row
+    // ----------------------------------------------------------
+    std::string frame;
+    frame.reserve(static_cast<size_t>(m_width) * m_height * 16);
+
+    frame += "\033[H";
+
+    for (int y = 0; y < m_height; y++) {
+        for (int x = 0; x < m_width; x++) {
+            // Aspect-corrected vector from center
+            float dx = (static_cast<float>(x) - cx + 0.5f) * 0.5f;
+            float dy =  static_cast<float>(y) - cy + 0.5f;
+            float r  = sqrtf(dx * dx + dy * dy);
+
+            // Angle: 0 at 12-o'clock, clockwise
+            float theta = atan2f(dx, -dy);
+            if (theta < 0.0f) theta += TWO_PI;
+
+            int band = static_cast<int>(theta / TWO_PI * static_cast<float>(numBands));
+            if (band < 0)         band = 0;
+            if (band >= numBands) band = numBands - 1;
+
+            float pillarLen  = m_smoothed[band] * pillarMax;
+            float peakR      = innerR + m_peaks[band] * pillarMax;
+
+            if (r < innerR - 0.5f) {
+                // Inside the inner circle
+                switch (m_cfg.centerStyle) {
+                case CenterStyle::Disk:
+                    frame += "\033[90m";
+                    frame += BLOCK_FULL;
+                    break;
+                case CenterStyle::Ring:
+                case CenterStyle::Empty:
+                    frame += "\033[0m ";
+                    break;
+                }
+            } else if (r < innerR + 0.5f) {
+                // Ring boundary
+                switch (m_cfg.centerStyle) {
+                case CenterStyle::Disk:
+                    frame += "\033[37m";
+                    frame += BLOCK_FULL;
+                    break;
+                case CenterStyle::Ring:
+                    frame += "\033[37m";
+                    frame += BLOCK_FULL;
+                    break;
+                case CenterStyle::Empty:
+                    frame += "\033[0m ";
+                    break;
+                }
+            } else if (r < innerR + pillarLen) {
+                // Inside the pillar
+                frame += BandColor(band, numBands);
+                frame += BLOCK_FULL;
+            } else if (m_smoothed[band] == 0.0f && m_peaks[band] > m_cfg.silenceThreshold
+                       && fabsf(r - peakR) < 0.6f) {
+                // Peak-hold indicator dot
+                frame += "\033[97m";
+                frame += PEAK_CHAR;
+            } else {
+                frame += "\033[0m ";
+            }
+        }
+        frame += "\033[0m\r\n";
+    }
+
+    // ----------------------------------------------------------
+    // Step 5: Flush
+    // ----------------------------------------------------------
+    fwrite(frame.c_str(), 1, frame.size(), stdout);
     fflush(stdout);
 }

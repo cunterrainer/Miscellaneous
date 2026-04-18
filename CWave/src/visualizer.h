@@ -47,6 +47,17 @@ private:
     // Return ANSI color escape for a band index (0 = bass, high = treble)
     static const char* BandColor(int band, int numBands);
 
+    // Compute the aspect-corrected outer radius for circular mode.
+    float OuterRadius() const;
+
+    // Map FFT bins -> raw band values (shared by both render paths).
+    void ComputeBands(const float* magnitudes, int binCount, float sampleRate,
+                      std::vector<float>& rawBands);
+
+    // Render paths
+    void RenderLinear  (const float* magnitudes, int binCount, float sampleRate);
+    void RenderCircular(const float* magnitudes, int binCount, float sampleRate);
+
     // Per-band state - sized dynamically to match the terminal width.
     // Resized (and zeroed) automatically whenever the terminal is resized.
     std::vector<float> m_smoothed;   // exponentially smoothed bar height [0,1]

@@ -103,6 +103,10 @@ static void printHelp(const char* progName)
         "  -k, --peak-hold <N>      Frames to hold peak dot           [%d]\n"
         "  -q, --peak-decay <F>     Peak decay rate (0.0-1.0)         [%.2f]\n"
         "\n"
+        "Display mode:\n"
+        "  -c, --circular           Circular visualizer (pillars from center) [off]\n"
+        "  --center <style>         Center fill: disk | ring | empty           [disk]\n"
+        "\n"
         "Misc:\n"
         "  -h, --help               Show this help message and exit\n",
         progName,
@@ -141,6 +145,12 @@ static bool parseConfig(int argc, char* argv[], Config& cfg)
             exit(0);
         }
 
+        // Boolean flags (no value argument)
+        if (matchFlag(arg, "-c", "--circular")) {
+            cfg.circular = true;
+            continue;
+        }
+
         // Check for known flags first, then consume the value
         bool isKnown =
             matchFlag(arg, "-f", "--fft-size")   || matchFlag(arg, "-b", "--max-bands")  ||
@@ -149,7 +159,7 @@ static bool parseConfig(int argc, char* argv[], Config& cfg)
             matchFlag(arg, "-e", "--emphasis")   || matchFlag(arg, "-p", "--pivot")       ||
             matchFlag(arg, "-a", "--rise")       || matchFlag(arg, "-d", "--decay")       ||
             matchFlag(arg, "-t", "--silence")    || matchFlag(arg, "-k", "--peak-hold")   ||
-            matchFlag(arg, "-q", "--peak-decay");
+            matchFlag(arg, "-q", "--peak-decay") || strcmp(arg, "--center") == 0;
 
         if (!isKnown) {
             fprintf(stderr, "Error: unknown option '%s'. Use --help for usage.\n", arg);
@@ -175,6 +185,15 @@ static bool parseConfig(int argc, char* argv[], Config& cfg)
         else if (matchFlag(arg, "-t", "--silence"))      cfg.silenceThreshold = static_cast<float>(atof(val));
         else if (matchFlag(arg, "-k", "--peak-hold"))    cfg.peakHoldFrames   = atoi(val);
         else if (matchFlag(arg, "-q", "--peak-decay"))   cfg.peakDecayRate    = static_cast<float>(atof(val));
+        else if (strcmp(arg, "--center") == 0) {
+            if (strcmp(val, "disk") == 0)        cfg.centerStyle = CenterStyle::Disk;
+            else if (strcmp(val, "ring") == 0)   cfg.centerStyle = CenterStyle::Ring;
+            else if (strcmp(val, "empty") == 0)  cfg.centerStyle = CenterStyle::Empty;
+            else {
+                fprintf(stderr, "Error: --center must be disk, ring, or empty (got '%s').\n", val);
+                return false;
+            }
+        }
     }
 
     // Validate FFT size

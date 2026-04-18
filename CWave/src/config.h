@@ -135,6 +135,8 @@ constexpr float PEAK_DECAY_RATE = 0.93f;
 //   - Command-line overrides only touch the fields the user specifies.
 //   - Changing a constexpr above automatically updates both.
 
+enum class CenterStyle { Disk, Ring, Empty };
+
 struct Config {
     int   fftSize          = FFT_SIZE;
     int   maxBands         = MAX_BANDS;
@@ -149,4 +151,6 @@ struct Config {
     float silenceThreshold = SILENCE_THRESHOLD;
     int   peakHoldFrames   = PEAK_HOLD_FRAMES;
     float peakDecayRate    = PEAK_DECAY_RATE;
+    bool        circular    = false;
+    CenterStyle centerStyle = CenterStyle::Disk;
 };
