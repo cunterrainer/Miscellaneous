@@ -147,7 +147,7 @@ namespace Utility
      *     Throws std::system_error if thread creation fails mid-way; in that
      *     case already-started threads are joined before the exception propagates.
      *
-     *   ~ThreadPool()
+     *   ~ThreadPool() noexcept
      *     Perform a graceful Shutdown().  Destruction blocks until queued and
      *     executing tasks finish and all worker threads have been joined.
      *
@@ -391,7 +391,7 @@ namespace Utility
         static thread_local WorkerState* s_CurrentWorkerState;
 
     private:
-        static std::size_t NormalizeSize(std::size_t requested_size)
+        static constexpr std::size_t NormalizeSize(std::size_t requested_size) noexcept
         {
             if (requested_size == 0)
             {
@@ -401,7 +401,7 @@ namespace Utility
             return requested_size;
         }
 
-        static std::size_t NormalizeSize(std::uint32_t requested_size)
+        static constexpr std::size_t NormalizeSize(std::uint32_t requested_size) noexcept
         {
             return NormalizeSize(static_cast<std::size_t>(requested_size));
         }
@@ -486,7 +486,7 @@ namespace Utility
                 || TryStealTask(worker, task);
         }
 
-        std::size_t WorkerCountUnsafe() const
+        std::size_t WorkerCountUnsafe() const noexcept
         {
             return m_Workers.size();
         }
@@ -570,7 +570,7 @@ namespace Utility
             m_WorkAvailableCondition.notify_one();
         }
 
-        static bool ApplyBestEffortAffinity(const WorkerTopologyHint& hint)
+        static bool ApplyBestEffortAffinity(const WorkerTopologyHint& hint) noexcept
         {
 #if defined(__linux__)
             if (hint.preferred_cpu.has_value())
@@ -744,7 +744,7 @@ namespace Utility
             Resize(NormalizeSize(pool_size));
         }
 
-        ~ThreadPool()
+        ~ThreadPool() noexcept
         {
             Shutdown();
         }
@@ -755,7 +755,7 @@ namespace Utility
         ThreadPool& operator=(ThreadPool&&) = delete;
 
         template <class Func, class... Args>
-        auto Submit(Func&& func, Args&&... args) -> std::future<std::invoke_result_t<std::decay_t<Func>, std::decay_t<Args>...>>
+        [[nodiscard]] auto Submit(Func&& func, Args&&... args) -> std::future<std::invoke_result_t<std::decay_t<Func>, std::decay_t<Args>...>>
         {
             using Result = std::invoke_result_t<std::decay_t<Func>, std::decay_t<Args>...>;
             auto state = MakeInvocationState(std::forward<Func>(func), std::forward<Args>(args)...);
@@ -787,7 +787,7 @@ namespace Utility
         }
 
         template <class Func, class... Args>
-        auto SubmitToWorker(std::size_t worker_index, Func&& func, Args&&... args) -> std::future<std::invoke_result_t<std::decay_t<Func>, std::decay_t<Args>...>>
+        [[nodiscard]] auto SubmitToWorker(std::size_t worker_index, Func&& func, Args&&... args) -> std::future<std::invoke_result_t<std::decay_t<Func>, std::decay_t<Args>...>>
         {
             using Result = std::invoke_result_t<std::decay_t<Func>, std::decay_t<Args>...>;
             auto state = MakeInvocationState(std::forward<Func>(func), std::forward<Args>(args)...);
@@ -867,12 +867,12 @@ namespace Utility
             m_SubmissionPolicy.store(policy, std::memory_order_release);
         }
 
-        SubmissionPolicy GetSubmissionPolicy() const noexcept
+        [[nodiscard]] SubmissionPolicy GetSubmissionPolicy() const noexcept
         {
             return m_SubmissionPolicy.load(std::memory_order_acquire);
         }
 
-        bool SetWorkerTopologyHint(std::size_t worker_index, WorkerTopologyHint hint)
+        [[nodiscard]] bool SetWorkerTopologyHint(std::size_t worker_index, WorkerTopologyHint hint)
         {
             std::shared_lock workers_lock(m_WorkersMutex);
 
@@ -887,44 +887,44 @@ namespace Utility
             return true;
         }
 
-        std::size_t Size() const
+        [[nodiscard]] std::size_t Size() const
         {
             std::shared_lock workers_lock(m_WorkersMutex);
             return m_Workers.size();
         }
 
-        std::size_t PendingTasks() const noexcept
+        [[nodiscard]] std::size_t PendingTasks() const noexcept
         {
             return m_PendingTasks.load(std::memory_order_acquire);
         }
 
-        std::size_t QueuedTasks() const noexcept
+        [[nodiscard]] std::size_t QueuedTasks() const noexcept
         {
             return m_QueuedTasks.load(std::memory_order_acquire);
         }
 
-        std::size_t ActiveWorkers() const noexcept
+        [[nodiscard]] std::size_t ActiveWorkers() const noexcept
         {
             return ExecutingTasks();
         }
 
-        std::size_t ExecutingTasks() const noexcept
+        [[nodiscard]] std::size_t ExecutingTasks() const noexcept
         {
             return m_ActiveWorkers.load(std::memory_order_acquire);
         }
 
-        bool IsStopping() const noexcept
+        [[nodiscard]] bool IsStopping() const noexcept
         {
             return m_StopRequested.load(std::memory_order_acquire)
                 || m_ImmediateStopRequested.load(std::memory_order_acquire);
         }
 
-        bool IsAcceptingSubmissions() const noexcept
+        [[nodiscard]] bool IsAcceptingSubmissions() const noexcept
         {
             return m_AcceptSubmissions.load(std::memory_order_acquire);
         }
 
-        bool WaitIdle(std::chrono::milliseconds timeout)
+        [[nodiscard]] bool WaitIdle(std::chrono::milliseconds timeout)
         {
             std::unique_lock wait_lock(m_WaitMutex);
             return m_IdleCondition.wait_for(wait_lock, timeout, [this]
@@ -1103,25 +1103,25 @@ namespace Utility
 
     namespace Detail
     {
-        inline std::mutex& GlobalThreadPoolMutex()
+        inline std::mutex& GlobalThreadPoolMutex() noexcept
         {
             static std::mutex mutex;
             return mutex;
         }
 
-        inline std::unique_ptr<ThreadPool>& GlobalThreadPoolStorage()
+        inline std::unique_ptr<ThreadPool>& GlobalThreadPoolStorage() noexcept
         {
             static std::unique_ptr<ThreadPool> storage;
             return storage;
         }
 
-        inline std::size_t& GlobalThreadPoolConfiguredSize()
+        inline std::size_t& GlobalThreadPoolConfiguredSize() noexcept
         {
             static std::size_t configured_size = 0;
             return configured_size;
         }
 
-        inline ThreadPool::SubmissionPolicy& GlobalThreadPoolConfiguredPolicy()
+        inline ThreadPool::SubmissionPolicy& GlobalThreadPoolConfiguredPolicy() noexcept
         {
             static ThreadPool::SubmissionPolicy configured_policy = ThreadPool::SubmissionPolicy::RoundRobin;
             return configured_policy;
@@ -1154,7 +1154,7 @@ namespace Utility
         Detail::GlobalThreadPoolConfiguredPolicy() = policy;
     }
 
-    inline ThreadPool& GlobalThreadPool()
+    [[nodiscard]] inline ThreadPool& GlobalThreadPool()
     {
         InitializeGlobalThreadPool();
         return *Detail::GlobalThreadPoolStorage();
