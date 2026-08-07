@@ -295,6 +295,26 @@ namespace
         REQUIRE_EQ(value.load(std::memory_order_relaxed), 1000);
     }
 
+    TEST(idle_worker_never_misses_new_work_notification)
+    {
+        Utility::ThreadPool pool(1u);
+
+        // Repeatedly put the sole worker to sleep before submitting the next
+        // task.  This exercises the idle-predicate/notification boundary that
+        // previously allowed a lost wake-up and an infinite WaitIdle().
+        for (int iteration = 0; iteration < 1000; ++iteration)
+        {
+            REQUIRE(pool.WaitIdle(100ms));
+            auto completed = pool.Submit([] { return true; });
+            REQUIRE(completed.wait_for(1s) == std::future_status::ready);
+            REQUIRE(completed.get());
+        }
+
+        REQUIRE(pool.WaitIdle(1s));
+        REQUIRE_EQ(pool.PendingTasks(), 0u);
+        REQUIRE_EQ(pool.ActiveWorkers(), 0u);
+    }
+
     TEST(nested_submit_from_worker_path)
     {
         Utility::ThreadPool pool(4u);

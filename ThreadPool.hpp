@@ -499,7 +499,14 @@ namespace Utility
 
             std::lock_guard worker_lock(target_worker->mutex);
             target_worker->local_queue.emplace_back(std::move(task));
-            m_PendingTasks.fetch_add(1, std::memory_order_release);
+            {
+                // The predicate observed by WorkerLoop must be changed while
+                // holding the mutex used by the condition variable.  Without
+                // this lock a worker can test the predicate, miss this notify,
+                // and then sleep despite there being queued work.
+                std::lock_guard wait_lock(m_WaitMutex);
+                m_PendingTasks.fetch_add(1, std::memory_order_release);
+            }
             m_WorkAvailableCondition.notify_one();
         }
 
@@ -517,7 +524,10 @@ namespace Utility
 
             std::lock_guard worker_lock(target_worker->mutex);
             target_worker->local_queue.emplace_back(std::move(task));
-            m_PendingTasks.fetch_add(1, std::memory_order_release);
+            {
+                std::lock_guard wait_lock(m_WaitMutex);
+                m_PendingTasks.fetch_add(1, std::memory_order_release);
+            }
             m_WorkAvailableCondition.notify_one();
         }
 
@@ -586,10 +596,18 @@ namespace Utility
                         applied_topology_generation = generation;
                     }
 
-                    m_ActiveWorkers.fetch_add(1, std::memory_order_acq_rel);
+                    {
+                        std::lock_guard wait_lock(m_WaitMutex);
+                        m_ActiveWorkers.fetch_add(1, std::memory_order_acq_rel);
+                    }
                     task();
-                    m_ActiveWorkers.fetch_sub(1, std::memory_order_acq_rel);
-                    m_PendingTasks.fetch_sub(1, std::memory_order_acq_rel);
+                    {
+                        // Serialize the transition to idle with WaitIdle's
+                        // predicate check so its notification cannot be lost.
+                        std::lock_guard wait_lock(m_WaitMutex);
+                        m_ActiveWorkers.fetch_sub(1, std::memory_order_acq_rel);
+                        m_PendingTasks.fetch_sub(1, std::memory_order_acq_rel);
+                    }
                     m_IdleCondition.notify_all();
                     continue;
                 }
@@ -900,7 +918,10 @@ namespace Utility
                         for (std::size_t i = new_size; i < current_size; ++i)
                         {
                             WorkerState& state = *m_Workers[i]->state;
-                            state.retire_requested.store(true, std::memory_order_release);
+                            {
+                                std::lock_guard wait_lock(m_WaitMutex);
+                                state.retire_requested.store(true, std::memory_order_release);
+                            }
                             MoveLocalQueueToGlobal(state, m_GlobalQueue);
                         }
                     }
@@ -940,7 +961,10 @@ namespace Utility
                     m_AcceptSubmissions.store(false, std::memory_order_release);
                 }
 
-                m_StopRequested.store(true, std::memory_order_release);
+                {
+                    std::lock_guard wait_lock(m_WaitMutex);
+                    m_StopRequested.store(true, std::memory_order_release);
+                }
                 m_WorkAvailableCondition.notify_all();
 
                 {
@@ -972,8 +996,11 @@ namespace Utility
                     m_AcceptSubmissions.store(false, std::memory_order_release);
                 }
 
-                m_StopRequested.store(true, std::memory_order_release);
-                m_ImmediateStopRequested.store(true, std::memory_order_release);
+                {
+                    std::lock_guard wait_lock(m_WaitMutex);
+                    m_StopRequested.store(true, std::memory_order_release);
+                    m_ImmediateStopRequested.store(true, std::memory_order_release);
+                }
 
                 {
                     std::lock_guard global_lock(m_GlobalQueueMutex);
@@ -995,9 +1022,12 @@ namespace Utility
                     slots.swap(m_Workers);
                 }
 
-                const std::size_t pending_before = m_PendingTasks.load(std::memory_order_acquire);
-                const std::size_t pending_after = pending_before > removed_tasks ? (pending_before - removed_tasks) : 0;
-                m_PendingTasks.store(pending_after, std::memory_order_release);
+                {
+                    std::lock_guard wait_lock(m_WaitMutex);
+                    const std::size_t pending_before = m_PendingTasks.load(std::memory_order_acquire);
+                    const std::size_t pending_after = pending_before > removed_tasks ? (pending_before - removed_tasks) : 0;
+                    m_PendingTasks.store(pending_after, std::memory_order_release);
+                }
                 m_WorkAvailableCondition.notify_all();
             }
 
