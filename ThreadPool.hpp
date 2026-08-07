@@ -147,7 +147,15 @@ namespace Utility
      *     Throws std::system_error if thread creation fails mid-way; in that
      *     case already-started threads are joined before the exception propagates.
      *
-     *   ThreadPool is not copyable or movable.
+     *   ~ThreadPool()
+     *     Perform a graceful Shutdown().  Destruction blocks until queued and
+     *     executing tasks finish and all worker threads have been joined.
+     *
+     *   ThreadPool(const ThreadPool&) = delete
+     *   ThreadPool& operator=(const ThreadPool&) = delete
+     *   ThreadPool(ThreadPool&&) = delete
+     *   ThreadPool& operator=(ThreadPool&&) = delete
+     *     ThreadPool instances cannot be copied, assigned, or moved.
      *
      *
      * Task Submission
@@ -185,11 +193,11 @@ namespace Utility
      * Policy and Topology
      * -------------------
      *
-     *   void SetSubmissionPolicy(SubmissionPolicy policy)
+     *   void SetSubmissionPolicy(SubmissionPolicy policy) noexcept
      *     Change the distribution policy used by Submit() and SubmitDetached()
      *     for future submissions.  Thread-safe; takes effect immediately.
      *
-     *   SubmissionPolicy GetSubmissionPolicy() const
+     *   SubmissionPolicy GetSubmissionPolicy() const noexcept
      *     Return the current submission policy.
      *
      *   bool SetWorkerTopologyHint(size_t worker_index, WorkerTopologyHint hint)
@@ -206,17 +214,27 @@ namespace Utility
      *   size_t Size() const
      *     Number of active worker threads currently in the pool.
      *
-     *   size_t PendingTasks() const
-     *     Approximate count of tasks queued but not yet started.  This
-     *     decrements when a worker picks up a task, before execution finishes.
+     *   size_t PendingTasks() const noexcept
+     *     Count of outstanding tasks, including queued tasks and tasks currently
+     *     executing.  This increments when a task is enqueued and decrements
+     *     after that task finishes.
      *
-     *   size_t ActiveWorkers() const
-     *     Number of workers currently executing a task.
+     *   size_t QueuedTasks() const noexcept
+     *     Count of tasks waiting in a queue and not yet executing.  This
+     *     increments when a task is enqueued and decrements when a worker
+     *     acquires that task.
      *
-     *   bool IsStopping() const
+     *   size_t ActiveWorkers() const noexcept
+     *     Compatibility alias for ExecutingTasks().
+     *
+     *   size_t ExecutingTasks() const noexcept
+     *     Number of tasks currently executing.  Since each worker executes at
+     *     most one task at a time, this is also the number of active workers.
+     *
+     *   bool IsStopping() const noexcept
      *     True once Shutdown() or ShutdownNow() has been called.
      *
-     *   bool IsAcceptingSubmissions() const
+     *   bool IsAcceptingSubmissions() const noexcept
      *     True while the pool is healthy and not shutting down.
      *
      *
@@ -224,9 +242,9 @@ namespace Utility
      * -------
      *
      *   void WaitIdle()
-     *     Block the calling thread until all pending and active tasks complete.
-     *     Safe to call from any thread, including from within a task itself
-     *     (though calling from a task with no idle capacity will deadlock).
+     *     Block the calling thread until all outstanding tasks complete.
+     *     Do not call from a task executing in this pool: that task is itself
+     *     outstanding, so waiting for the pool to become idle would deadlock.
      *
      *   bool WaitIdle(std::chrono::milliseconds timeout)
      *     Same as WaitIdle() but returns after at most `timeout` milliseconds.
@@ -246,7 +264,7 @@ namespace Utility
      *     Blocks until all retiring threads have exited when shrinking.
      *
      *   void Shutdown()
-     *     Signal all workers to stop and block until every queued task has
+     *     Signal all workers to stop and block until every outstanding task has
      *     completed and all threads have been joined.  New submissions after
      *     this call throw std::runtime_error.  Safe to call multiple times
      *     (second and subsequent calls are no-ops).
@@ -258,8 +276,26 @@ namespace Utility
      *     all threads have been joined.  Tasks that are already executing are
      *     allowed to finish normally.  The associated futures for discarded tasks
      *     will have broken_promise state.
-     *     Safe to call multiple times.  Called automatically by the destructor
-     *     only when Shutdown() has not been called first.
+     *     Safe to call multiple times.  The destructor does not call
+     *     ShutdownNow(); immediate cancellation must be requested explicitly.
+     *
+     *
+     * Global Pool Helpers
+     * -------------------
+     *
+     *   void InitializeGlobalThreadPool(
+     *       size_t pool_size = std::thread::hardware_concurrency(),
+     *       ThreadPool::SubmissionPolicy policy = SubmissionPolicy::RoundRobin)
+     *     Initialize the process-wide pool.  A size of zero is normalized to
+     *     one.  Repeating the same configuration is a no-op; attempting to
+     *     reconfigure an existing global pool throws std::runtime_error.
+     *     Thread-safe.  Call before GlobalThreadPool() to choose non-default
+     *     settings.
+     *
+     *   ThreadPool& GlobalThreadPool()
+     *     Return the process-wide pool, lazily initializing it with the default
+     *     size and RoundRobin policy if necessary.  Thread-safe.  The returned
+     *     reference remains valid until static destruction at process exit.
      *
      *
      * SCHEDULING INTERNALS
@@ -341,6 +377,7 @@ namespace Utility
         mutable std::mutex m_ControlMutex;
 
         std::atomic<std::size_t> m_PendingTasks = 0;
+        std::atomic<std::size_t> m_QueuedTasks = 0;
         std::atomic<std::size_t> m_ActiveWorkers = 0;
         std::atomic<std::size_t> m_RoundRobinIndex = 0;
         std::atomic<std::size_t> m_StealCursor = 0;
@@ -506,6 +543,7 @@ namespace Utility
                 // and then sleep despite there being queued work.
                 std::lock_guard wait_lock(m_WaitMutex);
                 m_PendingTasks.fetch_add(1, std::memory_order_release);
+                m_QueuedTasks.fetch_add(1, std::memory_order_release);
             }
             m_WorkAvailableCondition.notify_one();
         }
@@ -527,6 +565,7 @@ namespace Utility
             {
                 std::lock_guard wait_lock(m_WaitMutex);
                 m_PendingTasks.fetch_add(1, std::memory_order_release);
+                m_QueuedTasks.fetch_add(1, std::memory_order_release);
             }
             m_WorkAvailableCondition.notify_one();
         }
@@ -598,6 +637,7 @@ namespace Utility
 
                     {
                         std::lock_guard wait_lock(m_WaitMutex);
+                        m_QueuedTasks.fetch_sub(1, std::memory_order_acq_rel);
                         m_ActiveWorkers.fetch_add(1, std::memory_order_acq_rel);
                     }
                     try
@@ -858,7 +898,17 @@ namespace Utility
             return m_PendingTasks.load(std::memory_order_acquire);
         }
 
+        std::size_t QueuedTasks() const noexcept
+        {
+            return m_QueuedTasks.load(std::memory_order_acquire);
+        }
+
         std::size_t ActiveWorkers() const noexcept
+        {
+            return ExecutingTasks();
+        }
+
+        std::size_t ExecutingTasks() const noexcept
         {
             return m_ActiveWorkers.load(std::memory_order_acquire);
         }
@@ -1036,6 +1086,9 @@ namespace Utility
                 const std::size_t pending_before = m_PendingTasks.load(std::memory_order_acquire);
                 const std::size_t pending_after = pending_before > removed_tasks ? (pending_before - removed_tasks) : 0;
                 m_PendingTasks.store(pending_after, std::memory_order_release);
+                const std::size_t queued_before = m_QueuedTasks.load(std::memory_order_acquire);
+                const std::size_t queued_after = queued_before > removed_tasks ? (queued_before - removed_tasks) : 0;
+                m_QueuedTasks.store(queued_after, std::memory_order_release);
             }
             m_WorkAvailableCondition.notify_all();
 

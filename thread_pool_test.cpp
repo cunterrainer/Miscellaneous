@@ -570,6 +570,40 @@ namespace
         REQUIRE(pool.WaitIdle(1ms));
     }
 
+    TEST(task_counters_report_outstanding_and_active_work)
+    {
+        Utility::ThreadPool pool(1u);
+        std::promise<void> release_running_task;
+        std::shared_future<void> release = release_running_task.get_future().share();
+
+        auto running = pool.Submit(
+            [release]
+            {
+                release.wait();
+                return 1;
+            });
+
+        while (pool.ActiveWorkers() != 1u)
+        {
+            std::this_thread::yield();
+        }
+
+        auto queued = pool.Submit([] { return 2; });
+        REQUIRE_EQ(pool.ActiveWorkers(), 1u);
+        REQUIRE_EQ(pool.ExecutingTasks(), 1u);
+        REQUIRE_EQ(pool.PendingTasks(), 2u);
+        REQUIRE_EQ(pool.QueuedTasks(), 1u);
+
+        release_running_task.set_value();
+        REQUIRE_EQ(running.get(), 1);
+        REQUIRE_EQ(queued.get(), 2);
+        REQUIRE(pool.WaitIdle(1s));
+        REQUIRE_EQ(pool.PendingTasks(), 0u);
+        REQUIRE_EQ(pool.QueuedTasks(), 0u);
+        REQUIRE_EQ(pool.ExecutingTasks(), 0u);
+        REQUIRE_EQ(pool.ActiveWorkers(), 0u);
+    }
+
     TEST(all_concurrent_idle_waiters_are_released_on_last_completion)
     {
         Utility::ThreadPool pool(2u);
