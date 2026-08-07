@@ -16,11 +16,21 @@
 #include <vector>
 #include <cstdlib>
 
+#if defined(__has_feature)
+#  if __has_feature(thread_sanitizer)
+#    define THREAD_POOL_TEST_WITH_TSAN 1
+#  endif
+#endif
+#if defined(__SANITIZE_THREAD__)
+#  define THREAD_POOL_TEST_WITH_TSAN 1
+#endif
+
 namespace
 {
     std::atomic<long long> g_fail_allocation_after = -1;
 }
 
+#if !defined(THREAD_POOL_TEST_WITH_TSAN)
 void* operator new(std::size_t size)
 {
     long long remaining = g_fail_allocation_after.load(std::memory_order_acquire);
@@ -73,6 +83,7 @@ void operator delete[](void* memory, std::size_t) noexcept
 {
     ::operator delete[](memory);
 }
+#endif
 
 namespace
 {
@@ -256,6 +267,7 @@ namespace
         REQUIRE(threw);
     }
 
+#if !defined(THREAD_POOL_TEST_WITH_TSAN)
     TEST(submit_covers_bad_alloc_on_packaged_task_allocation)
     {
         Utility::ThreadPool pool(1u);
@@ -274,6 +286,7 @@ namespace
         SetFailAllocationAfter(-1);
         REQUIRE(threw_bad_alloc);
     }
+#endif
 
     TEST(submit_detached_runs_tasks)
     {
@@ -518,6 +531,68 @@ namespace
         REQUIRE(pool.WaitIdle(1ms));
     }
 
+    TEST(all_concurrent_idle_waiters_are_released_on_last_completion)
+    {
+        Utility::ThreadPool pool(2u);
+        std::promise<void> release_task;
+        std::shared_future<void> release = release_task.get_future().share();
+        std::atomic<int> waiting = 0;
+        std::atomic<int> returned = 0;
+
+        pool.SubmitDetached([release] { release.wait(); });
+
+        std::vector<std::thread> waiters;
+        for (int i = 0; i < 12; ++i)
+        {
+            waiters.emplace_back(
+                [&pool, &waiting, &returned]
+                {
+                    waiting.fetch_add(1, std::memory_order_release);
+                    pool.WaitIdle();
+                    returned.fetch_add(1, std::memory_order_release);
+                });
+        }
+
+        while (waiting.load(std::memory_order_acquire) != 12)
+        {
+            std::this_thread::yield();
+        }
+        std::this_thread::sleep_for(10ms);
+        const int returned_while_busy = returned.load(std::memory_order_acquire);
+        release_task.set_value();
+
+        for (std::thread& waiter : waiters)
+        {
+            waiter.join();
+        }
+
+        REQUIRE_EQ(returned_while_busy, 0);
+        REQUIRE_EQ(returned.load(std::memory_order_acquire), 12);
+    }
+
+    TEST(direct_worker_submissions_wake_sleeping_target_workers)
+    {
+        Utility::ThreadPool pool(4u);
+        std::atomic<int> completed = 0;
+
+        for (int round = 0; round < 100; ++round)
+        {
+            REQUIRE(pool.WaitIdle(500ms));
+            for (std::size_t worker = 0; worker < pool.Size(); ++worker)
+            {
+                pool.SubmitDetachedToWorker(
+                    worker,
+                    [&completed]
+                    {
+                        completed.fetch_add(1, std::memory_order_relaxed);
+                    });
+            }
+        }
+
+        REQUIRE(pool.WaitIdle(2s));
+        REQUIRE_EQ(completed.load(std::memory_order_relaxed), 400);
+    }
+
     TEST(resize_grow_and_shrink_preserves_work)
     {
         Utility::ThreadPool pool(2u);
@@ -671,6 +746,90 @@ namespace
         REQUIRE(saw_broken_promise);
         REQUIRE(pool.PendingTasks() <= 1u);
         pool.ShutdownNow();
+    }
+
+    TEST(concurrent_shutdown_callers_wait_for_running_workers)
+    {
+        Utility::ThreadPool pool(2u);
+        std::promise<void> release_tasks;
+        std::shared_future<void> release = release_tasks.get_future().share();
+        std::atomic<int> started = 0;
+        std::atomic<int> shutdown_returns = 0;
+
+        for (int i = 0; i < 2; ++i)
+        {
+            pool.SubmitDetached(
+                [release, &started]
+                {
+                    started.fetch_add(1, std::memory_order_release);
+                    release.wait();
+                });
+        }
+        while (started.load(std::memory_order_acquire) != 2)
+        {
+            std::this_thread::yield();
+        }
+
+        std::thread first([&pool, &shutdown_returns]
+            {
+                pool.Shutdown();
+                shutdown_returns.fetch_add(1, std::memory_order_release);
+            });
+        std::thread second([&pool, &shutdown_returns]
+            {
+                pool.Shutdown();
+                shutdown_returns.fetch_add(1, std::memory_order_release);
+            });
+
+        std::this_thread::sleep_for(20ms);
+        const int returned_before_release = shutdown_returns.load(std::memory_order_acquire);
+        release_tasks.set_value();
+        first.join();
+        second.join();
+
+        REQUIRE_EQ(returned_before_release, 0);
+        REQUIRE_EQ(shutdown_returns.load(std::memory_order_acquire), 2);
+    }
+
+    TEST(graceful_and_immediate_shutdown_are_serialized)
+    {
+        Utility::ThreadPool pool(1u);
+        std::promise<void> release_task;
+        std::shared_future<void> release = release_task.get_future().share();
+        std::atomic<bool> started = false;
+        std::atomic<int> shutdown_returns = 0;
+
+        pool.SubmitDetached(
+            [release, &started]
+            {
+                started.store(true, std::memory_order_release);
+                release.wait();
+            });
+        while (!started.load(std::memory_order_acquire))
+        {
+            std::this_thread::yield();
+        }
+
+        std::thread graceful([&pool, &shutdown_returns]
+            {
+                pool.Shutdown();
+                shutdown_returns.fetch_add(1, std::memory_order_release);
+            });
+        std::thread immediate([&pool, &shutdown_returns]
+            {
+                pool.ShutdownNow();
+                shutdown_returns.fetch_add(1, std::memory_order_release);
+            });
+
+        std::this_thread::sleep_for(20ms);
+        const int returned_before_release = shutdown_returns.load(std::memory_order_acquire);
+        release_task.set_value();
+        graceful.join();
+        immediate.join();
+
+        REQUIRE_EQ(returned_before_release, 0);
+        REQUIRE_EQ(shutdown_returns.load(std::memory_order_acquire), 2);
+        REQUIRE(!pool.IsAcceptingSubmissions());
     }
 
     TEST(resize_after_shutdown_throws)

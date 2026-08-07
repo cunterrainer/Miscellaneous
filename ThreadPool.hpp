@@ -947,30 +947,31 @@ namespace Utility
         void Shutdown()
         {
             std::vector<std::unique_ptr<WorkerSlot>> slots;
+            // Keep lifecycle operations serialized until every worker has
+            // actually stopped.  Previously a second concurrent Shutdown()
+            // could observe an empty worker vector, mark shutdown complete,
+            // and return while the first caller was still joining workers.
+            std::lock_guard control_lock(m_ControlMutex);
+
+            if (m_ShutdownCompleted.load(std::memory_order_acquire))
+            {
+                return;
+            }
 
             {
-                std::lock_guard control_lock(m_ControlMutex);
+                std::lock_guard submission_lock(m_SubmissionMutex);
+                m_AcceptSubmissions.store(false, std::memory_order_release);
+            }
 
-                if (m_ShutdownCompleted.load(std::memory_order_acquire))
-                {
-                    return;
-                }
+            {
+                std::lock_guard wait_lock(m_WaitMutex);
+                m_StopRequested.store(true, std::memory_order_release);
+            }
+            m_WorkAvailableCondition.notify_all();
 
-                {
-                    std::lock_guard submission_lock(m_SubmissionMutex);
-                    m_AcceptSubmissions.store(false, std::memory_order_release);
-                }
-
-                {
-                    std::lock_guard wait_lock(m_WaitMutex);
-                    m_StopRequested.store(true, std::memory_order_release);
-                }
-                m_WorkAvailableCondition.notify_all();
-
-                {
-                    std::unique_lock workers_lock(m_WorkersMutex);
-                    slots.swap(m_Workers);
-                }
+            {
+                std::unique_lock workers_lock(m_WorkersMutex);
+                slots.swap(m_Workers);
             }
 
             JoinAll(std::move(slots));
@@ -982,54 +983,51 @@ namespace Utility
         {
             std::vector<std::unique_ptr<WorkerSlot>> slots;
             std::size_t removed_tasks = 0;
+            std::lock_guard control_lock(m_ControlMutex);
+
+            if (m_ShutdownCompleted.load(std::memory_order_acquire))
+            {
+                return;
+            }
 
             {
-                std::lock_guard control_lock(m_ControlMutex);
-
-                if (m_ShutdownCompleted.load(std::memory_order_acquire))
-                {
-                    return;
-                }
-
-                {
-                    std::lock_guard submission_lock(m_SubmissionMutex);
-                    m_AcceptSubmissions.store(false, std::memory_order_release);
-                }
-
-                {
-                    std::lock_guard wait_lock(m_WaitMutex);
-                    m_StopRequested.store(true, std::memory_order_release);
-                    m_ImmediateStopRequested.store(true, std::memory_order_release);
-                }
-
-                {
-                    std::lock_guard global_lock(m_GlobalQueueMutex);
-                    removed_tasks += m_GlobalQueue.size();
-                    m_GlobalQueue.clear();
-                }
-
-                {
-                    std::unique_lock workers_lock(m_WorkersMutex);
-
-                    for (const std::unique_ptr<WorkerSlot>& slot : m_Workers)
-                    {
-                        std::lock_guard worker_lock(slot->state->mutex);
-                        removed_tasks += slot->state->local_queue.size();
-                        slot->state->local_queue.clear();
-                        slot->state->retire_requested.store(true, std::memory_order_release);
-                    }
-
-                    slots.swap(m_Workers);
-                }
-
-                {
-                    std::lock_guard wait_lock(m_WaitMutex);
-                    const std::size_t pending_before = m_PendingTasks.load(std::memory_order_acquire);
-                    const std::size_t pending_after = pending_before > removed_tasks ? (pending_before - removed_tasks) : 0;
-                    m_PendingTasks.store(pending_after, std::memory_order_release);
-                }
-                m_WorkAvailableCondition.notify_all();
+                std::lock_guard submission_lock(m_SubmissionMutex);
+                m_AcceptSubmissions.store(false, std::memory_order_release);
             }
+
+            {
+                std::lock_guard wait_lock(m_WaitMutex);
+                m_StopRequested.store(true, std::memory_order_release);
+                m_ImmediateStopRequested.store(true, std::memory_order_release);
+            }
+
+            {
+                std::lock_guard global_lock(m_GlobalQueueMutex);
+                removed_tasks += m_GlobalQueue.size();
+                m_GlobalQueue.clear();
+            }
+
+            {
+                std::unique_lock workers_lock(m_WorkersMutex);
+
+                for (const std::unique_ptr<WorkerSlot>& slot : m_Workers)
+                {
+                    std::lock_guard worker_lock(slot->state->mutex);
+                    removed_tasks += slot->state->local_queue.size();
+                    slot->state->local_queue.clear();
+                    slot->state->retire_requested.store(true, std::memory_order_release);
+                }
+
+                slots.swap(m_Workers);
+            }
+
+            {
+                std::lock_guard wait_lock(m_WaitMutex);
+                const std::size_t pending_before = m_PendingTasks.load(std::memory_order_acquire);
+                const std::size_t pending_after = pending_before > removed_tasks ? (pending_before - removed_tasks) : 0;
+                m_PendingTasks.store(pending_after, std::memory_order_release);
+            }
+            m_WorkAvailableCondition.notify_all();
 
             JoinAll(std::move(slots));
             m_ShutdownCompleted.store(true, std::memory_order_release);
