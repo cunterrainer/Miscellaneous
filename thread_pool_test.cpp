@@ -308,6 +308,45 @@ namespace
         REQUIRE_EQ(value.load(std::memory_order_relaxed), 1000);
     }
 
+    TEST(detached_task_exceptions_do_not_kill_workers)
+    {
+        Utility::ThreadPool pool(2u);
+        std::atomic<int> completed = 0;
+
+        pool.SubmitDetached(
+            []
+            {
+                throw std::runtime_error("detached failure");
+            });
+        pool.SubmitDetachedToWorker(
+            1u,
+            []
+            {
+                throw 42;
+            });
+
+        auto generic_follow_up = pool.Submit(
+            [&completed]
+            {
+                completed.fetch_add(1, std::memory_order_relaxed);
+                return 11;
+            });
+        auto targeted_follow_up = pool.SubmitToWorker(
+            1u,
+            [&completed]
+            {
+                completed.fetch_add(1, std::memory_order_relaxed);
+                return 22;
+            });
+
+        REQUIRE_EQ(generic_follow_up.get(), 11);
+        REQUIRE_EQ(targeted_follow_up.get(), 22);
+        REQUIRE(pool.WaitIdle(1s));
+        REQUIRE_EQ(completed.load(std::memory_order_relaxed), 2);
+        REQUIRE_EQ(pool.PendingTasks(), 0u);
+        REQUIRE_EQ(pool.ActiveWorkers(), 0u);
+    }
+
     TEST(idle_worker_never_misses_new_work_notification)
     {
         Utility::ThreadPool pool(1u);

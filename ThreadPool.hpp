@@ -600,7 +600,17 @@ namespace Utility
                         std::lock_guard wait_lock(m_WaitMutex);
                         m_ActiveWorkers.fetch_add(1, std::memory_order_acq_rel);
                     }
-                    task();
+                    try
+                    {
+                        task();
+                    }
+                    catch (...)
+                    {
+                        // Detached tasks have no result channel; their public
+                        // contract requires exceptions to be discarded.  A
+                        // packaged task captures its own exception before it
+                        // can reach this boundary.
+                    }
                     {
                         // Serialize the transition to idle with WaitIdle's
                         // predicate check so its notification cannot be lost.
