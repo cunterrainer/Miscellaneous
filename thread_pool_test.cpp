@@ -1022,6 +1022,167 @@ namespace
         REQUIRE_EQ(count.load(std::memory_order_relaxed), 256);
     }
 
+    TEST(nested_submission_to_a_different_pool_uses_the_destination_pool)
+    {
+        Utility::ThreadPool source(1u);
+        Utility::ThreadPool destination(1u);
+
+        auto outer = source.Submit(
+            [&destination]
+            {
+                auto inner = destination.Submit([] { return std::this_thread::get_id(); });
+                return std::pair{std::this_thread::get_id(), inner.get()};
+            });
+
+        const auto [source_thread, destination_thread] = outer.get();
+        REQUIRE(source_thread != destination_thread);
+        REQUIRE(source.WaitIdle(1s));
+        REQUIRE(destination.WaitIdle(1s));
+    }
+
+    TEST(topology_updates_racing_with_resize_remain_safe)
+    {
+        Utility::ThreadPool pool(4u);
+        std::atomic<bool> stop = false;
+        std::atomic<int> updates = 0;
+        std::atomic<int> executed = 0;
+
+        std::thread updater(
+            [&pool, &stop, &updates]
+            {
+                Utility::ThreadPool::WorkerTopologyHint hint;
+                hint.preferred_cpu = 1'000'000u;
+                while (!stop.load(std::memory_order_acquire))
+                {
+                    const std::size_t size = pool.Size();
+                    if (pool.SetWorkerTopologyHint(size - 1u, hint))
+                    {
+                        updates.fetch_add(1, std::memory_order_relaxed);
+                    }
+                }
+            });
+
+        for (int round = 0; round < 80; ++round)
+        {
+            pool.Resize(static_cast<std::size_t>((round % 6) + 1));
+            pool.SubmitDetached(
+                [&executed]
+                {
+                    executed.fetch_add(1, std::memory_order_relaxed);
+                });
+        }
+
+        stop.store(true, std::memory_order_release);
+        updater.join();
+        REQUIRE(pool.WaitIdle(5s));
+        REQUIRE(updates.load(std::memory_order_relaxed) > 0);
+        REQUIRE_EQ(executed.load(std::memory_order_relaxed), 80);
+    }
+
+    TEST(wait_idle_and_shutdown_now_agree_after_queue_cancellation)
+    {
+        Utility::ThreadPool pool(1u);
+        std::promise<void> release_task;
+        std::shared_future<void> release = release_task.get_future().share();
+        std::atomic<bool> running = false;
+        std::atomic<bool> waiter_returned = false;
+
+        pool.SubmitDetached(
+            [release, &running]
+            {
+                running.store(true, std::memory_order_release);
+                release.wait();
+            });
+        while (!running.load(std::memory_order_acquire))
+        {
+            std::this_thread::yield();
+        }
+
+        std::vector<std::future<int>> canceled;
+        for (int i = 0; i < 64; ++i)
+        {
+            canceled.emplace_back(pool.Submit([i] { return i; }));
+        }
+
+        std::thread waiter(
+            [&pool, &waiter_returned]
+            {
+                pool.WaitIdle();
+                waiter_returned.store(true, std::memory_order_release);
+            });
+        std::thread stopper([&pool] { pool.ShutdownNow(); });
+
+        while (pool.IsAcceptingSubmissions())
+        {
+            std::this_thread::yield();
+        }
+        std::this_thread::sleep_for(10ms);
+        const bool returned_while_task_active = waiter_returned.load(std::memory_order_acquire);
+        release_task.set_value();
+        stopper.join();
+        waiter.join();
+
+        std::size_t broken_promises = 0;
+        for (std::future<int>& future : canceled)
+        {
+            try
+            {
+                (void)future.get();
+            }
+            catch (const std::future_error& error)
+            {
+                if (error.code() == std::make_error_code(std::future_errc::broken_promise))
+                {
+                    ++broken_promises;
+                }
+            }
+        }
+
+        REQUIRE(!returned_while_task_active);
+        REQUIRE_EQ(broken_promises, canceled.size());
+        REQUIRE_EQ(pool.PendingTasks(), 0u);
+        REQUIRE_EQ(pool.ActiveWorkers(), 0u);
+    }
+
+    TEST(active_worker_submission_is_rejected_once_shutdown_begins)
+    {
+        Utility::ThreadPool pool(1u);
+        std::promise<void> attempt_submission;
+        std::shared_future<void> attempt = attempt_submission.get_future().share();
+        std::atomic<bool> worker_started = false;
+        std::atomic<bool> rejected = false;
+
+        pool.SubmitDetached(
+            [&pool, attempt, &worker_started, &rejected]
+            {
+                worker_started.store(true, std::memory_order_release);
+                attempt.wait();
+                try
+                {
+                    pool.SubmitDetached(NoopTask);
+                }
+                catch (const std::runtime_error&)
+                {
+                    rejected.store(true, std::memory_order_release);
+                }
+            });
+        while (!worker_started.load(std::memory_order_acquire))
+        {
+            std::this_thread::yield();
+        }
+
+        std::thread stopper([&pool] { pool.Shutdown(); });
+        while (pool.IsAcceptingSubmissions())
+        {
+            std::this_thread::yield();
+        }
+        attempt_submission.set_value();
+        stopper.join();
+
+        REQUIRE(rejected.load(std::memory_order_acquire));
+        REQUIRE_EQ(pool.PendingTasks(), 0u);
+    }
+
     TEST(repeated_create_destroy_stress)
     {
         for (int round = 0; round < 50; ++round)
