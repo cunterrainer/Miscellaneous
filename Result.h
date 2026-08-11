@@ -132,6 +132,7 @@
 #include <cstdint>
 #include <utility>
 #include <type_traits>
+#include <variant>
 
 template <typename ErrorType = std::size_t>
 struct Error
@@ -145,14 +146,25 @@ public:
     template <typename... Args>
     inline explicit Error(const char* what, Args&&... args)
     {
-        std::size_t size = static_cast<std::size_t>(std::snprintf(NULL, 0, what, std::forward<Args>(args)...)) + 1; // Extra space for '\0'
-        m_What.reserve(size);
-        std::snprintf(m_What.data(), size, what, std::forward<Args>(args)...);
+        const int formatted_size = std::snprintf(nullptr, 0, what, std::forward<Args>(args)...);
+        if (formatted_size < 0)
+            return;
+
+        const std::size_t size = static_cast<std::size_t>(formatted_size);
+        m_What.resize(size + 1);
+        const int written = std::snprintf(m_What.data(), m_What.size(), what, std::forward<Args>(args)...);
+        if (written < 0)
+        {
+            m_What.clear();
+            return;
+        }
+        const std::size_t written_size = static_cast<std::size_t>(written);
+        m_What.resize(written_size < size ? written_size : size);
     }
     inline explicit Error(const char* what) : m_What(what) {}
     inline explicit Error(const std::string& what) : m_What(std::move(what)) {}
 
-    template <typename... Args> inline explicit Error(Type, const char* what, Args&&... args) : m_Type(type) { Error(what, std::forward<Args>(args)...); }
+    template <typename... Args> inline explicit Error(Type type, const char* what, Args&&... args) : Error(what, std::forward<Args>(args)...) { m_Type = type; }
     inline explicit Error(Type type, const char* what) : m_What(what), m_Type(type) {}
     inline explicit Error(Type type, const std::string& what) : m_What(std::move(what)), m_Type(type) {}
     inline explicit Error() = default;
@@ -222,135 +234,86 @@ class Result
     static_assert(std::is_copy_constructible<E>::value, "Result::Error type has to be copiable");
     static_assert(std::is_move_constructible<E>::value, "Result::Error type has to be movable");
 private:
-    union
-    {
-        T m_Data;
-        E m_Error;
-    };
-    bool m_Valid;
+    std::variant<T, E> m_Value;
 public:
-    inline Result(const E& e) : m_Error(e), m_Valid(false) {}
-    inline Result(const T& t) : m_Data(t), m_Valid(true) {}
+    inline Result(const E& e) : m_Value(std::in_place_index<1>, e) {}
+    inline Result(const T& t) : m_Value(std::in_place_index<0>, t) {}
 
-    Result(const Result& other) : m_Valid(other.m_Valid)
-    {
-        if (m_Valid)
-            m_Data = other.m_Data;
-        else
-            m_Error = other.m_Error;
-    }
-
-    Result(Result&& other) noexcept : m_Valid(other.m_Valid)
-    {
-        if (m_Valid)
-            m_Data = std::move(other.m_Data);
-        else
-            m_Error = std::move(other.m_Error);
-    }
-
-    Result& operator=(const Result& other)
-    {
-        if (this != &other)
-        {
-            m_Valid = other.m_Valid;
-            if (m_Valid)
-                m_Data = other.m_Data;
-            else
-                m_Error = other.m_Error;
-        }
-        return *this;
-    }
-
-    Result& operator=(Result&& other) noexcept
-    {
-        if (this != &other)
-        {
-            m_Valid = other.m_Valid;
-            if (m_Valid)
-                m_Data = std::move(other.m_Data);
-            else
-                m_Error = std::move(other.m_Error);
-        }
-        return *this;
-    }
-
-    ~Result()
-    {
-        if (m_Valid)
-            m_Data.~T();
-        else
-            m_Error.~E();
-    }
+    Result(const Result&) = default;
+    Result(Result&&) = default;
+    Result& operator=(const Result&) = default;
+    Result& operator=(Result&&) = default;
+    ~Result() = default;
 
     inline const T& Ok() const noexcept
     {
-        assert(m_Valid && "Don't access the Ok() value if it is an error, use IsOk() to check beforehand!");
-        return m_Data;
+        assert(IsOk() && "Don't access the Ok() value if it is an error, use IsOk() to check beforehand!");
+        return std::get<0>(m_Value);
     }
 
     inline const E& Err() const noexcept
     {
-        assert(!m_Valid && "Don't access the Err() value if it is not an error, use IsErr() to check beforehand!");
-        return m_Error;
+        assert(IsErr() && "Don't access the Err() value if it is not an error, use IsErr() to check beforehand!");
+        return std::get<1>(m_Value);
     }
 
     template <typename U = E, typename std::enable_if<ResultUtil::ErrorHasType<U>::value && ResultUtil::ErrorHasTypeFunction<U>::value>::type = 0>
     inline typename U::Type ErrType() const noexcept
     {
-        return m_Error.type();
+        return Err().type();
     }
 
     explicit operator bool() const noexcept
     {
-        return m_Valid;
+        return IsOk();
     }
 
     inline bool IsOk() const noexcept
     {
-        return m_Valid;
+        return m_Value.index() == 0;
     }
 
     inline bool IsErr() const noexcept
     {
-        return !m_Valid;
+        return m_Value.index() == 1;
     }
 
     inline const T& Unwrap() const
     {
-        if (m_Valid)
-            return m_Data;
-        throw m_Error;
+        if (IsOk())
+            return std::get<0>(m_Value);
+        throw std::get<1>(m_Value);
     }
 
     inline const T& UnwrapOr(const T& t) const
     {
-        if (m_Valid)
-            return m_Data;
+        if (IsOk())
+            return std::get<0>(m_Value);
         return t;
     }
 
     template <typename U = T, typename std::enable_if<std::is_default_constructible<U>::value, int>::type = 0>
     inline T UnwrapOrDefault() const
     {
-        if (m_Valid)
-            return m_Data;
+        if (IsOk())
+            return std::get<0>(m_Value);
         return T();
     }
 
     template <typename Func, typename... Args>
     inline T UnwrapOrElse(const Func& f, Args&&... args) const
     {
-        if (m_Valid)
-            return m_Data;
+        if (IsOk())
+            return std::get<0>(m_Value);
         return f(std::forward<Args>(args)...);
     }
 
     template <typename U = E, typename = ResultUtil::VoidT<decltype(std::declval<U>().what())>>
     inline const T& Expect(const char* msg) const
     {
-        if (m_Valid)
-            return m_Data;
-        throw E(msg + m_Error.what());
+        if (IsOk())
+            return std::get<0>(m_Value);
+        throw E(msg + std::get<1>(m_Value).what());
     }
 };
 
