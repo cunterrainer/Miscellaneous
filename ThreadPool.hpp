@@ -261,6 +261,7 @@ namespace Utility
      *       current task; their pending local tasks are migrated to remaining workers
      *       via the global injection queue before the threads are joined.
      *     Throws std::runtime_error if called after Shutdown()/ShutdownNow().
+     *     Throws std::logic_error if called by a task executing in this pool.
      *     Blocks until all retiring threads have exited when shrinking.
      *
      *   void Shutdown()
@@ -268,6 +269,7 @@ namespace Utility
      *     completed and all threads have been joined.  New submissions after
      *     this call throw std::runtime_error.  Safe to call multiple times
      *     (second and subsequent calls are no-ops).
+     *     Throws std::logic_error if called by a task executing in this pool.
      *     The destructor calls Shutdown() automatically.
      *
      *   void ShutdownNow()
@@ -278,6 +280,7 @@ namespace Utility
      *     will have broken_promise state.
      *     Safe to call multiple times.  The destructor does not call
      *     ShutdownNow(); immediate cancellation must be requested explicitly.
+     *     Throws std::logic_error if called by a task executing in this pool.
      *
      *
      * Global Pool Helpers
@@ -516,26 +519,18 @@ namespace Utility
             }
         }
 
-        void EnqueueTaskUnlocked(Task&& task)
+        void EnsureNotCurrentWorkerForLifecycle() const
         {
-            WorkerState* target_worker = nullptr;
-
-            if (s_CurrentPool == this && s_CurrentWorkerState != nullptr && !s_CurrentWorkerState->retire_requested.load(std::memory_order_acquire))
+            if (s_CurrentPool == this)
             {
-                target_worker = s_CurrentWorkerState;
+                throw std::logic_error("ThreadPool lifecycle operations cannot be called from a pool worker");
             }
-            else
-            {
-                std::shared_lock workers_lock(m_WorkersMutex);
+        }
 
-                const std::size_t worker_count = WorkerCountUnsafe();
-
-                const std::size_t index = PickExternalQueueIndex(worker_count);
-                target_worker = m_Workers[index]->state.get();
-            }
-
-            std::lock_guard worker_lock(target_worker->mutex);
-            target_worker->local_queue.emplace_back(std::move(task));
+        void EnqueueTaskIntoWorker(WorkerState& target_worker, Task&& task)
+        {
+            std::lock_guard worker_lock(target_worker.mutex);
+            target_worker.local_queue.emplace_back(std::move(task));
             {
                 // The predicate observed by WorkerLoop must be changed while
                 // holding the mutex used by the condition variable.  Without
@@ -548,26 +543,33 @@ namespace Utility
             m_WorkAvailableCondition.notify_one();
         }
 
-        void EnqueueTaskToWorkerUnlocked(std::size_t worker_index, Task&& task)
+        void EnqueueTaskUnlocked(Task&& task)
         {
-            std::shared_ptr<WorkerState> target_worker;
+            if (s_CurrentPool == this && s_CurrentWorkerState != nullptr && !s_CurrentWorkerState->retire_requested.load(std::memory_order_acquire))
             {
-                std::shared_lock workers_lock(m_WorkersMutex);
-                if (worker_index >= m_Workers.size())
-                {
-                    throw std::out_of_range("Worker index out of range for local queue submission");
-                }
-                target_worker = m_Workers[worker_index]->state;
+                EnqueueTaskIntoWorker(*s_CurrentWorkerState, std::move(task));
+                return;
             }
 
-            std::lock_guard worker_lock(target_worker->mutex);
-            target_worker->local_queue.emplace_back(std::move(task));
+            // Hold the container lock until the task is in the selected queue.
+            // This prevents a concurrent shrink from retiring, migrating, and
+            // destroying the worker during the selection-to-lock handoff.
+            std::shared_lock workers_lock(m_WorkersMutex);
+            const std::size_t worker_count = WorkerCountUnsafe();
+            const std::size_t index = PickExternalQueueIndex(worker_count);
+
+            EnqueueTaskIntoWorker(*m_Workers[index]->state, std::move(task));
+        }
+
+        void EnqueueTaskToWorkerUnlocked(std::size_t worker_index, Task&& task)
+        {
+            std::shared_lock workers_lock(m_WorkersMutex);
+            if (worker_index >= m_Workers.size())
             {
-                std::lock_guard wait_lock(m_WaitMutex);
-                m_PendingTasks.fetch_add(1, std::memory_order_release);
-                m_QueuedTasks.fetch_add(1, std::memory_order_release);
+                throw std::out_of_range("Worker index out of range for local queue submission");
             }
-            m_WorkAvailableCondition.notify_one();
+
+            EnqueueTaskIntoWorker(*m_Workers[worker_index]->state, std::move(task));
         }
 
         static bool ApplyBestEffortAffinity(const WorkerTopologyHint& hint) noexcept
@@ -692,12 +694,11 @@ namespace Utility
 
         std::unique_ptr<WorkerSlot> CreateWorkerSlot()
         {
-            std::shared_ptr<WorkerState> state = std::make_shared<WorkerState>();
-            std::thread thread(&ThreadPool::WorkerLoop, this, state);
-
             auto slot = std::make_unique<WorkerSlot>();
-            slot->state = std::move(state);
-            slot->thread = std::move(thread);
+            slot->state = std::make_shared<WorkerState>();
+            // All potentially throwing ownership allocations precede thread
+            // creation. Moving the started thread into its slot is noexcept.
+            slot->thread = std::thread(&ThreadPool::WorkerLoop, this, slot->state);
             return slot;
         }
 
@@ -741,7 +742,17 @@ namespace Utility
         explicit ThreadPool(std::size_t pool_size, SubmissionPolicy policy = SubmissionPolicy::RoundRobin)
         {
             m_SubmissionPolicy.store(policy, std::memory_order_release);
-            Resize(NormalizeSize(pool_size));
+            try
+            {
+                Resize(NormalizeSize(pool_size));
+            }
+            catch (...)
+            {
+                // Constructor failure bypasses ~ThreadPool(), so explicitly
+                // stop and join workers published by earlier growth steps.
+                Shutdown();
+                throw;
+            }
         }
 
         ~ThreadPool() noexcept
@@ -946,6 +957,7 @@ namespace Utility
 
         void Resize(std::size_t new_size)
         {
+            EnsureNotCurrentWorkerForLifecycle();
             std::lock_guard control_lock(m_ControlMutex);
 
             if (IsStopping())
@@ -1006,6 +1018,7 @@ namespace Utility
 
         void Shutdown()
         {
+            EnsureNotCurrentWorkerForLifecycle();
             std::vector<std::unique_ptr<WorkerSlot>> slots;
             // Keep lifecycle operations serialized until every worker has
             // actually stopped.  Previously a second concurrent Shutdown()
@@ -1041,6 +1054,7 @@ namespace Utility
 
         void ShutdownNow()
         {
+            EnsureNotCurrentWorkerForLifecycle();
             std::vector<std::unique_ptr<WorkerSlot>> slots;
             std::size_t removed_tasks = 0;
             std::lock_guard control_lock(m_ControlMutex);
