@@ -34,7 +34,8 @@ static inline void _string_set_props(string dest, size_t size, size_t capacity)
 {
     dest->size = size;
     dest->capacity = capacity;
-    dest->data[size] = 0;
+    if (dest->data != NULL)
+        dest->data[size] = 0;
     dest->_null_char = size;
 }
 
@@ -42,15 +43,16 @@ static inline int _string_assign(string dest, const char* str, size_t str_len)
 {
     if (str_len <= dest->capacity)
     {
-        dest->size = str_len;
-        memcpy(dest->data, str, str_len);
-        dest->data[str_len] = 0;
-        dest->_null_char = str_len;
+        if (str_len != 0)
+            memmove(dest->data, str, str_len);
+        _string_set_props(dest, str_len, dest->capacity);
         return STRING_SUCCESS;
     }
 
-    dest->data = realloc(dest->data, str_len + 1);
-    STRING_RETURN_IF_NULL(dest->data);
+    if (str_len > _string_max_size) return STRING_ERROR;
+    char* new_data = realloc(dest->data, str_len + 1);
+    STRING_RETURN_IF_NULL(new_data);
+    dest->data = new_data;
     _string_set_props(dest, str_len, str_len);
     memcpy(dest->data, str, dest->size);
     return STRING_SUCCESS;
@@ -61,6 +63,7 @@ static inline int _string_append(string dest, const char* src, size_t src_len)
     if (src_len == 0) return STRING_SUCCESS;
 
     const size_t min = _min(dest->size, dest->_null_char);
+    if (src_len > _string_max_size - min) return STRING_ERROR;
     const size_t new_len = min + src_len;
     if (dest->capacity >= new_len)
     {
@@ -71,8 +74,9 @@ static inline int _string_append(string dest, const char* src, size_t src_len)
         return STRING_SUCCESS;
     }
 
-    dest->data = realloc(dest->data, new_len + 1);
-    STRING_RETURN_IF_NULL(dest->data);
+    char* new_data = realloc(dest->data, new_len + 1);
+    STRING_RETURN_IF_NULL(new_data);
+    dest->data = new_data;
     memcpy(&dest->data[min], src, src_len);
     _string_set_props(dest, new_len, new_len);
     return STRING_SUCCESS;
@@ -83,6 +87,7 @@ static inline int _string_insert(string dest, size_t pos, const char* s, size_t 
     if (pos >= dest->size) return STRING_ERROR;
 
     const size_t min = _min(dest->size, dest->_null_char);
+    if (n > _string_max_size - min) return STRING_ERROR;
     const size_t new_len = min + n;
     if (new_len <= dest->capacity)
     {
@@ -94,8 +99,9 @@ static inline int _string_insert(string dest, size_t pos, const char* s, size_t 
         return STRING_SUCCESS;
     }
 
-    dest->data = realloc(dest->data, dest->size + n + 1);
-    STRING_RETURN_IF_NULL(dest->data);
+    char* new_data = realloc(dest->data, new_len + 1);
+    STRING_RETURN_IF_NULL(new_data);
+    dest->data = new_data;
     memmove(&dest->data[pos + n], &dest->data[pos], dest->size - pos);
     memcpy(&dest->data[pos], s, n);
     _string_set_props(dest, new_len, new_len);
@@ -104,32 +110,24 @@ static inline int _string_insert(string dest, size_t pos, const char* s, size_t 
 
 static inline size_t _string_find(const string dest, const char* str, size_t str_len, size_t pos)
 {
-    if (str_len == 0) return 0;
-    if (str_len > dest->size) return string_npos;
+    if (pos > dest->size) return string_npos;
+    if (str_len == 0) return pos;
+    if (str_len > dest->size - pos) return string_npos;
 
-    size_t off = pos;
-    for (size_t i = off; i < dest->size; ++i)
-    {
-        if (dest->data[i] == str[0])
-        {
-            for (size_t k = 0; k < str_len && k + i < dest->size; ++k)
-            {
-                if (k == str_len - 1 && dest->data[k + i] == str[k])
-                    return i;
-                off = k;
-            }
-            i += off;
-        }
-    }
+    const size_t last = dest->size - str_len;
+    for (size_t i = pos; i <= last; ++i)
+        if (memcmp(&dest->data[i], str, str_len) == 0)
+            return i;
     return string_npos;
 }
 
 static inline size_t _string_rfind(const string dest, const char* str, size_t str_len, size_t pos)
 {
-    if (str_len == 0) return 0;
-    if (str_len > dest->size || dest->size == 0 || pos >= dest->size) return string_npos;
+    if (str_len == 0) return _min(pos, dest->size);
+    if (str_len > dest->size) return string_npos;
 
-    for (size_t i = pos; i != string_npos; --i)
+    const size_t start = _min(pos, dest->size - str_len);
+    for (size_t i = start; i != string_npos; --i)
     {
         if (dest->data[i] == str[0] && i + str_len <= dest->size && memcmp(&dest->data[i], str, str_len) == 0)
             return i;
@@ -148,8 +146,8 @@ static inline size_t _string_find_first_of(const string dest, const char* str, s
 
 static inline size_t _string_find_last_of(const string dest, const char* str, size_t str_len, size_t pos)
 {
-    if (pos < dest->size)
-        for (size_t i = pos; i != string_npos; --i)
+    if (dest->size != 0)
+        for (size_t i = _min(pos, dest->size - 1); i != string_npos; --i)
             for (size_t k = 0; k < str_len; ++k)
                 if (dest->data[i] == str[k])
                     return i;
@@ -159,19 +157,29 @@ static inline size_t _string_find_last_of(const string dest, const char* str, si
 static inline size_t _string_find_first_not_of(const string dest, const char* str, size_t str_len, size_t pos)
 {
     for (size_t i = pos; i < dest->size; ++i)
-        for (size_t k = 0; k < str_len; ++k)
-            if (dest->data[i] != str[k])
-                return i;
+    {
+        size_t k = 0;
+        for (; k < str_len; ++k)
+            if (dest->data[i] == str[k])
+                break;
+        if (k == str_len)
+            return i;
+    }
     return string_npos;
 }
 
 static inline size_t _string_find_last_not_of(const string dest, const char* str, size_t str_len, size_t pos)
 {
-    if (pos < dest->size)
-        for (size_t i = pos; i != string_npos; --i)
-            for (size_t k = 0; k < str_len; ++k)
-                if (dest->data[i] != str[k])
-                    return i;
+    if (dest->size != 0)
+        for (size_t i = _min(pos, dest->size - 1); i != string_npos; --i)
+        {
+            size_t k = 0;
+            for (; k < str_len; ++k)
+                if (dest->data[i] == str[k])
+                    break;
+            if (k == str_len)
+                return i;
+        }
     return string_npos;
 }
 
@@ -245,15 +253,17 @@ static inline int string_assign_c(string dest, size_t n, char c)
 {
     if (n <= dest->capacity)
     {
-        memset(dest->data, c, n);
-        dest->size = n;
-        dest->_null_char = n;
-        dest->data[n] = 0;
+        if (n != 0)
+            memset(dest->data, c, n);
+        _string_set_props(dest, n, dest->capacity);
+        if (c == 0) dest->_null_char = 0;
         return STRING_SUCCESS;
     }
 
-    dest->data = realloc(dest->data, n + 1);
-    STRING_RETURN_IF_NULL(dest->data);
+    if (n > _string_max_size) return STRING_ERROR;
+    char* new_data = realloc(dest->data, n + 1);
+    STRING_RETURN_IF_NULL(new_data);
+    dest->data = new_data;
     memset(dest->data, c, n);
     _string_set_props(dest, n, n);
     if (c == 0) dest->_null_char = 0;
@@ -277,7 +287,9 @@ static inline int string_append_r(string dest, const char* src, size_t n)
 
 static inline int string_append_c(string dest, size_t n, char c)
 {
+    if (n == 0) return STRING_SUCCESS;
     const size_t min = _min(dest->size, dest->_null_char);
+    if (n > _string_max_size - min) return STRING_ERROR;
     const size_t new_len = min + n;
     if (new_len <= dest->capacity)
     {
@@ -288,8 +300,9 @@ static inline int string_append_c(string dest, size_t n, char c)
         return STRING_SUCCESS;
     }
 
-    dest->data = realloc(dest->data, dest->size + n + 1);
-    STRING_RETURN_IF_NULL(dest->data);
+    char* new_data = realloc(dest->data, new_len + 1);
+    STRING_RETURN_IF_NULL(new_data);
+    dest->data = new_data;
     memset(&dest->data[min], c, n);
     _string_set_props(dest, new_len, new_len);
     return STRING_SUCCESS;
@@ -300,6 +313,7 @@ static inline int string_insert_c(string dest, size_t pos, size_t n, char c)
     if (pos >= dest->size) return STRING_ERROR;
 
     const size_t min = _min(dest->size, dest->_null_char);
+    if (n > _string_max_size - min) return STRING_ERROR;
     const size_t new_len = min + n;
     if (new_len <= dest->capacity)
     {
@@ -311,8 +325,9 @@ static inline int string_insert_c(string dest, size_t pos, size_t n, char c)
         return STRING_SUCCESS;
     }
 
-    dest->data = realloc(dest->data, dest->size + n + 1);
-    STRING_RETURN_IF_NULL(dest->data);
+    char* new_data = realloc(dest->data, new_len + 1);
+    STRING_RETURN_IF_NULL(new_data);
+    dest->data = new_data;
     memmove(&dest->data[pos + n], &dest->data[pos], dest->size - pos);
     memset(&dest->data[pos], c, n);
     _string_set_props(dest, new_len, new_len);
@@ -342,16 +357,19 @@ static inline int string_insert_sub(string dest, size_t pos, const string str, s
 
 static inline int string_resize_c(string dest, size_t new_size, char c)
 {
+    if (new_size > _string_max_size) return STRING_ERROR;
     if (new_size <= dest->capacity)
     {
         dest->size = new_size;
-        dest->data[dest->size] = 0;
         dest->_null_char = new_size;
+        if (dest->data != NULL)
+            dest->data[dest->size] = 0;
         return STRING_SUCCESS;
     }
 
-    dest->data = realloc(dest->data, new_size + 1);
-    STRING_RETURN_IF_NULL(dest->data);
+    char* new_data = realloc(dest->data, new_size + 1);
+    STRING_RETURN_IF_NULL(new_data);
+    dest->data = new_data;
     memset(&dest->data[dest->size], c, new_size - dest->size);
     if (c == 0)
         dest->_null_char = dest->size;
@@ -373,8 +391,9 @@ static inline int string_shrink_to_fit(string dest)
     if (dest->size == dest->capacity)
         return STRING_SUCCESS;
 
-    dest->data = realloc(dest->data, dest->size + 1);
-    STRING_RETURN_IF_NULL(dest->data);
+    char* new_data = realloc(dest->data, dest->size + 1);
+    STRING_RETURN_IF_NULL(new_data);
+    dest->data = new_data;
     dest->capacity = dest->size;
     dest->_null_char = dest->size;
     return STRING_SUCCESS;
@@ -382,11 +401,13 @@ static inline int string_shrink_to_fit(string dest)
 
 static inline int string_reserve(string dest, size_t n)
 {
+    if (n > _string_max_size) return STRING_ERROR;
     if (n == dest->size) return STRING_SUCCESS;
     if (n < dest->size) return string_shrink_to_fit(dest);
 
-    dest->data = realloc(dest->data, n + 1);
-    STRING_RETURN_IF_NULL(dest->data);
+    char* new_data = realloc(dest->data, n + 1);
+    STRING_RETURN_IF_NULL(new_data);
+    dest->data = new_data;
     dest->capacity = n;
     memset(&dest->data[dest->size], 0, n - dest->size);
     return STRING_SUCCESS;
@@ -423,45 +444,34 @@ static inline void string_swap(string s1, string s2)
 
 static inline void string_erase(string dest, size_t pos, size_t len)
 {
-    assert(pos < dest->size && "pos must be lest than string_size(dest)");
+    assert(pos <= dest->size && "pos must not exceed string_size(dest)");
 
-    if (len + pos >= dest->size)
-    {
-        dest->data[pos] = 0;
-        dest->size = 0;
-        dest->_null_char = 0;
-        return;
-    }
-
-    memmove(&dest->data[pos], &dest->data[pos + len], dest->size - pos - len);
-    dest->size -= len;
+    const size_t to_erase = _min(len, dest->size - pos);
+    if (to_erase == 0) return;
+    memmove(&dest->data[pos], &dest->data[pos + to_erase], dest->size - pos - to_erase + 1);
+    dest->size -= to_erase;
     dest->_null_char = dest->size;
-    dest->data[dest->size] = 0;
 }
 
 static inline size_t string_copy(const string ss, char* s, size_t len, size_t pos)
 {
     if (pos >= ss->size) return 0;
-    const size_t to_copy = len + pos > ss->size ? ss->size - pos : len + pos;
-    memcpy(s, &ss->data[pos], to_copy);
+    const size_t to_copy = _min(len, ss->size - pos);
+    if (to_copy != 0)
+        memcpy(s, &ss->data[pos], to_copy);
     return to_copy;
 }
 
 static inline int string_substr(const string s, string dest, size_t pos, size_t len)
 {
-    if (pos == s->size)
+    if (pos > s->size)
     {
-        string_create_empty(dest);
-        return STRING_SUCCESS;
-    }
-    else if (pos > s->size)
-    {
-        dest = NULL;
+        _string_reset(dest);
         return STRING_ERROR;
     }
-    const size_t to_copy = len + pos > s->size ? s->size - pos : len + pos;
-    string_create_r(dest, &s->data[pos], to_copy);
-    return STRING_SUCCESS;
+    const size_t to_copy = _min(len, s->size - pos);
+    _string_reset(dest);
+    return _string_assign(dest, to_copy == 0 ? "" : &s->data[pos], to_copy);
 }
 
 static inline size_t string_find_c(const string s, char c, size_t pos)
@@ -513,8 +523,8 @@ static inline size_t string_find_last_not_of_c(const string s, char c, size_t po
     return string_npos;
 }
 
-static inline int string_compare(const string s, const char* str) { return strcmp(s->data, str) == 0; }
-static inline int string_compare_s(const string s1, const string s2) { return strcmp(s1->data, s2->data) == 0; }
+static inline int string_compare(const string s, const char* str) { return s->size == strlen(str) && (s->size == 0 || memcmp(s->data, str, s->size) == 0); }
+static inline int string_compare_s(const string s1, const string s2) { return s1->size == s2->size && (s1->size == 0 || memcmp(s1->data, s2->data, s1->size) == 0); }
 static inline size_t string_find(const string s, const char* str, size_t pos) { return _string_find(s, str, strlen(str), pos); }
 static inline size_t string_find_s(const string s1, const string s2, size_t pos) { return _string_find(s1, s2->data, s2->size, pos); }
 static inline size_t string_find_n(const string s, const char* str, size_t pos, size_t n) { return _string_find(s, str, n, pos); }
@@ -535,9 +545,9 @@ static inline size_t string_find_last_not_of_s(const string s1, const string s2,
 static inline size_t string_find_last_not_of_n(const string s, const char* str, size_t pos, size_t n) { return _string_find_last_not_of(s, str, n, pos); }
 
 static inline int         string_empty(const string s) { return s->size == 0; }
-static inline void        string_clear(string dest) { dest->size = 0; dest->data[0] = 0; dest->_null_char = 0; }
+static inline void        string_clear(string dest) { dest->size = 0; if (dest->data != NULL) dest->data[0] = 0; dest->_null_char = 0; }
 static inline char*       string_data(const string s) { return s->data; }
-static inline const char* string_cstr(const string s) { return s->data; }
+static inline const char* string_cstr(const string s) { return s->data == NULL ? "" : s->data; }
 static inline size_t      string_max_size() { return _string_max_size; }
 static inline size_t      string_size(const string s) { return s->size; }
 static inline size_t      string_length(const string s) { return s->size; }
@@ -548,8 +558,8 @@ static inline char        string_back(const string s) { return s->data[s->size -
 
 static inline void string_print(const string s)
 {
-    printf("s: %zu c: %zu nc: %zu [%s]\n", s[0].size, s[0].capacity, s->_null_char, s[0].data);
-    puts(s->data);
+    printf("s: %zu c: %zu nc: %zu [%s]\n", s[0].size, s[0].capacity, s->_null_char, string_cstr(s));
+    puts(string_cstr(s));
 }
 #undef STRING_RETURN_IF_NULL
 #endif
