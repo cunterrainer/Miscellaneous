@@ -1,6 +1,7 @@
 // ignore_for_file: type=lint
 library Hash;
 import "dart:core";
+import "dart:convert" show utf8;
 import "dart:typed_data";
 
 class _Util
@@ -182,7 +183,8 @@ class Sha256
   }
 
   void Update(Uint8List data) => UpdateBinary(data, data.length);
-  void UpdateString(String str) => Update(Uint8List.fromList(str.codeUnits));
+  /// Updates the hash with the UTF-8 encoding of [str].
+  void UpdateString(String str) => Update(Uint8List.fromList(utf8.encode(str)));
 
   void Finalize()
   {
