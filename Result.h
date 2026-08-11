@@ -207,20 +207,17 @@ using Err = Error<std::size_t>;
 
 namespace ResultUtil
 {
-    template <class... Types> // std::void_t from C++17
-    using VoidT = void;
-
     template <typename E, typename = void>
     struct ErrorHasType : std::false_type {};
 
     template <typename E>
-    struct ErrorHasType<E, VoidT<typename E::Type>> : std::true_type {};
+    struct ErrorHasType<E, std::void_t<typename E::Type>> : std::true_type {};
 
     template <typename E, typename = void>
     struct ErrorHasTypeFunction : std::false_type {};
 
     template <typename E>
-    struct ErrorHasTypeFunction<E, VoidT<decltype(std::declval<E>().type())>> : std::true_type {};
+    struct ErrorHasTypeFunction<E, std::void_t<decltype(std::declval<E>().type())>> : std::true_type {};
 }
 
 template <typename T, typename E = Err>
@@ -308,7 +305,7 @@ public:
         return f(std::forward<Args>(args)...);
     }
 
-    template <typename U = E, typename = ResultUtil::VoidT<decltype(std::declval<U>().what())>>
+    template <typename U = E, typename = std::void_t<decltype(std::declval<U>().what())>>
     inline const T& Expect(const char* msg) const
     {
         if (IsOk())
@@ -401,7 +398,7 @@ public:
             return f(std::forward<Args>(args)...);
     }
 
-    template <typename U = E, typename = ResultUtil::VoidT<decltype(std::declval<U>().what())>>
+    template <typename U = E, typename = std::void_t<decltype(std::declval<U>().what())>>
     inline void Expect(const char* msg) const
     {
         if (!m_Valid)
