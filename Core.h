@@ -186,7 +186,7 @@ int main()
     puts("Using clang");
     #endif
 
-    #if CORE_LANG_STDCPP_C17
+    #if CORE_LANG_STDCPP_CPP17
     puts("Using C++ 17");
     #endif
 
@@ -211,7 +211,7 @@ int main()
     #endif
 
     // Alternatively, works for all types
-    puts(CORE_OS_NAME)
+    puts(CORE_OS_NAME);
     return 0;
 }
 
@@ -220,13 +220,27 @@ OS Can NOT be turned off because platform depends on it, if platform is turned o
 Other includes endianes and wordsize
 */
 
-#define CORE_ENABLE_ARCHITECTURE 1
-#define CORE_ENABLE_COMPILER     1
-#define CORE_ENABLE_HARDWARE     1
-#define CORE_ENABLE_LANGUAGE     1
-#define CORE_ENABLE_LIBRARY      1
-#define CORE_ENABLE_PLATFORM     1
-#define CORE_ENABLE_OTHER        1 && (CORE_ENABLE_ARCHITECTURE && CORE_ENABLE_PLATFORM && CORE_ENABLE_LIBRARY)
+#ifndef CORE_ENABLE_ARCHITECTURE
+    #define CORE_ENABLE_ARCHITECTURE 1
+#endif
+#ifndef CORE_ENABLE_COMPILER
+    #define CORE_ENABLE_COMPILER 1
+#endif
+#ifndef CORE_ENABLE_HARDWARE
+    #define CORE_ENABLE_HARDWARE 1
+#endif
+#ifndef CORE_ENABLE_LANGUAGE
+    #define CORE_ENABLE_LANGUAGE 1
+#endif
+#ifndef CORE_ENABLE_LIBRARY
+    #define CORE_ENABLE_LIBRARY 1
+#endif
+#ifndef CORE_ENABLE_PLATFORM
+    #define CORE_ENABLE_PLATFORM 1
+#endif
+#ifndef CORE_ENABLE_OTHER
+    #define CORE_ENABLE_OTHER (CORE_ENABLE_ARCHITECTURE && CORE_ENABLE_PLATFORM && CORE_ENABLE_LIBRARY)
+#endif
 
 
 /*
@@ -3069,11 +3083,8 @@ DEALINGS IN THE SOFTWARE.
  */
 #if !CORE_ENDIAN_BIG_BYTE && !CORE_ENDIAN_BIG_WORD && \
     !CORE_ENDIAN_LITTLE_BYTE && !CORE_ENDIAN_LITTLE_WORD
-    #ifdef CORE_ARCH_ARM
-        #include <boost/predef/os/windows.h>
-        #ifdef CORE_OS_WINDOWS
-            #define CORE_ENDIAN_LITTLE_BYTE CORE_VERSION_NUMBER_AVAILABLE
-        #endif
+    #if CORE_ARCH_ARM && CORE_OS_WINDOWS
+        #define CORE_ENDIAN_LITTLE_BYTE CORE_VERSION_NUMBER_AVAILABLE
     #endif
 #endif
 
@@ -3187,7 +3198,7 @@ DEALINGS IN THE SOFTWARE.
     #define CORE_HW_SIMD_X86 CORE_HW_SIMD_X86_AVX_VERSION
 #endif
 #if !defined(CORE_HW_SIMD_X86) && defined(__FMA__)
-    #define CORE_HW_SIMD_X86 CORE_HW_SIMD_X86_FMA_VERSION
+    #define CORE_HW_SIMD_X86 CORE_HW_SIMD_X86_FMA3_VERSION
 #endif
 #if !defined(CORE_HW_SIMD_X86) && defined(__SSE4_2__)
     #define CORE_HW_SIMD_X86 CORE_HW_SIMD_X86_SSE4_2_VERSION
@@ -3237,11 +3248,11 @@ DEALINGS IN THE SOFTWARE.
 #ifdef CORE_HW_SIMD_X86_AMD
     // At this point, we know that we have an AMD CPU, we do need to check for
     // other x86 extensions to determine the final version number.
-    #include <boost/predef/hardware/simd/x86.h>
     #if CORE_HW_SIMD_X86 > CORE_HW_SIMD_X86_AMD
         #undef CORE_HW_SIMD_X86_AMD
         #define CORE_HW_SIMD_X86_AMD CORE_HW_SIMD_X86
     #endif
+    #undef CORE_HW_SIMD_NAME
     #define CORE_HW_SIMD_NAME CORE_HW_SIMD_X86_AMD_NAME 
 
 #endif
