@@ -89,6 +89,12 @@
 #define HASH_INLINE static
 #endif // __cplusplus && HASH_ENABLE_CPP_INTERFACE
 
+#if defined(__cplusplus)
+#define HASH_THREAD_LOCAL thread_local
+#else
+#define HASH_THREAD_LOCAL _Thread_local
+#endif
+
 #if HASH_ENABLE_C_INTERFACE == 1
 #define HASH_MD5_SIZE 32
 #define HASH_SHA1_SIZE 40
@@ -130,11 +136,16 @@ HASH_INLINE const char* hash_util_hash_file(const char* path, const char* mode, 
     size_t bytes_read = 0;
     init_fn(hasher);
 
-    while((bytes_read = fread(buffer, sizeof(char), sizeof(buffer)-1, fp)))
+    while((bytes_read = fread(buffer, sizeof(char), sizeof(buffer), fp)) != 0)
     {
         update_fn(hasher, buffer, bytes_read);
     }
-    fclose(fp);
+
+    const int read_error = ferror(fp);
+    const int close_error = fclose(fp);
+    if (read_error || close_error != 0)
+        return "";
+
     final_fn(hasher);
     return hex_fn(hasher, out_buff);
 }
@@ -145,14 +156,70 @@ HASH_INLINE char* hash_util_load_file(const char* path, const char* mode, long* 
     FILE* f = fopen(path, mode);
     if (f == NULL) return NULL;
 
-    fseek(f, 0, SEEK_END);
-    *fsize = ftell(f);
-    fseek(f, 0, SEEK_SET);
+    char* string = NULL;
+    size_t size = 0;
+    size_t capacity = 0;
+    char buffer[HASH_FILE_READ_BUFFER_SIZE];
+    size_t bytes_read;
 
-    char* string = (char*)malloc((size_t)*fsize);
-    if (string == NULL) return NULL;
-    fread(string, *fsize, 1, f);
-    fclose(f);
+    while ((bytes_read = fread(buffer, 1, sizeof(buffer), f)) != 0)
+    {
+        if (bytes_read > (size_t)LONG_MAX - size)
+        {
+            free(string);
+            fclose(f);
+            return NULL;
+        }
+
+        if (size + bytes_read > capacity)
+        {
+            size_t new_capacity = capacity == 0 ? sizeof(buffer) : capacity;
+            while (new_capacity < size + bytes_read)
+            {
+                if (new_capacity > (size_t)LONG_MAX / 2)
+                {
+                    new_capacity = size + bytes_read;
+                    break;
+                }
+                new_capacity *= 2;
+            }
+
+            char* new_string = (char*)realloc(string, new_capacity);
+            if (new_string == NULL)
+            {
+                free(string);
+                fclose(f);
+                return NULL;
+            }
+            string = new_string;
+            capacity = new_capacity;
+        }
+
+        memcpy(string + size, buffer, bytes_read);
+        size += bytes_read;
+    }
+
+    if (ferror(f))
+    {
+        free(string);
+        fclose(f);
+        return NULL;
+    }
+
+    if (fclose(f) != 0)
+    {
+        free(string);
+        return NULL;
+    }
+
+    if (string == NULL)
+    {
+        string = (char*)malloc(1);
+        if (string == NULL)
+            return NULL;
+    }
+
+    *fsize = (long)size;
     return string;
 }
 
@@ -428,7 +495,7 @@ static void hash_sha256_finalize(Hash_Sha256 s)
 // if buffer == NULL returns internal buffer, buffer size must be at least 65
 HASH_INLINE const char* hash_sha256_hexdigest(const Hash_Sha256 s, char* buffer)
 {
-    static char hex[HASH_SHA256_SIZE+1];
+    static HASH_THREAD_LOCAL char hex[HASH_SHA256_SIZE+1];
     char* buff = buffer == NULL ? hex : buffer;
     for (int32_t i = 0; i < 8; ++i)
     {
@@ -507,7 +574,7 @@ HASH_INLINE void hash_sha224_finalize(Hash_Sha224 s)
 // if buffer == NULL returns internal buffer, buffer size must be at least 57
 HASH_INLINE const char* hash_sha224_hexdigest(const Hash_Sha224 s, char* buffer)
 {
-    static char hex[HASH_SHA224_SIZE+1];
+    static HASH_THREAD_LOCAL char hex[HASH_SHA224_SIZE+1];
     char* buff = buffer == NULL ? hex : buffer;
     for (int32_t i = 0; i < 7; ++i)
     {
@@ -693,8 +760,8 @@ static void hash_sha512_update_binary(Hash_Sha512 s, const char* data, size_t si
     */
     if (s->bufferSize)
     {
-        std::size_t toCopy = HASH_MIN(128 - s->bufferSize, size);
-        std::memcpy(s->buffer + s->bufferSize, data, toCopy);
+        size_t toCopy = HASH_MIN(128 - s->bufferSize, size);
+        memcpy(s->buffer + s->bufferSize, data, toCopy);
         s->bufferSize += toCopy;
         data += toCopy;
         size -= toCopy;
@@ -709,7 +776,7 @@ static void hash_sha512_update_binary(Hash_Sha512 s, const char* data, size_t si
 
     while (size >= 128)
     {
-        std::memcpy(s->buffer, data, 128);
+        memcpy(s->buffer, data, 128);
         hash_private_sha512_transform(s);
         s->bitlen += 1024;
         data += 128;
@@ -718,7 +785,7 @@ static void hash_sha512_update_binary(Hash_Sha512 s, const char* data, size_t si
 
     if (size > 0)
     {
-        std::memcpy(s->buffer, data, size);
+        memcpy(s->buffer, data, size);
         s->bufferSize = size;
     }
 }
@@ -752,7 +819,7 @@ static void hash_sha512_finalize(Hash_Sha512 s)
 // if buffer == NULL returns internal buffer, buffer size must be at least 129
 HASH_INLINE const char* hash_sha512_hexdigest(const Hash_Sha512 s, char* buffer)
 {
-    static char hex[HASH_SHA512_SIZE+1];
+    static HASH_THREAD_LOCAL char hex[HASH_SHA512_SIZE+1];
     char* buff = buffer == NULL ? hex : buffer;
     for (int64_t i = 0; i < 8; ++i)
     {
@@ -851,7 +918,7 @@ HASH_INLINE void hash_sha512t_finalize(Hash_Sha512T s)
 // if buffer == NULL returns internal buffer, buffer size must be at least (t/4)+1
 HASH_INLINE const char* hash_sha512t_hexdigest(const Hash_Sha512T s, char* buffer)
 {
-    static char hex[513]; // use max allowed size to avoid memory allocation
+    static HASH_THREAD_LOCAL char hex[513]; // use max allowed size to avoid memory allocation
     char* buff = buffer == NULL ? hex : buffer;
     for (int64_t i = 0; i < 8; ++i)
     {
@@ -937,7 +1004,7 @@ HASH_INLINE void hash_sha384_finalize(Hash_Sha384 s)
 // if buffer == NULL returns internal buffer, buffer size must be at least 97
 HASH_INLINE const char* hash_sha384_hexdigest(const Hash_Sha384 s, char* buffer)
 {
-    static char hex[HASH_SHA384_SIZE+1]; // use max allowed size to avoid memory allocation
+    static HASH_THREAD_LOCAL char hex[HASH_SHA384_SIZE+1]; // use max allowed size to avoid memory allocation
     char* buff = buffer == NULL ? hex : buffer;
     for (int64_t i = 0; i < 6; ++i)
     {
@@ -1191,7 +1258,7 @@ static void hash_sha1_finalize(Hash_Sha1 s)
 // if buffer == NULL returns internal buffer, buffer size must be at least 41
 HASH_INLINE const char* hash_sha1_hexdigest(const Hash_Sha1 s, char* buffer)
 {
-    static char hex[HASH_SHA1_SIZE+1]; // use max allowed size to avoid memory allocation
+    static HASH_THREAD_LOCAL char hex[HASH_SHA1_SIZE+1]; // use max allowed size to avoid memory allocation
     char* buff = buffer == NULL ? hex : buffer;
     for (int32_t i = 0; i < 5; ++i)
     {
@@ -1527,7 +1594,7 @@ HASH_INLINE void  hash_md5_finalize(Hash_MD5 m)
 // if buffer == NULL returns internal buffer, buffer size must be at least 33
 HASH_INLINE const char* hash_md5_hexdigest(const Hash_MD5 m, char* buffer)
 {
-    static char hex[HASH_MD5_SIZE+1];
+    static HASH_THREAD_LOCAL char hex[HASH_MD5_SIZE+1];
     char* buf = buffer == NULL ? hex : buffer;
     for (int i = 0; i < 16; i++)
     {
@@ -1812,7 +1879,7 @@ HASH_INLINE void hash_sha3_224_finalize(Hash_Sha3_224 s)
 // if buffer == NULL returns internal buffer, buffer size must be at least 57
 HASH_INLINE const char* hash_sha3_224_hexdigest(const Hash_Sha3_224 s, char* buffer)
 {
-    static char hex[HASH_SHA3_224_SIZE+1];
+    static HASH_THREAD_LOCAL char hex[HASH_SHA3_224_SIZE+1];
     char* buff = buffer == NULL ? hex : buffer;
     for (size_t i = 0; i < HASH_SHA3_224_SIZE/2; i++)
     {
@@ -1879,7 +1946,7 @@ HASH_INLINE void hash_sha3_256_finalize(Hash_Sha3_256 s)
 // if buffer == NULL returns internal buffer, buffer size must be at least 65
 HASH_INLINE const char* hash_sha3_256_hexdigest(const Hash_Sha3_256 s, char* buffer)
 {
-    static char hex[HASH_SHA3_256_SIZE+1];
+    static HASH_THREAD_LOCAL char hex[HASH_SHA3_256_SIZE+1];
     char* buff = buffer == NULL ? hex : buffer;
     for (size_t i = 0; i < HASH_SHA3_256_SIZE/2; i++)
     {
@@ -1946,7 +2013,7 @@ HASH_INLINE void hash_sha3_384_finalize(Hash_Sha3_384 s)
 // if buffer == NULL returns internal buffer, buffer size must be at least 97
 HASH_INLINE const char* hash_sha3_384_hexdigest(const Hash_Sha3_384 s, char* buffer)
 {
-    static char hex[HASH_SHA3_384_SIZE+1];
+    static HASH_THREAD_LOCAL char hex[HASH_SHA3_384_SIZE+1];
     char* buff = buffer == NULL ? hex : buffer;
     for (size_t i = 0; i < HASH_SHA3_384_SIZE/2; i++)
     {
@@ -2013,7 +2080,7 @@ HASH_INLINE void hash_sha3_512_finalize(Hash_Sha3_512 s)
 // if buffer == NULL returns internal buffer, buffer size must be at least 129
 HASH_INLINE const char* hash_sha3_512_hexdigest(const Hash_Sha3_512 s, char* buffer)
 {
-    static char hex[HASH_SHA3_512_SIZE+1];
+    static HASH_THREAD_LOCAL char hex[HASH_SHA3_512_SIZE+1];
     char* buff = buffer == NULL ? hex : buffer;
     for (size_t i = 0; i < HASH_SHA3_512_SIZE/2; i++)
     {
@@ -2105,18 +2172,23 @@ namespace Hash
         template <typename Hasher>
         inline std::string HashFile(std::string_view path, std::ios::openmode flag = std::ios::binary)
         {
-            std::ifstream file(path.data(), flag);
+            std::ifstream file(std::string(path), flag);
             if (!file.is_open())
                 return std::string();
 
             Hasher hasher;
             char buffer[HASH_FILE_READ_BUFFER_SIZE];
 
-            do
+            while (file.read(buffer, sizeof(buffer)))
             {
-                file.read(buffer, HASH_FILE_READ_BUFFER_SIZE);
-                hasher.Update(buffer, file.gcount());
-            } while (file.gcount() > 0);
+                hasher.Update(buffer, sizeof(buffer));
+            }
+
+            if (file.gcount() > 0)
+                hasher.Update(buffer, static_cast<std::size_t>(file.gcount()));
+
+            if (!file.eof())
+                return std::string();
 
             hasher.Finalize();
             return hasher.Hexdigest();
@@ -2141,19 +2213,44 @@ namespace Hash
         }
 
 
+        inline bool LoadFile(std::string_view path, std::ios::openmode flag, std::string& data)
+        {
+            std::ifstream infile(std::string(path), flag);
+            if (!infile.is_open())
+                return false;
+
+            data.clear();
+            char buffer[HASH_FILE_READ_BUFFER_SIZE];
+            while (infile.read(buffer, sizeof(buffer)))
+                data.append(buffer, sizeof(buffer));
+
+            if (infile.gcount() > 0)
+                data.append(buffer, static_cast<std::size_t>(infile.gcount()));
+
+            if (!infile.eof())
+                return data.clear(), false;
+
+            return true;
+        }
+
+
+        inline bool LoadFile(const char* path, std::ios::openmode flag, std::string& data)
+        {
+            return path != nullptr && LoadFile(std::string_view(path), flag, data);
+        }
+
+
+        inline std::string LoadFile(std::string_view path, std::ios::openmode flag) // std::ios::binary
+        {
+            std::string data;
+            LoadFile(path, flag, data);
+            return data;
+        }
+
+
         inline std::string LoadFile(const char* path, std::ios::openmode flag) // std::ios::binary
         {
-            std::ifstream infile(path, flag);
-            if (!infile.is_open())
-                return "";
-
-            infile.seekg(0, std::ios::end);
-            std::size_t size = static_cast<std::size_t>(infile.tellg());
-            infile.seekg(0, std::ios::beg);
-
-            std::string data(size, ' ');
-            infile.read(data.data(), size);
-            return data;
+            return path == nullptr ? std::string() : LoadFile(std::string_view(path), flag);
         }
 
 
@@ -2811,8 +2908,16 @@ namespace Hash
 
     namespace File
     {
-        inline std::string sha512t(std::size_t t, const char* path, std::ios::openmode flag = std::ios::binary) { return Hash::sha512t(t, Util::LoadFile(path, flag)); }
-        inline std::string sha512t(std::size_t t, std::string_view path, std::ios::openmode flag = std::ios::binary) { return Hash::sha512t(t, Util::LoadFile(path.data(), flag)); }
+        inline std::string sha512t(std::size_t t, std::string_view path, std::ios::openmode flag = std::ios::binary)
+        {
+            std::string data;
+            return Util::LoadFile(path, flag, data) ? Hash::sha512t(t, data) : std::string();
+        }
+
+        inline std::string sha512t(std::size_t t, const char* path, std::ios::openmode flag = std::ios::binary)
+        {
+            return path == nullptr ? std::string() : sha512t(t, std::string_view(path), flag);
+        }
     }
 
 
@@ -3873,15 +3978,49 @@ namespace Hash
 
     namespace File
     {
-        inline std::string shake128(const char* path,      std::size_t outsizeBytes, std::ios::openmode flag = std::ios::binary) { return Hash::shake128(Util::LoadFile(path, flag),        outsizeBytes); }
-        inline std::string shake128(std::string_view path, std::size_t outsizeBytes, std::ios::openmode flag = std::ios::binary) { return Hash::shake128(Util::LoadFile(path.data(), flag), outsizeBytes); }
-        inline std::string shake256(const char* path,      std::size_t outsizeBytes, std::ios::openmode flag = std::ios::binary) { return Hash::shake256(Util::LoadFile(path, flag),        outsizeBytes); }
-        inline std::string shake256(std::string_view path, std::size_t outsizeBytes, std::ios::openmode flag = std::ios::binary) { return Hash::shake256(Util::LoadFile(path.data(), flag), outsizeBytes); }
+        inline std::string shake128(std::string_view path, std::size_t outsizeBytes, std::ios::openmode flag = std::ios::binary)
+        {
+            std::string data;
+            return Util::LoadFile(path, flag, data) ? Hash::shake128(data, outsizeBytes) : std::string();
+        }
 
-        template <std::size_t outsizeBytes> inline std::string shake128(const char* path,      std::ios::openmode flag = std::ios::binary) { return Hash::shake128<outsizeBytes>(Util::LoadFile(path,        flag)); }
-        template <std::size_t outsizeBytes> inline std::string shake128(std::string_view path, std::ios::openmode flag = std::ios::binary) { return Hash::shake128<outsizeBytes>(Util::LoadFile(path.data(), flag)); }
-        template <std::size_t outsizeBytes> inline std::string shake256(const char* path,      std::ios::openmode flag = std::ios::binary) { return Hash::shake256<outsizeBytes>(Util::LoadFile(path,        flag)); }
-        template <std::size_t outsizeBytes> inline std::string shake256(std::string_view path, std::ios::openmode flag = std::ios::binary) { return Hash::shake256<outsizeBytes>(Util::LoadFile(path.data(), flag)); }
+        inline std::string shake128(const char* path, std::size_t outsizeBytes, std::ios::openmode flag = std::ios::binary)
+        {
+            return path == nullptr ? std::string() : shake128(std::string_view(path), outsizeBytes, flag);
+        }
+
+        inline std::string shake256(std::string_view path, std::size_t outsizeBytes, std::ios::openmode flag = std::ios::binary)
+        {
+            std::string data;
+            return Util::LoadFile(path, flag, data) ? Hash::shake256(data, outsizeBytes) : std::string();
+        }
+
+        inline std::string shake256(const char* path, std::size_t outsizeBytes, std::ios::openmode flag = std::ios::binary)
+        {
+            return path == nullptr ? std::string() : shake256(std::string_view(path), outsizeBytes, flag);
+        }
+
+        template <std::size_t outsizeBytes> inline std::string shake128(std::string_view path, std::ios::openmode flag = std::ios::binary)
+        {
+            std::string data;
+            return Util::LoadFile(path, flag, data) ? Hash::shake128<outsizeBytes>(data) : std::string();
+        }
+
+        template <std::size_t outsizeBytes> inline std::string shake128(const char* path, std::ios::openmode flag = std::ios::binary)
+        {
+            return path == nullptr ? std::string() : shake128<outsizeBytes>(std::string_view(path), flag);
+        }
+
+        template <std::size_t outsizeBytes> inline std::string shake256(std::string_view path, std::ios::openmode flag = std::ios::binary)
+        {
+            std::string data;
+            return Util::LoadFile(path, flag, data) ? Hash::shake256<outsizeBytes>(data) : std::string();
+        }
+
+        template <std::size_t outsizeBytes> inline std::string shake256(const char* path, std::ios::openmode flag = std::ios::binary)
+        {
+            return path == nullptr ? std::string() : shake256<outsizeBytes>(std::string_view(path), flag);
+        }
     }
 
 
@@ -3918,7 +4057,7 @@ HASH_INLINE void hash_private_keccak_Keccak(unsigned int rate, unsigned int capa
 // heap allocated if outsizeBytes > HASH_SHAKE_128_MALLOC_LIMIT
 HASH_INLINE const char* hash_shake128_binary(const char* data, size_t size, size_t outsizeBytes, char* buffer /*outsizeBytes+1*/)
 {
-    static char hex[HASH_SHAKE_128_MALLOC_LIMIT + 1];
+    static HASH_THREAD_LOCAL char hex[HASH_SHAKE_128_MALLOC_LIMIT + 1];
     unsigned char intBuff[HASH_SHAKE_128_MALLOC_LIMIT / 2];
     char* out = buffer;
     unsigned char* buff = intBuff;
@@ -3943,7 +4082,7 @@ HASH_INLINE const char* hash_shake128_binary(const char* data, size_t size, size
 // heap allocated if outsizeBytes > HASH_SHAKE_256_MALLOC_LIMIT
 HASH_INLINE const char* hash_shake256_binary(const char* data, size_t size, size_t outsizeBytes, char* buffer /*outsizeBytes+1*/)
 {
-    static char hex[HASH_SHAKE_256_MALLOC_LIMIT + 1];
+    static HASH_THREAD_LOCAL char hex[HASH_SHAKE_256_MALLOC_LIMIT + 1];
     unsigned char intBuff[HASH_SHAKE_256_MALLOC_LIMIT / 2];
     char* out = buffer;
     unsigned char* buff = intBuff;
@@ -4232,6 +4371,8 @@ HASH_INLINE void hash_private_keccak_Keccak(unsigned int rate, unsigned int capa
 #undef HASH_SHAKE_256_MALLOC_LIMIT
 #undef HASH_DEFINE_UTIL_SWAP_ENDIAN
 #undef HASH_PRIVATE_KECCAK_SPONGE_WORDS
+
+#undef HASH_THREAD_LOCAL
 
 #ifdef _MSC_VER
 #pragma warning( pop ) // 4996
