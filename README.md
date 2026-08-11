@@ -82,7 +82,7 @@ int main()
     puts("Using clang");
     #endif
 
-    #if CORE_LANG_STDCPP_C17
+    #if CORE_LANG_STDCPP_CPP17
     puts("Using C++ 17");
     #endif
 
@@ -107,7 +107,7 @@ int main()
     #endif
 
     // Alternatively, works for all types
-    puts(CORE_OS_NAME)
+    puts(CORE_OS_NAME);
     return 0;
 }
 ```
