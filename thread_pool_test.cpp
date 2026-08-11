@@ -286,6 +286,33 @@ namespace
         SetFailAllocationAfter(-1);
         REQUIRE(threw_bad_alloc);
     }
+
+    TEST(construction_allocation_failure_cleans_up_started_workers)
+    {
+        bool threw_bad_alloc = false;
+
+        try
+        {
+            // With the unsafe creation order this fails while allocating the
+            // worker slot after its thread has started, which destroys a
+            // joinable std::thread and terminates the process.
+            SetFailAllocationAfter(3);
+            Utility::ThreadPool pool(1u);
+        }
+        catch (const std::bad_alloc&)
+        {
+            SetFailAllocationAfter(-1);
+            threw_bad_alloc = true;
+        }
+        catch (...)
+        {
+            SetFailAllocationAfter(-1);
+            throw;
+        }
+
+        SetFailAllocationAfter(-1);
+        REQUIRE(threw_bad_alloc);
+    }
 #endif
 
     TEST(submit_detached_runs_tasks)
@@ -923,6 +950,50 @@ namespace
         REQUIRE(threw);
     }
 
+    TEST(worker_initiated_lifecycle_operations_are_rejected)
+    {
+        Utility::ThreadPool pool(1u);
+
+        auto rejected_operations = pool.Submit(
+            [&pool]
+            {
+                int rejected = 0;
+
+                try
+                {
+                    pool.Resize(2u);
+                }
+                catch (const std::logic_error&)
+                {
+                    ++rejected;
+                }
+
+                try
+                {
+                    pool.Shutdown();
+                }
+                catch (const std::logic_error&)
+                {
+                    ++rejected;
+                }
+
+                try
+                {
+                    pool.ShutdownNow();
+                }
+                catch (const std::logic_error&)
+                {
+                    ++rejected;
+                }
+
+                return rejected;
+            });
+
+        REQUIRE_EQ(rejected_operations.get(), 3);
+        REQUIRE_EQ(pool.Size(), 1u);
+        REQUIRE_EQ(pool.Submit(ReturnOne).get(), 1);
+    }
+
     TEST(concurrent_submit_under_load_stress)
     {
         Utility::ThreadPool pool(6u);
@@ -999,7 +1070,7 @@ namespace
         resizer.join();
         pool.WaitIdle();
         REQUIRE_EQ(pool.PendingTasks(), 0u);
-        REQUIRE(executed.load(std::memory_order_relaxed) > 0);
+        REQUIRE_EQ(executed.load(std::memory_order_relaxed), 12'000);
     }
 
     TEST(concurrent_submit_and_shutdown_race_stress)
