@@ -259,6 +259,9 @@ private:
 private:
     STRING_INLINE void Deallocate()
     {
+        if (m_Str == nullptr)
+            return;
+
         const size_type cap = m_Capacity + 1;
         for (size_type i = 0; i < cap; ++i)
             alloc_traits::destroy(m_Alloc, &m_Str[i]);
@@ -282,7 +285,8 @@ private:
             return;
 
         pointer tmp = Allocate(cap + 1);
-        std::memcpy(tmp, m_Str, m_Size);
+        if (m_Size != 0)
+            std::memcpy(tmp, m_Str, m_Size);
         Deallocate();
         m_Str = tmp;
         m_Capacity = cap;
@@ -313,8 +317,10 @@ private:
 
     STRING_INLINE void Append(const_pointer str, size_type strlen)
     {
+        if (strlen == 0 || strlen == npos)
+            return;
+
         const size_type newStrLen = m_Size + strlen;
-        if (strlen == npos) return;
 
         ReallocIfNeeded(newStrLen);
         std::strncat(m_Str, str, strlen);
@@ -342,7 +348,7 @@ private:
     template <class InputIt>
     STRING_INLINE basic_string& AssignFromIterator(InputIt first, InputIt last)
     {
-        const std::iterator_traits<InputIt>::difference_type dist = std::distance(first, last);
+        const typename std::iterator_traits<InputIt>::difference_type dist = std::distance(first, last);
         ReallocIfNeeded(dist, false);
 
         m_Size = dist;
@@ -360,8 +366,10 @@ private:
     STRING_INLINE basic_string& Assign(const_pointer str, size_type strlen)
     {
         ReallocIfNeeded(strlen, false);
-        std::memcpy(m_Str, str, strlen);
-        std::memset(&m_Str[strlen], 0, m_Capacity - strlen);
+        if (strlen != 0)
+            std::memcpy(m_Str, str, strlen);
+        if (m_Str != nullptr)
+            std::memset(&m_Str[strlen], 0, m_Capacity - strlen);
         m_Size = strlen;
         return *this;
     }
@@ -378,10 +386,14 @@ private:
     STRING_INLINE basic_string& Assign(const_pointer str)          { return Assign(str, STR_LN(str));        }
                                                                    
 
-    STRING_INLINE void MoveFromBasicString(basic_string&& other, bool move_allocator = true) noexcept
+    STRING_INLINE void MoveFromBasicString(basic_string&& other, bool move_allocator = true) noexcept(std::is_nothrow_move_assignable_v<Alloc>)
     {
+        Deallocate();
+        m_Str = nullptr;
+        m_Size = 0;
+        m_Capacity = 0;
         if (move_allocator)
-            m_Alloc = other.get_allocator();
+            m_Alloc = std::move(other.m_Alloc);
 
         m_Str      = other.m_Str;
         m_Size     = other.m_Size;
@@ -415,8 +427,14 @@ public:
     basic_string(const basic_string& other) : basic_string(other, other.get_allocator()) {}
     basic_string(const basic_string& other, const Alloc& alloc) : m_Alloc(alloc) { Assign(other); }
 
-    basic_string(basic_string&& other) noexcept : basic_string(other, other.get_allocator()) {}
-    basic_string(basic_string&& other, const Alloc& alloc) : m_Alloc(alloc) { MoveFromBasicString(other, false); }
+    basic_string(basic_string&& other) noexcept(std::is_nothrow_move_constructible_v<Alloc>) : m_Alloc(std::move(other.m_Alloc)) { MoveFromBasicString(std::move(other), false); }
+    basic_string(basic_string&& other, const Alloc& alloc) : m_Alloc(alloc)
+    {
+        if (m_Alloc == other.m_Alloc)
+            MoveFromBasicString(std::move(other), false);
+        else
+            Assign(other);
+    }
 
     basic_string(std::initializer_list<value_type> ilist, const Alloc& alloc = Alloc()) : basic_string(ilist.begin(), ilist.end(), alloc) {}
 
@@ -429,11 +447,17 @@ public:
 
     // assignment operators -- done -- C++17
     basic_string& operator=(const basic_string& str) { return Assign(str); }
-    basic_string& operator=(basic_string&& str) noexcept
+    basic_string& operator=(basic_string&& str) noexcept(alloc_traits::propagate_on_container_move_assignment::value
+        ? std::is_nothrow_move_assignable_v<Alloc> : alloc_traits::is_always_equal::value)
     {
+        if (this == &str)
+            return *this;
+
         if constexpr (alloc_traits::propagate_on_container_move_assignment::value)
             MoveFromBasicString(std::forward<basic_string>(str), true);
-        else if constexpr (!alloc_traits::propagate_on_container_move_assignment::value)
+        else if (m_Alloc == str.m_Alloc)
+            MoveFromBasicString(std::forward<basic_string>(str), false);
+        else
             Assign(str);
         return *this;
     }
@@ -487,22 +511,28 @@ public:
     STRING_NODISCARD STRING_INLINE size_type length()   const noexcept { return m_Size;          }
     STRING_NODISCARD constexpr     size_type max_size() const noexcept { return npos ;        }
     STRING_NODISCARD STRING_INLINE size_type capacity() const noexcept { return m_Capacity;      }
-                     STRING_INLINE void shrink_to_fit()                { Realloc(m_Size, false); }
+                     STRING_INLINE void shrink_to_fit()                { if (m_Size < m_Capacity) Realloc(m_Size, false); }
     STRING_INLINE void reserve(size_type new_cap = 0)
     {
         CHECK_LENGTH_LIMIT(new_cap);
         if (new_cap == m_Capacity) return;
         if (new_cap <= m_Size)
+        {
             shrink_to_fit();
+            return;
+        }
         Realloc(new_cap, false);
     }
 
 
     // operations
-    STRING_INLINE void clear() noexcept { std::memset(m_Str, 0, m_Size); m_Size = 0; }
+    STRING_INLINE void clear() noexcept { if (m_Size != 0) std::memset(m_Str, 0, m_Size); m_Size = 0; }
     // not fully implemented
     STRING_INLINE basic_string& insert(size_type index, size_type count, value_type ch)
     {
+        if (count == 0)
+            return *this;
+
         const size_t new_size = m_Size + count;
         ReallocIfNeeded(new_size);
         
@@ -517,18 +547,13 @@ public:
     // not fully implemented
     STRING_INLINE basic_string& erase(size_type index = 0, size_type count = npos)
     {
-        if (count == 0)
-            return *this;
-        if (count == npos || (index + count) > m_Size)
-        {
-            clear();
-            return *this;
-        }
         CHECK_POS_LESS_EQ(index);
+        const size_type erase_count = std::min(count, m_Size - index);
+        if (erase_count == 0)
+            return *this;
 
-        std::memset (&m_Str[index], 0, count);
-        std::memmove(&m_Str[index], &m_Str[index + count], m_Size - index - count);
-        m_Size -= count;
+        std::memmove(&m_Str[index], &m_Str[index + erase_count], m_Size - index - erase_count);
+        m_Size -= erase_count;
         std::memset (&m_Str[m_Size], 0, m_Capacity - m_Size);
         return *this;
     }
