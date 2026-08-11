@@ -593,7 +593,7 @@ public:
 template <class T, std::size_t N>
 STACK_VECTOR_NODISCARD inline bool operator==(const stack_vector<T, N>& left, const stack_vector<T, N>& right)
 {
-    return std::equal(left.begin(), left.end(), right.begin());
+    return left.size() == right.size() && std::equal(left.begin(), left.end(), right.begin());
 }
 
 template <class T, std::size_t N>
