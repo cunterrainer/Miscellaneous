@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <iostream>
 #include <algorithm>
+#include <limits>
 #include <type_traits>
 
 #define VECTOR_INLINE    constexpr
@@ -17,6 +18,70 @@
 
 namespace VECTOR_NAMESPACE
 {
+    namespace detail
+    {
+        template <typename R, typename L, typename U>
+        VECTOR_INLINE R SafeDivide(L left, U right) noexcept
+        {
+            const R lhs = static_cast<R>(left);
+            const R rhs = static_cast<R>(right);
+            if (rhs == R(0)) return R(0);
+
+            if constexpr (std::is_integral_v<R> && std::is_signed_v<R>)
+            {
+                if (lhs == std::numeric_limits<R>::lowest() && rhs == R(-1))
+                    return std::numeric_limits<R>::max();
+            }
+
+            return lhs / rhs;
+        }
+
+        template <typename R, typename L, typename U>
+        inline R SafeModulo(L left, U right) noexcept
+        {
+            const R lhs = static_cast<R>(left);
+            const R rhs = static_cast<R>(right);
+            if (rhs == R(0)) return R(0);
+
+            if constexpr (std::is_floating_point_v<R>)
+            {
+                return std::fmod(lhs, rhs);
+            }
+            else
+            {
+                if constexpr (std::is_signed_v<R>)
+                {
+                    if (lhs == std::numeric_limits<R>::lowest() && rhs == R(-1))
+                        return R(0);
+                }
+                return lhs % rhs;
+            }
+        }
+
+        template <typename R>
+        VECTOR_INLINE R SafeShiftLeft(R value, int shift) noexcept
+        {
+            using unsigned_t = std::make_unsigned_t<R>;
+            if (shift < 0 || shift >= std::numeric_limits<unsigned_t>::digits) return R(0);
+            return static_cast<R>(static_cast<unsigned_t>(value) << shift);
+        }
+
+        template <typename R>
+        VECTOR_INLINE R SafeShiftRight(R value, int shift) noexcept
+        {
+            using unsigned_t = std::make_unsigned_t<R>;
+            if (shift < 0 || shift >= std::numeric_limits<unsigned_t>::digits) return R(0);
+            return static_cast<R>(static_cast<unsigned_t>(value) >> shift);
+        }
+
+        template <typename R>
+        VECTOR_INLINE R OrderedClamp(R value, R bound1, R bound2) noexcept
+        {
+            return bound1 <= bound2 ? std::clamp(value, bound1, bound2)
+                                    : std::clamp(value, bound2, bound1);
+        }
+    }
+
     // ------------------------------------ Vector2 ------------------------------------
     template <typename T>
     class Vector2
@@ -87,16 +152,13 @@ namespace VECTOR_NAMESPACE
         template <typename U, typename R = std::common_type_t<T, U>>
         VECTOR_INLINE Vector2<R> operator/(const Vector2<U>& other) const noexcept
         {
-            return Vector2<R>(x / other.x, y / other.y);
+            return Vector2<R>(detail::SafeDivide<R>(x, other.x), detail::SafeDivide<R>(y, other.y));
         }
 
         template <typename U, typename R = std::common_type_t<T, U>>
         VECTOR_INLINE Vector2<R> operator%(const Vector2<U>& other) const noexcept
         {
-            if constexpr (std::is_floating_point_v<T> || std::is_floating_point_v<U>)
-                return Vector2<R>(std::fmod(x, other.x), std::fmod(y, other.y));
-            else
-                return Vector2<R>(x % other.x, y % other.y);
+            return Vector2<R>(detail::SafeModulo<R>(x, other.x), detail::SafeModulo<R>(y, other.y));
         }
 
         // Scalar operations
@@ -121,16 +183,13 @@ namespace VECTOR_NAMESPACE
         template <typename U, typename R = std::common_type_t<T, U>, std::enable_if_t<std::is_arithmetic_v<U>, int> = 0>
         VECTOR_INLINE Vector2<R> operator/(U scalar) const noexcept
         {
-            return Vector2<R>(x / scalar, y / scalar);
+            return Vector2<R>(detail::SafeDivide<R>(x, scalar), detail::SafeDivide<R>(y, scalar));
         }
         
         template <typename U, typename R = std::common_type_t<T, U>, std::enable_if_t<std::is_arithmetic_v<U>, int> = 0>
-        VECTOR_INLINE Vector2 operator%(U scalar) const noexcept
+        VECTOR_INLINE Vector2<R> operator%(U scalar) const noexcept
         {
-            if constexpr (std::is_floating_point_v<T> || std::is_floating_point_v<U>)
-                return Vector2<R>(std::fmod(x, scalar), std::fmod(y, scalar));
-            else
-                return Vector2<R>(x % scalar, y % scalar);
+            return Vector2<R>(detail::SafeModulo<R>(x, scalar), detail::SafeModulo<R>(y, scalar));
         }
 
         template <typename U, typename R = std::common_type_t<T, U>, std::enable_if_t<std::is_arithmetic_v<U>, int> = 0>
@@ -154,16 +213,13 @@ namespace VECTOR_NAMESPACE
         template <typename U, typename R = std::common_type_t<T, U>, std::enable_if_t<std::is_arithmetic_v<U>, int> = 0>
         friend VECTOR_INLINE Vector2<R> operator/(U scalar, const Vector2& v) noexcept
         {
-            return Vector2<R>(scalar / v.x, scalar / v.y);
+            return Vector2<R>(detail::SafeDivide<R>(scalar, v.x), detail::SafeDivide<R>(scalar, v.y));
         }
 
         template <typename U, typename R = std::common_type_t<T, U>, std::enable_if_t<std::is_arithmetic_v<U>, int> = 0>
         friend VECTOR_INLINE Vector2<R> operator%(U scalar, const Vector2& v) noexcept
         {
-            if constexpr (std::is_floating_point_v<T> || std::is_floating_point_v<U>)
-                return Vector2<R>(std::fmod(scalar, v.x), std::fmod(scalar, v.y));
-            else
-                return Vector2<R>(scalar % v.x, scalar % v.y);
+            return Vector2<R>(detail::SafeModulo<R>(scalar, v.x), detail::SafeModulo<R>(scalar, v.y));
         }
 
         // Compound assignment
@@ -194,24 +250,16 @@ namespace VECTOR_NAMESPACE
         template <typename U, std::enable_if_t<std::is_convertible_v<U, T>, int> = 0>
         VECTOR_INLINE Vector2& operator/=(const Vector2<U>& other) noexcept
         {
-            x /= static_cast<T>(other.x);
-            y /= static_cast<T>(other.y);
+            x = detail::SafeDivide<T>(x, other.x);
+            y = detail::SafeDivide<T>(y, other.y);
             return *this;
         }
         
         template <typename U, std::enable_if_t<std::is_convertible_v<U, T>, int> = 0>
         VECTOR_INLINE Vector2& operator%=(const Vector2<U>& other) noexcept
         {
-            if constexpr (std::is_floating_point_v<T>)
-            {
-                x = std::fmod(x, static_cast<T>(other.x));
-                y = std::fmod(y, static_cast<T>(other.y));
-            }
-            else
-            {
-                x %= static_cast<T>(other.x);
-                y %= static_cast<T>(other.y);
-            }
+            x = detail::SafeModulo<T>(x, other.x);
+            y = detail::SafeModulo<T>(y, other.y);
             return *this;
         }
 
@@ -242,24 +290,16 @@ namespace VECTOR_NAMESPACE
         template <typename U, std::enable_if_t<std::is_convertible_v<U, T> && std::is_arithmetic_v<U>, int> = 0>
         VECTOR_INLINE Vector2& operator/=(U scalar) noexcept
         {
-            x /= static_cast<T>(scalar);
-            y /= static_cast<T>(scalar);
+            x = detail::SafeDivide<T>(x, scalar);
+            y = detail::SafeDivide<T>(y, scalar);
             return *this;
         }
 
         template <typename U, std::enable_if_t<std::is_convertible_v<U, T> && std::is_arithmetic_v<U>, int> = 0>
         VECTOR_INLINE Vector2& operator%=(U scalar) noexcept
         {
-            if constexpr (std::is_floating_point_v<T>)
-            {
-                x = std::fmod(x, static_cast<T>(scalar));
-                y = std::fmod(y, static_cast<T>(scalar));
-            }
-            else
-            {
-                x %= static_cast<T>(scalar);
-                y %= static_cast<T>(scalar);
-            }
+            x = detail::SafeModulo<T>(x, scalar);
+            y = detail::SafeModulo<T>(y, scalar);
             return *this;
         }
 
@@ -443,14 +483,14 @@ namespace VECTOR_NAMESPACE
         template <typename D = T, std::enable_if_t<std::is_integral_v<D>, int> = 0>
         VECTOR_INLINE Vector2 operator<<(int shift) const noexcept
         {
-            return Vector2(x << shift, y << shift);
+            return Vector2(detail::SafeShiftLeft(x, shift), detail::SafeShiftLeft(y, shift));
         }
 
         template <typename D = T, std::enable_if_t<std::is_integral_v<D>, int> = 0>
         VECTOR_INLINE Vector2& operator<<=(int shift) noexcept
         {
-            x <<= shift;
-            y <<= shift;
+            x = detail::SafeShiftLeft(x, shift);
+            y = detail::SafeShiftLeft(y, shift);
             return *this;
         }
 
@@ -458,14 +498,14 @@ namespace VECTOR_NAMESPACE
         template <typename D = T, std::enable_if_t<std::is_integral_v<D>, int> = 0>
         VECTOR_INLINE Vector2 operator>>(int shift) const noexcept
         {
-            return Vector2(x >> shift, y >> shift);
+            return Vector2(detail::SafeShiftRight(x, shift), detail::SafeShiftRight(y, shift));
         }
 
         template <typename D = T, std::enable_if_t<std::is_integral_v<D>, int> = 0>
         VECTOR_INLINE Vector2& operator>>=(int shift) noexcept
         {
-            x >>= shift;
-            y >>= shift;
+            x = detail::SafeShiftRight(x, shift);
+            y = detail::SafeShiftRight(y, shift);
             return *this;
         }
 
@@ -485,17 +525,17 @@ namespace VECTOR_NAMESPACE
         inline result_t Length() const noexcept
         {
             // Return type: double for ints otherwise float, double, long double
-            return std::sqrt((static_cast<result_t>(x)*x) + (static_cast<result_t>(y)*y));
+            return std::sqrt((static_cast<result_t>(x)*static_cast<result_t>(x)) + (static_cast<result_t>(y)*static_cast<result_t>(y)));
         }
 
-        VECTOR_INLINE T LengthSqr() const noexcept
+        VECTOR_INLINE result_t LengthSqr() const noexcept
         {
-            return (x*x) + (y*y);
+            return (static_cast<result_t>(x)*static_cast<result_t>(x)) + (static_cast<result_t>(y)*static_cast<result_t>(y));
         }
 
-        VECTOR_INLINE T DotProduct(const Vector2& other) const noexcept
+        VECTOR_INLINE result_t DotProduct(const Vector2& other) const noexcept
         {
-            return x * other.x + y * other.y;
+            return static_cast<result_t>(x) * static_cast<result_t>(other.x) + static_cast<result_t>(y) * static_cast<result_t>(other.y);
         }
 
         inline result_t Distance(const Vector2& other) const noexcept
@@ -504,9 +544,11 @@ namespace VECTOR_NAMESPACE
             return std::sqrt((static_cast<result_t>(x) - other.x) * (static_cast<result_t>(x) - other.x) + (static_cast<result_t>(y) - other.y) * (static_cast<result_t>(y) - other.y));
         }
 
-        VECTOR_INLINE T DistanceSqr(const Vector2& other) const noexcept
+        VECTOR_INLINE result_t DistanceSqr(const Vector2& other) const noexcept
         {
-            return (x - other.x) * (x - other.x) + (y - other.y) * (y - other.y);
+            const result_t dx = static_cast<result_t>(x) - other.x;
+            const result_t dy = static_cast<result_t>(y) - other.y;
+            return dx * dx + dy * dy;
         }
 
         // Calculate angle between two vectors in radians
@@ -514,8 +556,8 @@ namespace VECTOR_NAMESPACE
         inline result_t Angle(const Vector2& other) const noexcept
         {
             // Return type: double for ints otherwise float, double, long double
-            const T dot = DotProduct(other);
-            const T det = x*other.y - y*other.x;
+            const result_t dot = DotProduct(other);
+            const result_t det = static_cast<result_t>(x)*other.y - static_cast<result_t>(y)*other.x;
             return std::atan2(det, dot);
         }
 
@@ -609,7 +651,7 @@ namespace VECTOR_NAMESPACE
 
         VECTOR_INLINE Vector2<result_t> Invert() const noexcept
         {
-            return Vector2<result_t>(result_t(1) / x, result_t(1) / y);
+            return Vector2<result_t>(detail::SafeDivide<result_t>(1, x), detail::SafeDivide<result_t>(1, y));
         }
 
         VECTOR_INLINE Vector2& InvertInPlace() noexcept
@@ -621,8 +663,8 @@ namespace VECTOR_NAMESPACE
         VECTOR_INLINE Vector2 Clamp(const Vector2& min, const Vector2& max) const noexcept
         {
             Vector2 result;
-            result.x = std::clamp(x, min.x, max.x);
-            result.y = std::clamp(y, min.y, max.y);
+            result.x = detail::OrderedClamp(x, min.x, max.x);
+            result.y = detail::OrderedClamp(y, min.y, max.y);
             return result;
         }
 
@@ -635,6 +677,10 @@ namespace VECTOR_NAMESPACE
         Vector2<result_t> ClampMagnitude(result_t min, result_t max) const noexcept
         {
             Vector2<result_t> result(x, y);
+
+            if (min > max) std::swap(min, max);
+            min = std::max(result_t(0), min);
+            max = std::max(result_t(0), max);
 
             result_t length = LengthSqr();
             if (length > result_t(0))
@@ -764,16 +810,13 @@ namespace VECTOR_NAMESPACE
         template <typename U, typename R = std::common_type_t<T, U>>
         VECTOR_INLINE Vector3<R> operator/(const Vector3<U>& other) const noexcept
         {
-            return Vector3<R>(x / other.x, y / other.y, z / other.z);
+            return Vector3<R>(detail::SafeDivide<R>(x, other.x), detail::SafeDivide<R>(y, other.y), detail::SafeDivide<R>(z, other.z));
         }
 
         template <typename U, typename R = std::common_type_t<T, U>>
         VECTOR_INLINE Vector3<R> operator%(const Vector3<U>& other) const noexcept
         {
-            if constexpr (std::is_floating_point_v<T> || std::is_floating_point_v<U>)
-                return Vector3<R>(std::fmod(x, other.x), std::fmod(y, other.y), std::fmod(z, other.z));
-            else
-                return Vector3<R>(x % other.x, y % other.y, z % other.z);
+            return Vector3<R>(detail::SafeModulo<R>(x, other.x), detail::SafeModulo<R>(y, other.y), detail::SafeModulo<R>(z, other.z));
         }
 
         // Scalar operations
@@ -798,16 +841,13 @@ namespace VECTOR_NAMESPACE
         template <typename U, typename R = std::common_type_t<T, U>, std::enable_if_t<std::is_arithmetic_v<U>, int> = 0>
         VECTOR_INLINE Vector3<R> operator/(U scalar) const noexcept
         {
-            return Vector3<R>(x / scalar, y / scalar, z / scalar);
+            return Vector3<R>(detail::SafeDivide<R>(x, scalar), detail::SafeDivide<R>(y, scalar), detail::SafeDivide<R>(z, scalar));
         }
 
         template <typename U, typename R = std::common_type_t<T, U>, std::enable_if_t<std::is_arithmetic_v<U>, int> = 0>
         VECTOR_INLINE Vector3<R> operator%(U scalar) const noexcept
         {
-            if constexpr (std::is_floating_point_v<T> || std::is_floating_point_v<U>)
-                return Vector3<R>(std::fmod(x, scalar), std::fmod(y, scalar), std::fmod(z, scalar));
-            else
-                return Vector3<R>(x % scalar, y % scalar, z % scalar);
+            return Vector3<R>(detail::SafeModulo<R>(x, scalar), detail::SafeModulo<R>(y, scalar), detail::SafeModulo<R>(z, scalar));
         }
 
         template <typename U, typename R = std::common_type_t<T, U>, std::enable_if_t<std::is_arithmetic_v<U>, int> = 0>
@@ -831,16 +871,13 @@ namespace VECTOR_NAMESPACE
         template <typename U, typename R = std::common_type_t<T, U>, std::enable_if_t<std::is_arithmetic_v<U>, int> = 0>
         friend VECTOR_INLINE Vector3<R> operator/(U scalar, const Vector3& v) noexcept
         {
-            return Vector3<R>(scalar / v.x, scalar / v.y, scalar / v.z);
+            return Vector3<R>(detail::SafeDivide<R>(scalar, v.x), detail::SafeDivide<R>(scalar, v.y), detail::SafeDivide<R>(scalar, v.z));
         }
 
         template <typename U, typename R = std::common_type_t<T, U>, std::enable_if_t<std::is_arithmetic_v<U>, int> = 0>
         friend VECTOR_INLINE Vector3<R> operator%(U scalar, const Vector3& v) noexcept
         {
-            if constexpr (std::is_floating_point_v<T> || std::is_floating_point_v<U>)
-                return Vector3<R>(std::fmod(scalar, v.x), std::fmod(scalar, v.y), std::fmod(scalar, v.z));
-            else
-                return Vector3<R>(scalar % v.x, scalar % v.y, scalar % v.z);
+            return Vector3<R>(detail::SafeModulo<R>(scalar, v.x), detail::SafeModulo<R>(scalar, v.y), detail::SafeModulo<R>(scalar, v.z));
         }
 
         // Compound assignment
@@ -874,27 +911,18 @@ namespace VECTOR_NAMESPACE
         template <typename U, std::enable_if_t<std::is_convertible_v<U, T>, int> = 0>
         VECTOR_INLINE Vector3& operator/=(const Vector3<U>& other) noexcept
         {
-            x /= static_cast<T>(other.x);
-            y /= static_cast<T>(other.y);
-            z /= static_cast<T>(other.z);
+            x = detail::SafeDivide<T>(x, other.x);
+            y = detail::SafeDivide<T>(y, other.y);
+            z = detail::SafeDivide<T>(z, other.z);
             return *this;
         }
 
         template <typename U, std::enable_if_t<std::is_convertible_v<U, T>, int> = 0>
         VECTOR_INLINE Vector3& operator%=(const Vector3<U>& other) noexcept
         {
-            if constexpr (std::is_floating_point_v<T>)
-            {
-                x = std::fmod(x, static_cast<T>(other.x));
-                y = std::fmod(y, static_cast<T>(other.y));
-                z = std::fmod(z, static_cast<T>(other.z));
-            }
-            else
-            {
-                x %= static_cast<T>(other.x);
-                y %= static_cast<T>(other.y);
-                z %= static_cast<T>(other.z);
-            }
+            x = detail::SafeModulo<T>(x, other.x);
+            y = detail::SafeModulo<T>(y, other.y);
+            z = detail::SafeModulo<T>(z, other.z);
             return *this;
         }
 
@@ -928,27 +956,18 @@ namespace VECTOR_NAMESPACE
         template <typename U, std::enable_if_t<std::is_convertible_v<U, T> && std::is_arithmetic_v<U>, int> = 0>
         VECTOR_INLINE Vector3& operator/=(U scalar) noexcept
         {
-            x /= static_cast<T>(scalar);
-            y /= static_cast<T>(scalar);
-            z /= static_cast<T>(scalar);
+            x = detail::SafeDivide<T>(x, scalar);
+            y = detail::SafeDivide<T>(y, scalar);
+            z = detail::SafeDivide<T>(z, scalar);
             return *this;
         }
 
         template <typename U, std::enable_if_t<std::is_convertible_v<U, T> && std::is_arithmetic_v<U>, int> = 0>
         VECTOR_INLINE Vector3& operator%=(U scalar) noexcept
         {
-            if constexpr (std::is_floating_point_v<T>)
-            {
-                x = std::fmod(x, static_cast<T>(scalar));
-                y = std::fmod(y, static_cast<T>(scalar));
-                z = std::fmod(z, static_cast<T>(scalar));
-            }
-            else
-            {
-                x %= static_cast<T>(scalar);
-                y %= static_cast<T>(scalar);
-                z %= static_cast<T>(scalar);
-            }
+            x = detail::SafeModulo<T>(x, scalar);
+            y = detail::SafeModulo<T>(y, scalar);
+            z = detail::SafeModulo<T>(z, scalar);
             return *this;
         }
 
@@ -1139,15 +1158,15 @@ namespace VECTOR_NAMESPACE
         template <typename D = T, std::enable_if_t<std::is_integral_v<D>, int> = 0>
         VECTOR_INLINE Vector3 operator<<(int shift) const noexcept
         {
-            return Vector3(x << shift, y << shift, z << shift);
+            return Vector3(detail::SafeShiftLeft(x, shift), detail::SafeShiftLeft(y, shift), detail::SafeShiftLeft(z, shift));
         }
 
         template <typename D = T, std::enable_if_t<std::is_integral_v<D>, int> = 0>
         VECTOR_INLINE Vector3& operator<<=(int shift) noexcept
         {
-            x <<= shift;
-            y <<= shift;
-            z <<= shift;
+            x = detail::SafeShiftLeft(x, shift);
+            y = detail::SafeShiftLeft(y, shift);
+            z = detail::SafeShiftLeft(z, shift);
             return *this;
         }
 
@@ -1155,15 +1174,15 @@ namespace VECTOR_NAMESPACE
         template <typename D = T, std::enable_if_t<std::is_integral_v<D>, int> = 0>
         VECTOR_INLINE Vector3 operator>>(int shift) const noexcept
         {
-            return Vector3(x >> shift, y >> shift, z >> shift);
+            return Vector3(detail::SafeShiftRight(x, shift), detail::SafeShiftRight(y, shift), detail::SafeShiftRight(z, shift));
         }
 
         template <typename D = T, std::enable_if_t<std::is_integral_v<D>, int> = 0>
         VECTOR_INLINE Vector3& operator>>=(int shift) noexcept
         {
-            x >>= shift;
-            y >>= shift;
-            z >>= shift;
+            x = detail::SafeShiftRight(x, shift);
+            y = detail::SafeShiftRight(y, shift);
+            z = detail::SafeShiftRight(z, shift);
             return *this;
         }
 
@@ -1220,17 +1239,17 @@ namespace VECTOR_NAMESPACE
         inline result_t Length() const noexcept
         {
             // Return type: double for ints otherwise float, double, long double
-            return std::sqrt((static_cast<result_t>(x)*x) + (static_cast<result_t>(y)*y) + (static_cast<result_t>(z)*z));
+            return std::sqrt((static_cast<result_t>(x)*static_cast<result_t>(x)) + (static_cast<result_t>(y)*static_cast<result_t>(y)) + (static_cast<result_t>(z)*static_cast<result_t>(z)));
         }
 
-        VECTOR_INLINE T LengthSqr() const noexcept
+        VECTOR_INLINE result_t LengthSqr() const noexcept
         {
-            return (x*x) + (y*y) + (z*z);
+            return (static_cast<result_t>(x)*static_cast<result_t>(x)) + (static_cast<result_t>(y)*static_cast<result_t>(y)) + (static_cast<result_t>(z)*static_cast<result_t>(z));
         }
 
-        VECTOR_INLINE T DotProduct(const Vector3& other) const noexcept
+        VECTOR_INLINE result_t DotProduct(const Vector3& other) const noexcept
         {
-            return x * other.x + y * other.y + z * other.z;
+            return static_cast<result_t>(x) * static_cast<result_t>(other.x) + static_cast<result_t>(y) * static_cast<result_t>(other.y) + static_cast<result_t>(z) * static_cast<result_t>(other.z);
         }
 
         inline result_t Distance(const Vector3& other) const noexcept
@@ -1242,11 +1261,11 @@ namespace VECTOR_NAMESPACE
             return std::sqrt(dx*dx + dy*dy + dz*dz);
         }
 
-        VECTOR_INLINE T DistanceSqr(const Vector3& other) const noexcept
+        VECTOR_INLINE result_t DistanceSqr(const Vector3& other) const noexcept
         {
-            const T dx = other.x - x;
-            const T dy = other.y - y;
-            const T dz = other.z - z;
+            const result_t dx = static_cast<result_t>(other.x) - x;
+            const result_t dy = static_cast<result_t>(other.y) - y;
+            const result_t dz = static_cast<result_t>(other.z) - z;
 
             return dx * dx + dy * dy + dz * dz;
         }
@@ -1286,8 +1305,10 @@ namespace VECTOR_NAMESPACE
         //Calculate the projection of this vector on to other
         VECTOR_INLINE Vector3<result_t> Project(const Vector3& other) const noexcept
         {
-            const result_t v1dv2 = (x*other.x + y*other.y + *other.z);
-            const result_t v2dv2 = (other.x*other.x + other.y*other.y + other.z*other.z);
+            const result_t v1dv2 = static_cast<result_t>(x)*static_cast<result_t>(other.x) + static_cast<result_t>(y)*static_cast<result_t>(other.y) + static_cast<result_t>(z)*static_cast<result_t>(other.z);
+            const result_t v2dv2 = static_cast<result_t>(other.x)*static_cast<result_t>(other.x) + static_cast<result_t>(other.y)*static_cast<result_t>(other.y) + static_cast<result_t>(other.z)*static_cast<result_t>(other.z);
+
+            if (v2dv2 == result_t(0)) return Vector3<result_t>();
 
             const result_t mag = v1dv2 / v2dv2;
 
@@ -1318,7 +1339,9 @@ namespace VECTOR_NAMESPACE
 
         inline Vector3& OrthoNormalizeInPlace(Vector3* other) noexcept
         {
-            const std::pair<Vector3<result_t>, Vector3<result_t>> vecs = OrthoNormalize(other);
+            if (other == nullptr) return *this;
+
+            const std::pair<Vector3<result_t>, Vector3<result_t>> vecs = OrthoNormalize(*other);
             *this = vecs.first;
             *other = vecs.second;
             return *this;
@@ -1333,7 +1356,7 @@ namespace VECTOR_NAMESPACE
             const auto axisNorm = axis.Normalize();
 
             angle /= result_t(2);
-            const result_t a = std::sin(angle);
+            result_t a = std::sin(angle);
             const result_t b = axisNorm.x*a;
             const result_t c = axisNorm.y*a;
             const result_t d = axisNorm.z*a;
@@ -1447,9 +1470,9 @@ namespace VECTOR_NAMESPACE
         // NOTE: Assumes Point this is on the plane of the triangle
         Vector3<result_t> Barycenter(const Vector3& a, const Vector3& b, const Vector3& c) const noexcept
         {
-            Vector3<result_t> v0 = { b.x - a.x, b.y - a.y, b.z - a.z };   // Vector3Subtract(b, a)
-            Vector3<result_t> v1 = { c.x - a.x, c.y - a.y, c.z - a.z };   // Vector3Subtract(c, a)
-            Vector3<result_t> v2 = { x - a.x, y - a.y, z - a.z };   // Vector3Subtract(p, a)
+            Vector3<result_t> v0(static_cast<result_t>(b.x) - a.x, static_cast<result_t>(b.y) - a.y, static_cast<result_t>(b.z) - a.z);
+            Vector3<result_t> v1(static_cast<result_t>(c.x) - a.x, static_cast<result_t>(c.y) - a.y, static_cast<result_t>(c.z) - a.z);
+            Vector3<result_t> v2(static_cast<result_t>(x) - a.x, static_cast<result_t>(y) - a.y, static_cast<result_t>(z) - a.z);
             const result_t d00 = (v0.x*v0.x + v0.y*v0.y + v0.z*v0.z);    // Vector3DotProduct(v0, v0)
             const result_t d01 = (v0.x*v1.x + v0.y*v1.y + v0.z*v1.z);    // Vector3DotProduct(v0, v1)
             const result_t d11 = (v1.x*v1.x + v1.y*v1.y + v1.z*v1.z);    // Vector3DotProduct(v1, v1)
@@ -1457,6 +1480,8 @@ namespace VECTOR_NAMESPACE
             const result_t d21 = (v2.x*v1.x + v2.y*v1.y + v2.z*v1.z);    // Vector3DotProduct(v2, v1)
 
             const result_t denom = d00*d11 - d01*d01;
+
+            if (denom == result_t(0)) return Vector3<result_t>();
 
             Vector3<result_t> result;
             result.y = (d11*d20 - d01*d21)/denom;
@@ -1474,7 +1499,7 @@ namespace VECTOR_NAMESPACE
 
         VECTOR_INLINE Vector3<result_t> Invert() const noexcept
         {
-            return Vector3<result_t>(result_t(1) / x, result_t(1) / y, result_t(1) / z);
+            return Vector3<result_t>(detail::SafeDivide<result_t>(1, x), detail::SafeDivide<result_t>(1, y), detail::SafeDivide<result_t>(1, z));
         }
 
         VECTOR_INLINE Vector3& InvertInPlace() noexcept
@@ -1486,9 +1511,9 @@ namespace VECTOR_NAMESPACE
         VECTOR_INLINE Vector3 Clamp(const Vector3& min, const Vector3& max) const noexcept
         {
             Vector3 result;
-            result.x = std::clamp(x, min.x, max.x);
-            result.y = std::clamp(y, min.y, max.y);
-            result.z = std::clamp(z, min.z, max.z);
+            result.x = detail::OrderedClamp(x, min.x, max.x);
+            result.y = detail::OrderedClamp(y, min.y, max.y);
+            result.z = detail::OrderedClamp(z, min.z, max.z);
             return result;
         }
 
@@ -1500,7 +1525,11 @@ namespace VECTOR_NAMESPACE
 
         Vector3<result_t> ClampMagnitude(result_t min, result_t max) const noexcept
         {
-            Vector3<result_t> result(x, y);
+            Vector3<result_t> result(x, y, z);
+
+            if (min > max) std::swap(min, max);
+            min = std::max(result_t(0), min);
+            max = std::max(result_t(0), max);
 
             result_t length = LengthSqr();
             if (length > result_t(0))
@@ -1646,16 +1675,13 @@ namespace VECTOR_NAMESPACE
         template <typename U, typename R = std::common_type_t<T, U>>
         VECTOR_INLINE Vector4<R> operator/(const Vector4<U>& other) const noexcept
         {
-            return Vector4<R>(x / other.x, y / other.y, z / other.z, w / other.w);
+            return Vector4<R>(detail::SafeDivide<R>(x, other.x), detail::SafeDivide<R>(y, other.y), detail::SafeDivide<R>(z, other.z), detail::SafeDivide<R>(w, other.w));
         }
 
         template <typename U, typename R = std::common_type_t<T, U>>
         VECTOR_INLINE Vector4<R> operator%(const Vector4<U>& other) const noexcept
         {
-            if constexpr (std::is_floating_point_v<T> || std::is_floating_point_v<U>)
-                return Vector4<R>(std::fmod(x, other.x), std::fmod(y, other.y), std::fmod(z, other.z), std::fmod(w, other.w));
-            else
-                return Vector4<R>(x % other.x, y % other.y, z % other.z, w % other.w);
+            return Vector4<R>(detail::SafeModulo<R>(x, other.x), detail::SafeModulo<R>(y, other.y), detail::SafeModulo<R>(z, other.z), detail::SafeModulo<R>(w, other.w));
         }
 
         // Scalar operations
@@ -1680,16 +1706,13 @@ namespace VECTOR_NAMESPACE
         template <typename U, typename R = std::common_type_t<T, U>, std::enable_if_t<std::is_arithmetic_v<U>, int> = 0>
         VECTOR_INLINE Vector4<R> operator/(U scalar) const noexcept
         {
-            return Vector4<R>(x / scalar, y / scalar, z / scalar, w / scalar);
+            return Vector4<R>(detail::SafeDivide<R>(x, scalar), detail::SafeDivide<R>(y, scalar), detail::SafeDivide<R>(z, scalar), detail::SafeDivide<R>(w, scalar));
         }
 
         template <typename U, typename R = std::common_type_t<T, U>, std::enable_if_t<std::is_arithmetic_v<U>, int> = 0>
         VECTOR_INLINE Vector4<R> operator%(U scalar) const noexcept
         {
-            if constexpr (std::is_floating_point_v<T> || std::is_floating_point_v<U>)
-                return Vector4<R>(std::fmod(x, scalar), std::fmod(y, scalar), std::fmod(z, scalar), std::fmod(w, scalar));
-            else
-                return Vector4<R>(x % scalar, y % scalar, z % scalar, w % scalar);
+            return Vector4<R>(detail::SafeModulo<R>(x, scalar), detail::SafeModulo<R>(y, scalar), detail::SafeModulo<R>(z, scalar), detail::SafeModulo<R>(w, scalar));
         }
 
         // Scalar on left-hand side
@@ -1714,16 +1737,13 @@ namespace VECTOR_NAMESPACE
         template <typename U, typename R = std::common_type_t<T, U>, std::enable_if_t<std::is_arithmetic_v<U>, int> = 0>
         friend VECTOR_INLINE Vector4<R> operator/(U scalar, const Vector4& v) noexcept
         {
-            return Vector4<R>(scalar / v.x, scalar / v.y, scalar / v.z, scalar / v.w);
+            return Vector4<R>(detail::SafeDivide<R>(scalar, v.x), detail::SafeDivide<R>(scalar, v.y), detail::SafeDivide<R>(scalar, v.z), detail::SafeDivide<R>(scalar, v.w));
         }
 
         template <typename U, typename R = std::common_type_t<T, U>, std::enable_if_t<std::is_arithmetic_v<U>, int> = 0>
         friend VECTOR_INLINE Vector4<R> operator%(U scalar, const Vector4& v) noexcept
         {
-            if constexpr (std::is_floating_point_v<T> || std::is_floating_point_v<U>)
-                return Vector4<R>(std::fmod(scalar, v.x), std::fmod(scalar, v.y), std::fmod(scalar, v.z), std::fmod(scalar, v.w));
-            else
-                return Vector4<R>(scalar % v.x, scalar % v.y, scalar % v.z, scalar % v.w);
+            return Vector4<R>(detail::SafeModulo<R>(scalar, v.x), detail::SafeModulo<R>(scalar, v.y), detail::SafeModulo<R>(scalar, v.z), detail::SafeModulo<R>(scalar, v.w));
         }
 
         // Compound assignment for Vector4
@@ -1760,30 +1780,20 @@ namespace VECTOR_NAMESPACE
         template <typename U, std::enable_if_t<std::is_convertible_v<U, T>, int> = 0>
         VECTOR_INLINE Vector4& operator/=(const Vector4<U>& other) noexcept
         {
-            x /= static_cast<T>(other.x);
-            y /= static_cast<T>(other.y);
-            z /= static_cast<T>(other.z);
-            w /= static_cast<T>(other.w);
+            x = detail::SafeDivide<T>(x, other.x);
+            y = detail::SafeDivide<T>(y, other.y);
+            z = detail::SafeDivide<T>(z, other.z);
+            w = detail::SafeDivide<T>(w, other.w);
             return *this;
         }
 
         template <typename U, std::enable_if_t<std::is_convertible_v<U, T>, int> = 0>
         VECTOR_INLINE Vector4& operator%=(const Vector4<U>& other) noexcept
         {
-            if constexpr (std::is_floating_point_v<T>)
-            {
-                x = std::fmod(x, static_cast<T>(other.x));
-                y = std::fmod(y, static_cast<T>(other.y));
-                z = std::fmod(z, static_cast<T>(other.z));
-                w = std::fmod(w, static_cast<T>(other.w));
-            }
-            else
-            {
-                x %= static_cast<T>(other.x);
-                y %= static_cast<T>(other.y);
-                z %= static_cast<T>(other.z);
-                w %= static_cast<T>(other.w);
-            }
+            x = detail::SafeModulo<T>(x, other.x);
+            y = detail::SafeModulo<T>(y, other.y);
+            z = detail::SafeModulo<T>(z, other.z);
+            w = detail::SafeModulo<T>(w, other.w);
             return *this;
         }
 
@@ -1821,30 +1831,20 @@ namespace VECTOR_NAMESPACE
         template <typename U, std::enable_if_t<std::is_convertible_v<U, T> && std::is_arithmetic_v<U>, int> = 0>
         VECTOR_INLINE Vector4& operator/=(U scalar) noexcept
         {
-            x /= static_cast<T>(scalar);
-            y /= static_cast<T>(scalar);
-            z /= static_cast<T>(scalar);
-            w /= static_cast<T>(scalar);
+            x = detail::SafeDivide<T>(x, scalar);
+            y = detail::SafeDivide<T>(y, scalar);
+            z = detail::SafeDivide<T>(z, scalar);
+            w = detail::SafeDivide<T>(w, scalar);
             return *this;
         }
 
         template <typename U, std::enable_if_t<std::is_convertible_v<U, T> && std::is_arithmetic_v<U>, int> = 0>
         VECTOR_INLINE Vector4& operator%=(U scalar) noexcept
         {
-            if constexpr (std::is_floating_point_v<T>)
-            {
-                x = std::fmod(x, static_cast<T>(scalar));
-                y = std::fmod(y, static_cast<T>(scalar));
-                z = std::fmod(z, static_cast<T>(scalar));
-                w = std::fmod(w, static_cast<T>(scalar));
-            }
-            else
-            {
-                x %= static_cast<T>(scalar);
-                y %= static_cast<T>(scalar);
-                z %= static_cast<T>(scalar);
-                w %= static_cast<T>(scalar);
-            }
+            x = detail::SafeModulo<T>(x, scalar);
+            y = detail::SafeModulo<T>(y, scalar);
+            z = detail::SafeModulo<T>(z, scalar);
+            w = detail::SafeModulo<T>(w, scalar);
             return *this;
         }
 
@@ -2042,16 +2042,16 @@ namespace VECTOR_NAMESPACE
         template <typename D = T, std::enable_if_t<std::is_integral_v<D>, int> = 0>
         VECTOR_INLINE Vector4 operator<<(int shift) const noexcept
         {
-            return Vector4(x << shift, y << shift, z << shift, w << shift);
+            return Vector4(detail::SafeShiftLeft(x, shift), detail::SafeShiftLeft(y, shift), detail::SafeShiftLeft(z, shift), detail::SafeShiftLeft(w, shift));
         }
 
         template <typename D = T, std::enable_if_t<std::is_integral_v<D>, int> = 0>
         VECTOR_INLINE Vector4& operator<<=(int shift) noexcept
         {
-            x <<= shift;
-            y <<= shift;
-            z <<= shift;
-            w <<= shift;
+            x = detail::SafeShiftLeft(x, shift);
+            y = detail::SafeShiftLeft(y, shift);
+            z = detail::SafeShiftLeft(z, shift);
+            w = detail::SafeShiftLeft(w, shift);
             return *this;
         }
 
@@ -2059,16 +2059,16 @@ namespace VECTOR_NAMESPACE
         template <typename D = T, std::enable_if_t<std::is_integral_v<D>, int> = 0>
         VECTOR_INLINE Vector4 operator>>(int shift) const noexcept
         {
-            return Vector4(x >> shift, y >> shift, z >> shift, w >> shift);
+            return Vector4(detail::SafeShiftRight(x, shift), detail::SafeShiftRight(y, shift), detail::SafeShiftRight(z, shift), detail::SafeShiftRight(w, shift));
         }
 
         template <typename D = T, std::enable_if_t<std::is_integral_v<D>, int> = 0>
         VECTOR_INLINE Vector4& operator>>=(int shift) noexcept
         {
-            x >>= shift;
-            y >>= shift;
-            z >>= shift;
-            w >>= shift;
+            x = detail::SafeShiftRight(x, shift);
+            y = detail::SafeShiftRight(y, shift);
+            z = detail::SafeShiftRight(z, shift);
+            w = detail::SafeShiftRight(w, shift);
             return *this;
         }
 
@@ -2088,17 +2088,17 @@ namespace VECTOR_NAMESPACE
         inline result_t Length() const noexcept
         {
             // Return type: double for ints otherwise float, double, long double
-            return std::sqrt((static_cast<result_t>(x)*x) + (static_cast<result_t>(y)*y) + (static_cast<result_t>(z)*z) + (static_cast<result_t>(w)*w));
+            return std::sqrt((static_cast<result_t>(x)*static_cast<result_t>(x)) + (static_cast<result_t>(y)*static_cast<result_t>(y)) + (static_cast<result_t>(z)*static_cast<result_t>(z)) + (static_cast<result_t>(w)*static_cast<result_t>(w)));
         }
 
-        VECTOR_INLINE T LengthSqr() const noexcept
+        VECTOR_INLINE result_t LengthSqr() const noexcept
         {
-            return (x*x) + (y*y) + (z*z) + (w*w);
+            return (static_cast<result_t>(x)*static_cast<result_t>(x)) + (static_cast<result_t>(y)*static_cast<result_t>(y)) + (static_cast<result_t>(z)*static_cast<result_t>(z)) + (static_cast<result_t>(w)*static_cast<result_t>(w));
         }
 
-        VECTOR_INLINE T DotProduct(const Vector4& other) const noexcept
+        VECTOR_INLINE result_t DotProduct(const Vector4& other) const noexcept
         {
-            return x * other.x + y * other.y + z * other.z + w * other.w;
+            return static_cast<result_t>(x) * static_cast<result_t>(other.x) + static_cast<result_t>(y) * static_cast<result_t>(other.y) + static_cast<result_t>(z) * static_cast<result_t>(other.z) + static_cast<result_t>(w) * static_cast<result_t>(other.w);
         }
 
         inline result_t Distance(const Vector4& other) const noexcept
@@ -2111,12 +2111,12 @@ namespace VECTOR_NAMESPACE
             return std::sqrt(dx*dx + dy*dy + dz*dz + dw*dw);
         }
 
-        VECTOR_INLINE T DistanceSqr(const Vector4& other) const noexcept
+        VECTOR_INLINE result_t DistanceSqr(const Vector4& other) const noexcept
         {
-            const T dx = other.x - x;
-            const T dy = other.y - y;
-            const T dz = other.z - z;
-            const T dw = other.w - w;
+            const result_t dx = static_cast<result_t>(other.x) - x;
+            const result_t dy = static_cast<result_t>(other.y) - y;
+            const result_t dz = static_cast<result_t>(other.z) - z;
+            const result_t dw = static_cast<result_t>(other.w) - w;
 
             return dx * dx + dy * dy + dz * dz + dw * dw;
         }
@@ -2190,7 +2190,7 @@ namespace VECTOR_NAMESPACE
 
         VECTOR_INLINE Vector4<result_t> Invert() const noexcept
         {
-            return Vector4<result_t>(result_t(1) / x, result_t(1) / y, result_t(1) / z, result_t(1) / w);
+            return Vector4<result_t>(detail::SafeDivide<result_t>(1, x), detail::SafeDivide<result_t>(1, y), detail::SafeDivide<result_t>(1, z), detail::SafeDivide<result_t>(1, w));
         }
 
         VECTOR_INLINE Vector4& InvertInPlace() noexcept
@@ -2202,10 +2202,10 @@ namespace VECTOR_NAMESPACE
         VECTOR_INLINE Vector4 Clamp(const Vector4& min, const Vector4& max) const noexcept
         {
             Vector4 result;
-            result.x = std::clamp(x, min.x, max.x);
-            result.y = std::clamp(y, min.y, max.y);
-            result.z = std::clamp(z, min.z, max.z);
-            result.w = std::clamp(w, min.w, max.w);
+            result.x = detail::OrderedClamp(x, min.x, max.x);
+            result.y = detail::OrderedClamp(y, min.y, max.y);
+            result.z = detail::OrderedClamp(z, min.z, max.z);
+            result.w = detail::OrderedClamp(w, min.w, max.w);
             return result;
         }
 
@@ -2217,7 +2217,11 @@ namespace VECTOR_NAMESPACE
 
         Vector4<result_t> ClampMagnitude(result_t min, result_t max) const noexcept
         {
-            Vector4<result_t> result(x, y);
+            Vector4<result_t> result(x, y, z, w);
+
+            if (min > max) std::swap(min, max);
+            min = std::max(result_t(0), min);
+            max = std::max(result_t(0), max);
 
             result_t length = LengthSqr();
             if (length > result_t(0))
