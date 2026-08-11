@@ -206,11 +206,11 @@ Settings parse_args(int argc, const char** argv)
         {
             settings.conceal = true;
         }
-        else if (arg == "-nd" || arg == " --no-decorator")
+        else if (arg == "-nd" || arg == "--no-decorator")
         {
             settings.decorator = false;
         }
-        else if (arg == "-nt" || arg == " --no-threads")
+        else if (arg == "-nt" || arg == "--no-threads")
         {
             settings.disable_threads = true;
         }
