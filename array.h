@@ -530,13 +530,13 @@ ARR_NODISCARD constexpr const T& get(const array<T, N>& arr) noexcept {
 template <std::size_t I, class T, std::size_t N>
 ARR_NODISCARD constexpr T&& get(array<T, N>&& arr) noexcept {
     static_assert(I < N, "array index out of bounds");
-    return std::move(arr._Elems[I]);
+    return std::move(arr.m_Elems[I]);
 }
 
 template <std::size_t I, class T, std::size_t N>
 ARR_NODISCARD constexpr const T&& get(const array<T, N>&& arr) noexcept {
     static_assert(I < N, "array index out of bounds");
-    return std::move(arr._Elems[I]);
+    return std::move(arr.m_Elems[I]);
 }
 
 template <class T>

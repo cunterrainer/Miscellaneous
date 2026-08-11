@@ -123,7 +123,7 @@ bool operator>=(const stack<T, Container>& lhs, const stack<T, Container>& rhs) 
 }
 
 template <class T, class Container, std::enable_if_t<std::is_swappable_v<Container>, int> = 0>
-void swap(const stack<T, Container>& lhs, const stack<T, Container>& rhs) noexcept(noexcept(lhs.swap(rhs))) {
+void swap(stack<T, Container>& lhs, stack<T, Container>& rhs) noexcept(noexcept(lhs.swap(rhs))) {
     lhs.swap(rhs);
 }
 
@@ -147,10 +147,10 @@ struct has_allocator_type<T, Alloc, std::void_t<typename T::allocator_type>> : s
 
 
 template<class Container, class Alloc>
-struct uses_allocator : has_allocator_type<Container, Alloc>::value {};
+struct uses_allocator : has_allocator_type<Container, Alloc> {};
 
 template<class T, class Container, class Alloc>
-struct uses_allocator<stack<T, Container>, Alloc> : uses_allocator<Container, Alloc>::type {};
+struct uses_allocator<stack<T, Container>, Alloc> : uses_allocator<Container, Alloc> {};
 
 
 
