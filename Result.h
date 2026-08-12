@@ -154,6 +154,9 @@ public:
     template <typename... Args>
     inline explicit Error(const char* what, Args&&... args)
     {
+        if (what == nullptr)
+            return;
+
         const int formatted_size = std::snprintf(nullptr, 0, what, std::forward<Args>(args)...);
         if (formatted_size < 0)
             return;
@@ -169,12 +172,12 @@ public:
         const std::size_t written_size = static_cast<std::size_t>(written);
         m_What.resize(written_size < size ? written_size : size);
     }
-    inline explicit Error(const char* what) : m_What(what) {}
+    inline explicit Error(const char* what) : m_What(what == nullptr ? "" : what) {}
     inline explicit Error(const std::string& what) : m_What(what) {}
     inline explicit Error(std::string&& what) noexcept : m_What(std::move(what)) {}
 
     template <typename... Args> inline explicit Error(Type type, const char* what, Args&&... args) : Error(what, std::forward<Args>(args)...) { m_Type = type; }
-    inline explicit Error(Type type, const char* what) : m_What(what), m_Type(type) {}
+    inline explicit Error(Type type, const char* what) : m_What(what == nullptr ? "" : what), m_Type(type) {}
     inline explicit Error(Type type, const std::string& what) : m_What(what), m_Type(type) {}
     inline explicit Error(Type type, std::string&& what) noexcept : m_What(std::move(what)), m_Type(type) {}
     inline explicit Error() = default;
@@ -322,7 +325,7 @@ public:
     {
         if (IsOk())
             return std::get<0>(m_Value);
-        throw E(msg + std::get<1>(m_Value).what());
+        throw E(std::string(msg == nullptr ? "" : msg) + std::get<1>(m_Value).what());
     }
 };
 
@@ -391,7 +394,7 @@ public:
     inline void Expect(const char* msg) const
     {
         if (IsErr())
-            throw E(msg + std::get<1>(m_Value).what());
+            throw E(std::string(msg == nullptr ? "" : msg) + std::get<1>(m_Value).what());
     }
 };
 
