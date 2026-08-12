@@ -25,17 +25,21 @@ Do not fix or modify baseline repository files. The only permitted audit outputs
 
 Establish the audit baseline before creating or changing any audit artifact.
 
-1. Recursively enumerate all filesystem files, including hidden and ignored files.
+1. Recursively enumerate all filesystem files, including hidden files, before applying the exclusions below.
 2. Exclude only:
    - `.git/`
    - `report.md`
    - `bug_findings/`
    - `agents/` and other files used solely to control the audit agent
+   - Any file named `.env`, at any directory depth
+   - Every file or directory matched by an applicable `.gitignore` rule
    - Temporary build and runtime artifacts created during this audit
 3. Save a sorted baseline manifest and a SHA-256 hash for every baseline file in temporary storage outside the repository.
 4. Use this immutable baseline for all coverage counts, manifests, line references, and integrity checks.
 
-Do not rely only on Git-aware tools or file searches that omit hidden, ignored, or binary files. Existing user changes are part of the baseline and must be preserved.
+Apply all repository `.gitignore` files using normal Git scoping, negation, and directory rules. Keep each `.gitignore` file itself in scope unless an applicable higher-level rule excludes it. Ignored paths and `.env` files must not appear in inventory counts, hashes, coverage claims, findings, or the final manifest.
+
+Do not rely on file searches that silently omit hidden or binary files beyond these explicit exclusions. Existing user changes in included paths are part of the baseline and must be preserved.
 
 ### Third-Party Code
 
