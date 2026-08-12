@@ -544,6 +544,13 @@ DEALINGS IN THE SOFTWARE.
 // Architecture loong arch ///////////////////////////////////////////////////////
 #if defined(__loongarch__)
     #define CORE_ARCH_LOONGARCH CORE_VERSION_NUMBER_AVAILABLE
+    #if defined(__loongarch_grlen) && (__loongarch_grlen == 64)
+        #undef CORE_ARCH_WORD_BITS_64
+        #define CORE_ARCH_WORD_BITS_64 CORE_VERSION_NUMBER_AVAILABLE
+    #elif defined(__loongarch_grlen) && (__loongarch_grlen == 32)
+        #undef CORE_ARCH_WORD_BITS_32
+        #define CORE_ARCH_WORD_BITS_32 CORE_VERSION_NUMBER_AVAILABLE
+    #endif
     #undef CORE_ARCH_NAME
     #define CORE_ARCH_NAME "LoongArch"
 #endif
@@ -673,6 +680,7 @@ DEALINGS IN THE SOFTWARE.
 // Architecture ppc64 ////////////////////////////////////////////////////////////
 #if defined(__powerpc64__) || defined(__ppc64__) || defined(__PPC64__) || defined(_ARCH_PPC64)
     #define CORE_ARCH_PPC_64 CORE_VERSION_NUMBER_AVAILABLE
+    #undef CORE_ARCH_WORD_BITS_32
     #undef CORE_ARCH_WORD_BITS_64
     #define CORE_ARCH_WORD_BITS_64 CORE_VERSION_NUMBER_AVAILABLE
     #undef CORE_ARCH_NAME
@@ -706,8 +714,13 @@ DEALINGS IN THE SOFTWARE.
 // Architecture riscv ////////////////////////////////////////////////////////////
 #if defined(__riscv)
     #define CORE_ARCH_RISCV CORE_VERSION_NUMBER_AVAILABLE
-    #undef CORE_ARCH_WORD_BITS_32
-    #define CORE_ARCH_WORD_BITS_32 CORE_VERSION_NUMBER_AVAILABLE
+    #if defined(__riscv_xlen) && (__riscv_xlen == 64)
+        #undef CORE_ARCH_WORD_BITS_64
+        #define CORE_ARCH_WORD_BITS_64 CORE_VERSION_NUMBER_AVAILABLE
+    #else
+        #undef CORE_ARCH_WORD_BITS_32
+        #define CORE_ARCH_WORD_BITS_32 CORE_VERSION_NUMBER_AVAILABLE
+    #endif
     #undef CORE_ARCH_NAME
     #define CORE_ARCH_NAME "RISC-V"
 #endif
@@ -1066,7 +1079,7 @@ DEALINGS IN THE SOFTWARE.
         #define CORE_COMP_DIAB_EMULATED CORE_COMP_DIAB_DETECTION
     #else
         #undef CORE_COMP_NAME
-        #define CORE_COMP_NAME CORE_COMP_DEC_NAME
+        #define CORE_COMP_NAME CORE_COMP_DIAB_NAME
         #define CORE_COMP_DIAB CORE_COMP_DIAB_DETECTION
     #endif
     #ifndef CORE_PREDEF_DETAIL_COMP_DETECTED
@@ -1997,6 +2010,10 @@ DEALINGS IN THE SOFTWARE.
 // Language c zos end ////////////////////////////////////////////////////////////
 #endif // CORE_ENABLE_LIBRARY
 
+#ifndef CORE_LIB_STD_NAME
+    #define CORE_LIB_STD_NAME "Unknown"
+#endif
+
 // Default CORE_LIB_C_NAME value
 #ifndef CORE_LIB_C_NAME
     #define CORE_LIB_C_NAME "Unknown"
@@ -2107,7 +2124,10 @@ DEALINGS IN THE SOFTWARE.
 
 
 // OS BSD ////////////////////////////////////////////////////////////////////////
-#if !defined(CORE_PREDEF_DETAIL_OS_DETECTED) && (defined(BSD) || defined(_SYSTYPE_BSD))
+#if !defined(CORE_PREDEF_DETAIL_OS_DETECTED) && \
+    (defined(BSD) || defined(_SYSTYPE_BSD)) && \
+    !defined(__bsdi__) && !defined(__DragonFly__) && !defined(__FreeBSD__) && \
+    !defined(__NETBSD__) && !defined(__NetBSD__) && !defined(__OpenBSD__)
     #include <sys/param.h>
     #if !defined(CORE_OS_BSD) && defined(BSD4_4)
         #define CORE_OS_BSD CORE_VERSION_NUMBER(4,4,0)
@@ -2506,35 +2526,6 @@ DEALINGS IN THE SOFTWARE.
 // OS irix end ///////////////////////////////////////////////////////////////////
 
 
-// OS irix ///////////////////////////////////////////////////////////////////////
-#if !defined(CORE_PREDEF_DETAIL_OS_DETECTED) && (defined(sgi) || defined(__sgi))
-    #define CORE_OS_IRIX CORE_VERSION_NUMBER_AVAILABLE
-#endif
-
-#define CORE_OS_IRIX_NAME "IRIX"
-#ifdef CORE_OS_IRIX
-    #undef CORE_OS_NAME
-    #define CORE_OS_NAME CORE_OS_IRIX_NAME
-    #ifndef CORE_PREDEF_DETAIL_OS_DETECTED
-    #define CORE_PREDEF_DETAIL_OS_DETECTED 1
-    #endif
-#endif
-// OS irix end ///////////////////////////////////////////////////////////////////
-
-
-// OS unix ///////////////////////////////////////////////////////////////////////
-#if defined(unix) || defined(__unix) || defined(_XOPEN_SOURCE) || defined(_POSIX_SOURCE)
-    #define CORE_OS_UNIX CORE_VERSION_NUMBER_AVAILABLE
-#endif
-
-#define CORE_OS_UNIX_NAME "Unix Environment"
-#ifdef CORE_OS_UNIX
-    #undef CORE_OS_NAME
-    #define CORE_OS_NAME CORE_OS_UNIX_NAME
-#endif
-// OS unix end ///////////////////////////////////////////////////////////////////
-
-
 // OS android ////////////////////////////////////////////////////////////////////
 #if !defined(CORE_PREDEF_DETAIL_OS_DETECTED) && (defined(__ANDROID__))
     #define CORE_OS_ANDROID CORE_VERSION_NUMBER_AVAILABLE
@@ -2621,6 +2612,23 @@ DEALINGS IN THE SOFTWARE.
     #endif
 #endif
 // OS solaris end ////////////////////////////////////////////////////////////////
+
+
+// OS unix ///////////////////////////////////////////////////////////////////////
+// This generic fallback follows all specific Unix-like operating systems.
+#if !defined(CORE_PREDEF_DETAIL_OS_DETECTED) && (defined(unix) || defined(__unix) || defined(_XOPEN_SOURCE) || defined(_POSIX_SOURCE))
+    #define CORE_OS_UNIX CORE_VERSION_NUMBER_AVAILABLE
+#endif
+
+#define CORE_OS_UNIX_NAME "Unix Environment"
+#ifdef CORE_OS_UNIX
+    #undef CORE_OS_NAME
+    #define CORE_OS_NAME CORE_OS_UNIX_NAME
+    #ifndef CORE_PREDEF_DETAIL_OS_DETECTED
+    #define CORE_PREDEF_DETAIL_OS_DETECTED 1
+    #endif
+#endif
+// OS unix end ///////////////////////////////////////////////////////////////////
 
 
 // OS vms ////////////////////////////////////////////////////////////////////////
@@ -2747,7 +2755,7 @@ DEALINGS IN THE SOFTWARE.
     #if !defined(CORE_PLAT_MINGW_DETECTION) && (defined(__MINGW64_VERSION_MAJOR) && defined(__MINGW64_VERSION_MINOR))
         #define CORE_PLAT_MINGW_DETECTION CORE_VERSION_NUMBER(__MINGW64_VERSION_MAJOR,__MINGW64_VERSION_MINOR,0)
     #endif
-    #if !defined(CORE_PLAT_MINGW_DETECTION) && (defined(__MINGW32_VERSION_MAJOR) && defined(__MINGW32_VERSION_MINOR))
+    #if !defined(CORE_PLAT_MINGW_DETECTION) && (defined(__MINGW32_MAJOR_VERSION) && defined(__MINGW32_MINOR_VERSION))
         #define CORE_PLAT_MINGW_DETECTION CORE_VERSION_NUMBER(__MINGW32_MAJOR_VERSION,__MINGW32_MINOR_VERSION,0)
     #endif
     #if !defined(CORE_PLAT_MINGW_DETECTION)
@@ -2774,8 +2782,8 @@ DEALINGS IN THE SOFTWARE.
 // Platform MinGW32 //////////////////////////////////////////////////////////////
 #if defined(__MINGW32__)
     #include <_mingw.h>
-    #if !defined(CORE_PLAT_MINGW32_DETECTION) && (defined(__MINGW32_VERSION_MAJOR) && defined(__MINGW32_VERSION_MINOR))
-        #define CORE_PLAT_MINGW32_DETECTION CORE_VERSION_NUMBER(__MINGW32_VERSION_MAJOR,__MINGW32_VERSION_MINOR,0)
+    #if !defined(CORE_PLAT_MINGW32_DETECTION) && (defined(__MINGW32_MAJOR_VERSION) && defined(__MINGW32_MINOR_VERSION))
+        #define CORE_PLAT_MINGW32_DETECTION CORE_VERSION_NUMBER(__MINGW32_MAJOR_VERSION,__MINGW32_MINOR_VERSION,0)
     #endif
     #if !defined(CORE_PLAT_MINGW32_DETECTION)
         #define CORE_PLAT_MINGW32_DETECTION CORE_VERSION_NUMBER_AVAILABLE
@@ -2796,33 +2804,6 @@ DEALINGS IN THE SOFTWARE.
     #endif
 #endif
 // Platform MinGW32 end //////////////////////////////////////////////////////////
-
-
-// Platform MinGW64 //////////////////////////////////////////////////////////////
-#if defined(__MINGW64__)
-    #include <_mingw.h>
-    #if !defined(CORE_PLAT_MINGW64_DETECTION) && (defined(__MINGW64_VERSION_MAJOR) && defined(__MINGW64_VERSION_MINOR))
-        #define CORE_PLAT_MINGW64_DETECTION CORE_VERSION_NUMBER(__MINGW64_VERSION_MAJOR,__MINGW64_VERSION_MINOR,0)
-    #endif
-    #if !defined(CORE_PLAT_MINGW64_DETECTION)
-        #define CORE_PLAT_MINGW64_DETECTION CORE_VERSION_NUMBER_AVAILABLE
-    #endif
-#endif
-
-#define CORE_PLAT_MINGW64_NAME "MinGW-w64"
-#ifdef CORE_PLAT_MINGW64_DETECTION
-    #if defined(CORE_PREDEF_DETAIL_PLAT_DETECTED)
-        #define CORE_PLAT_MINGW64_EMULATED CORE_PLAT_MINGW64_DETECTION
-    #else
-        #undef CORE_PLAT_NAME
-        #define CORE_PLAT_NAME CORE_PLAT_MINGW64_NAME
-        #define CORE_PLAT_MINGW64 CORE_PLAT_MINGW64_DETECTION
-    #endif
-    #ifndef CORE_PREDEF_DETAIL_PLAT_DETECTED
-    #define CORE_PREDEF_DETAIL_PLAT_DETECTED 1
-    #endif
-#endif
-// Platform MinGW64 end //////////////////////////////////////////////////////////
 
 
 // Platform MinGW64 //////////////////////////////////////////////////////////////
@@ -2948,7 +2929,7 @@ DEALINGS IN THE SOFTWARE.
 #endif
 
 #define CORE_PLAT_WINDOWS_SERVER_NAME "Windows Server"
-#ifdef CORE_PLAT_WINDOWS_RUNTIME
+#ifdef CORE_PLAT_WINDOWS_SERVER
     #undef CORE_PLAT_NAME
     #define CORE_PLAT_NAME CORE_PLAT_WINDOWS_SERVER_NAME
     #ifndef CORE_PREDEF_DETAIL_PLAT_DETECTED
@@ -3028,7 +3009,13 @@ DEALINGS IN THE SOFTWARE.
 /* Built-in byte-swapped big-endian macros.
  */
 #if !CORE_ENDIAN_BIG_BYTE && !CORE_ENDIAN_BIG_WORD && !CORE_ENDIAN_LITTLE_BYTE && !CORE_ENDIAN_LITTLE_WORD
-    #if (defined(__BIG_ENDIAN__) && !defined(__LITTLE_ENDIAN__)) || \
+    #if defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) && (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
+        #define CORE_ENDIAN_BIG_BYTE CORE_VERSION_NUMBER_AVAILABLE
+    #elif defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
+        #define CORE_ENDIAN_LITTLE_BYTE CORE_VERSION_NUMBER_AVAILABLE
+    #elif defined(__BYTE_ORDER__) && defined(__ORDER_PDP_ENDIAN__) && (__BYTE_ORDER__ == __ORDER_PDP_ENDIAN__)
+        #define CORE_ENDIAN_LITTLE_WORD CORE_VERSION_NUMBER_AVAILABLE
+    #elif (defined(__BIG_ENDIAN__) && !defined(__LITTLE_ENDIAN__)) || \
        (defined(_BIG_ENDIAN) && !defined(_LITTLE_ENDIAN)) || \
         defined(__ARMEB__) || \
         defined(__THUMBEB__) || \
@@ -3072,6 +3059,7 @@ DEALINGS IN THE SOFTWARE.
         #define CORE_ENDIAN_BIG_BYTE CORE_VERSION_NUMBER_AVAILABLE
     #endif
     #if CORE_ARCH_IA64 || \
+        CORE_ARCH_X64 || \
         CORE_ARCH_X86 || \
         CORE_ARCH_BLACKFIN
         #define CORE_ENDIAN_LITTLE_BYTE CORE_VERSION_NUMBER_AVAILABLE

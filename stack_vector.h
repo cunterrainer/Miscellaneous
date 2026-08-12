@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <stdexcept>
 #include <type_traits>
+#include <tuple>
 
 // Forward declaration for get declarations
 template <class T, std::size_t N>
@@ -276,11 +277,14 @@ public:
     using reverse_iterator       = std::reverse_iterator<iterator>;
     using const_reverse_iterator = std::reverse_iterator<const_iterator>;
 private:
-    T m_Elems[N];
+    // Standard C++ does not permit a zero-bound built-in array.  Keep one
+    // inaccessible sentinel element so stack_vector<T, 0> remains a valid
+    // type while its logical capacity stays zero.
+    T m_Elems[N == 0 ? 1 : N];
     size_type m_Size = 0;
 public:
     template <class... U, std::enable_if_t<(sizeof...(U) <= N) && std::conjunction_v<std::is_convertible<U, T>...>, int> = 0>
-    constexpr stack_vector(U&&... args) noexcept : m_Elems{ std::forward<U>(args)... }, m_Size(sizeof...(U)) {}
+    constexpr stack_vector(U&&... args) noexcept(std::conjunction_v<std::is_nothrow_constructible<T, U&&>...> && (sizeof...(U) == (N == 0 ? 1 : N) || std::is_nothrow_default_constructible_v<T>)) : m_Elems{ std::forward<U>(args)... }, m_Size(sizeof...(U)) {}
 
     // element access -- done -- C++17
     constexpr reference at(size_type pos)
@@ -457,7 +461,7 @@ public:
     }
 
     template <class... Args>
-    constexpr bool emplace_back(Args&&... args) noexcept(std::is_nothrow_copy_assignable_v<T>)
+    constexpr bool emplace_back(Args&&... args) noexcept(std::is_nothrow_constructible_v<T, Args&&...> && std::is_nothrow_move_assignable_v<T>)
     {
         static_assert(std::is_assignable_v<T&, T>, "stack_vector::emplace_back<T>(Args&&... args): T must be assignable!");
         if (m_Size >= N)
@@ -537,7 +541,7 @@ public:
     }
 
     template <class... Args>
-    constexpr bool emplace(size_type pos, Args&&... args) noexcept(std::is_nothrow_move_assignable_v<T>)
+    constexpr bool emplace(size_type pos, Args&&... args) noexcept(std::is_nothrow_constructible_v<T, Args&&...> && std::is_nothrow_move_assignable_v<T>)
     {
         if (m_Size >= N)
         {
@@ -567,7 +571,8 @@ public:
 
     inline void swap(stack_vector& other) noexcept(std::is_nothrow_swappable_v<T>)
     {
-        std::swap(m_Elems, other.m_Elems);
+        if constexpr (N > 0)
+            std::swap(m_Elems, other.m_Elems);
         const size_type tmp = m_Size;
         m_Size = other.m_Size;
         other.m_Size = tmp;

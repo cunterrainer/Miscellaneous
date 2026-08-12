@@ -140,8 +140,16 @@ struct Error
 public:
     using Type = ErrorType;
 private:
+    static constexpr Type DefaultType() noexcept
+    {
+        if constexpr (std::is_enum<Type>::value)
+            return static_cast<Type>(0);
+        else
+            return static_cast<Type>(std::numeric_limits<std::size_t>::max());
+    }
+
     std::string m_What;
-    Type m_Type = static_cast<Type>(std::numeric_limits<std::size_t>::max());
+    Type m_Type = DefaultType();
 public:
     template <typename... Args>
     inline explicit Error(const char* what, Args&&... args)
@@ -162,11 +170,13 @@ public:
         m_What.resize(written_size < size ? written_size : size);
     }
     inline explicit Error(const char* what) : m_What(what) {}
-    inline explicit Error(const std::string& what) : m_What(std::move(what)) {}
+    inline explicit Error(const std::string& what) : m_What(what) {}
+    inline explicit Error(std::string&& what) noexcept : m_What(std::move(what)) {}
 
     template <typename... Args> inline explicit Error(Type type, const char* what, Args&&... args) : Error(what, std::forward<Args>(args)...) { m_Type = type; }
     inline explicit Error(Type type, const char* what) : m_What(what), m_Type(type) {}
-    inline explicit Error(Type type, const std::string& what) : m_What(std::move(what)), m_Type(type) {}
+    inline explicit Error(Type type, const std::string& what) : m_What(what), m_Type(type) {}
+    inline explicit Error(Type type, std::string&& what) noexcept : m_What(std::move(what)), m_Type(type) {}
     inline explicit Error() = default;
 
     inline Error(const Error& other) : m_What(other.m_What), m_Type(other.m_Type) {}
@@ -234,7 +244,9 @@ private:
     std::variant<T, E> m_Value;
 public:
     inline Result(const E& e) : m_Value(std::in_place_index<1>, e) {}
+    inline Result(E&& e) : m_Value(std::in_place_index<1>, std::move(e)) {}
     inline Result(const T& t) : m_Value(std::in_place_index<0>, t) {}
+    inline Result(T&& t) : m_Value(std::in_place_index<0>, std::move(t)) {}
 
     Result(const Result&) = default;
     Result(Result&&) = default;
@@ -254,7 +266,7 @@ public:
         return std::get<1>(m_Value);
     }
 
-    template <typename U = E, typename std::enable_if<ResultUtil::ErrorHasType<U>::value && ResultUtil::ErrorHasTypeFunction<U>::value>::type = 0>
+    template <typename U = E, std::enable_if_t<ResultUtil::ErrorHasType<U>::value && ResultUtil::ErrorHasTypeFunction<U>::value, int> = 0>
     inline typename U::Type ErrType() const noexcept
     {
         return Err().type();
@@ -323,86 +335,63 @@ class Result<void, E>
     static_assert(std::is_copy_constructible<E>::value, "Result<void>::Error type has to be copiable");
     static_assert(std::is_move_constructible<E>::value, "Result<void>::Error type has to be movable");
 private:
-    E m_Error;
-    bool m_Valid;
+    std::variant<std::monostate, E> m_Value;
 public:
-    inline Result(const E& e) : m_Error(e), m_Valid(false) {}
-    inline Result() : m_Valid(true) {}
+    inline Result(const E& e) : m_Value(std::in_place_index<1>, e) {}
+    inline Result(E&& e) : m_Value(std::in_place_index<1>, std::move(e)) {}
+    inline Result() : m_Value(std::in_place_index<0>) {}
 
-    Result(const Result& other) : m_Valid(other.m_Valid)
-    {
-        m_Error = other.m_Error;
-    }
-
-    Result(Result&& other) noexcept : m_Valid(other.m_Valid)
-    {
-        m_Error = std::move(other.m_Error);
-    }
-
-    Result& operator=(const Result& other)
-    {
-        if (this != &other)
-        {
-            m_Valid = other.m_Valid;
-            m_Error = other.m_Error;
-        }
-        return *this;
-    }
-
-    Result& operator=(Result&& other) noexcept
-    {
-        if (this != &other)
-        {
-            m_Valid = other.m_Valid;
-            m_Error = std::move(other.m_Error);
-        }
-        return *this;
-    }
+    Result(const Result&) = default;
+    Result(Result&&) = default;
+    Result& operator=(const Result&) = default;
+    Result& operator=(Result&&) = default;
+    ~Result() = default;
 
     inline const E& Err() const noexcept
     {
-        return m_Error;
+        assert(IsErr() && "Don't access the Err() value if it is not an error, use IsErr() to check beforehand!");
+        return std::get<1>(m_Value);
     }
 
-    template <typename U = E, typename std::enable_if<ResultUtil::ErrorHasType<U>::value && ResultUtil::ErrorHasTypeFunction<U>::value>::type = 0>
+    template <typename U = E, std::enable_if_t<ResultUtil::ErrorHasType<U>::value && ResultUtil::ErrorHasTypeFunction<U>::value, int> = 0>
     inline typename U::Type ErrType() const noexcept
     {
-        return m_Error.type();
+        return Err().type();
     }
 
     explicit operator bool() const noexcept
     {
-        return m_Valid;
+        return IsOk();
     }
 
     inline bool IsOk() const noexcept
     {
-        return m_Valid;
+        return m_Value.index() == 0;
     }
 
     inline bool IsErr() const noexcept
     {
-        return !m_Valid;
+        return m_Value.index() == 1;
     }
 
     inline void Unwrap() const
     {
-        if (!m_Valid)
-            throw m_Error;
+        if (IsErr())
+            throw std::get<1>(m_Value);
     }
 
     template <typename Func, typename... Args>
     inline void UnwrapOrElse(const Func& f, Args&&... args) const
     {
-        if (!m_Valid)
+        if (IsErr())
             return f(std::forward<Args>(args)...);
     }
 
     template <typename U = E, typename = std::void_t<decltype(std::declval<U>().what())>>
     inline void Expect(const char* msg) const
     {
-        if (!m_Valid)
-            throw E(msg + m_Error.what());
+        if (IsErr())
+            throw E(msg + std::get<1>(m_Value).what());
     }
 };
 
