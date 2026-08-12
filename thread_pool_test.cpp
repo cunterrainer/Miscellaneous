@@ -1,4 +1,5 @@
 #include "ThreadPool.hpp"
+#include "Test.h"
 
 #include <atomic>
 #include <chrono>
@@ -152,63 +153,10 @@ namespace
     }
 
 
-    struct TestFailure : std::runtime_error
-    {
-        explicit TestFailure(const std::string& message)
-            : std::runtime_error(message)
-        {
-        }
-    };
-
-    struct TestCase
-    {
-        std::string name;
-        void (*function)();
-    };
-
-    std::vector<TestCase>& Registry()
-    {
-        static std::vector<TestCase> tests;
-        return tests;
-    }
-
-    struct TestRegistrar
-    {
-        TestRegistrar(const std::string& name, void (*function)())
-        {
-            Registry().push_back({name, function});
-        }
-    };
-
-    #define TEST(name) \
-        void name(); \
-        TestRegistrar name##_registrar(#name, &name); \
-        void name()
-
-    #define REQUIRE(condition) \
-        do \
-        { \
-            if (!(condition)) \
-            { \
-                throw TestFailure(std::string("REQUIRE failed: ") + #condition + " at " + __FILE__ + ":" + std::to_string(__LINE__)); \
-            } \
-        } while (false)
-
-    #define REQUIRE_EQ(left, right) \
-        do \
-        { \
-            const auto left_value = (left); \
-            const auto right_value = (right); \
-            if (!(left_value == right_value)) \
-            { \
-                throw TestFailure(std::string("REQUIRE_EQ failed: ") + #left + " != " + #right + " at " + __FILE__ + ":" + std::to_string(__LINE__)); \
-            } \
-        } while (false)
-
     TEST(construct_with_zero_normalizes_to_one)
     {
         Utility::ThreadPool pool(0u);
-        REQUIRE_EQ(pool.Size(), 1u);
+        REQUIRE_EQUAL(pool.Size(), 1u);
         REQUIRE(pool.IsAcceptingSubmissions());
     }
 
@@ -218,8 +166,8 @@ namespace
         auto future = pool.Submit(AddThree, 3, 4, 5);
         auto future_one = pool.Submit(ReturnOne);
 
-        REQUIRE_EQ(future.get(), 12);
-        REQUIRE_EQ(future_one.get(), 1);
+        REQUIRE_EQUAL(future.get(), 12);
+        REQUIRE_EQUAL(future_one.get(), 1);
         REQUIRE(pool.WaitIdle(500ms));
     }
 
@@ -232,17 +180,7 @@ namespace
                 throw std::runtime_error("boom");
             });
 
-        bool caught = false;
-        try
-        {
-            (void)future.get();
-        }
-        catch (const std::runtime_error&)
-        {
-            caught = true;
-        }
-
-        REQUIRE(caught);
+        REQUIRE_THROWS_AS(future.get(), std::runtime_error);
     }
 
     TEST(submit_packaging_covers_success_and_throw_branch)
@@ -250,21 +188,13 @@ namespace
         Utility::ThreadPool pool(2u);
         ToggleThrowMove::throw_on_move.store(false, std::memory_order_release);
         auto success = pool.Submit(ConsumeToggleThrowMove, ToggleThrowMove{77});
-        REQUIRE_EQ(success.get(), 77);
+        REQUIRE_EQUAL(success.get(), 77);
 
         ToggleThrowMove::throw_on_move.store(true, std::memory_order_release);
-        bool threw = false;
-        try
-        {
-            (void)pool.Submit(ConsumeToggleThrowMove, ToggleThrowMove{13});
-        }
-        catch (const std::runtime_error&)
-        {
-            threw = true;
-        }
-
+        CHECK_THROWS_AS(
+            pool.Submit(ConsumeToggleThrowMove, ToggleThrowMove{13}),
+            std::runtime_error);
         ToggleThrowMove::throw_on_move.store(false, std::memory_order_release);
-        REQUIRE(threw);
     }
 
 #if !defined(THREAD_POOL_TEST_WITH_TSAN)
@@ -332,7 +262,7 @@ namespace
         pool.SubmitDetached(NoopTask);
 
         pool.WaitIdle();
-        REQUIRE_EQ(value.load(std::memory_order_relaxed), 1000);
+        REQUIRE_EQUAL(value.load(std::memory_order_relaxed), 1000);
     }
 
     TEST(detached_task_exceptions_do_not_kill_workers)
@@ -366,12 +296,12 @@ namespace
                 return 22;
             });
 
-        REQUIRE_EQ(generic_follow_up.get(), 11);
-        REQUIRE_EQ(targeted_follow_up.get(), 22);
+        REQUIRE_EQUAL(generic_follow_up.get(), 11);
+        REQUIRE_EQUAL(targeted_follow_up.get(), 22);
         REQUIRE(pool.WaitIdle(1s));
-        REQUIRE_EQ(completed.load(std::memory_order_relaxed), 2);
-        REQUIRE_EQ(pool.PendingTasks(), 0u);
-        REQUIRE_EQ(pool.ActiveWorkers(), 0u);
+        REQUIRE_EQUAL(completed.load(std::memory_order_relaxed), 2);
+        REQUIRE_EQUAL(pool.PendingTasks(), 0u);
+        REQUIRE_EQUAL(pool.ActiveWorkers(), 0u);
     }
 
     TEST(idle_worker_never_misses_new_work_notification)
@@ -390,8 +320,8 @@ namespace
         }
 
         REQUIRE(pool.WaitIdle(1s));
-        REQUIRE_EQ(pool.PendingTasks(), 0u);
-        REQUIRE_EQ(pool.ActiveWorkers(), 0u);
+        REQUIRE_EQUAL(pool.PendingTasks(), 0u);
+        REQUIRE_EQUAL(pool.ActiveWorkers(), 0u);
     }
 
     TEST(nested_submit_from_worker_path)
@@ -422,7 +352,7 @@ namespace
 
         root.get();
         pool.WaitIdle();
-        REQUIRE_EQ(sum.load(std::memory_order_relaxed), 256);
+        REQUIRE_EQUAL(sum.load(std::memory_order_relaxed), 256);
     }
 
     TEST(global_thread_pool_singleton_identity)
@@ -448,17 +378,9 @@ namespace
                 ? Utility::ThreadPool::SubmissionPolicy::Random
                 : Utility::ThreadPool::SubmissionPolicy::RoundRobin;
 
-        bool threw = false;
-        try
-        {
-            Utility::InitializeGlobalThreadPool(pool.Size(), other_policy);
-        }
-        catch (const std::runtime_error&)
-        {
-            threw = true;
-        }
-
-        REQUIRE(threw);
+        REQUIRE_THROWS_AS(
+            Utility::InitializeGlobalThreadPool(pool.Size(), other_policy),
+            std::runtime_error);
     }
 
     TEST(submission_policy_round_robin_and_random)
@@ -480,14 +402,14 @@ namespace
         }
 
         pool.WaitIdle();
-        REQUIRE_EQ(counter.load(std::memory_order_relaxed), 200);
+        REQUIRE_EQUAL(counter.load(std::memory_order_relaxed), 200);
     }
 
     TEST(constructor_accepts_submission_policy)
     {
         Utility::ThreadPool pool(4u, Utility::ThreadPool::SubmissionPolicy::Random);
         REQUIRE(pool.GetSubmissionPolicy() == Utility::ThreadPool::SubmissionPolicy::Random);
-        REQUIRE_EQ(pool.Size(), 4u);
+        REQUIRE_EQUAL(pool.Size(), 4u);
     }
 
     TEST(local_queue_submit_and_detached_submit)
@@ -496,7 +418,7 @@ namespace
         g_detached_counter.store(0, std::memory_order_relaxed);
 
         auto value_future = pool.SubmitToWorker(0u, MultiplyTwo, 6, 7);
-        REQUIRE_EQ(value_future.get(), 42);
+        REQUIRE_EQUAL(value_future.get(), 42);
 
         for (int i = 0; i < 128; ++i)
         {
@@ -504,35 +426,18 @@ namespace
         }
 
         pool.WaitIdle();
-        REQUIRE_EQ(g_detached_counter.load(std::memory_order_relaxed), 128);
+        REQUIRE_EQUAL(g_detached_counter.load(std::memory_order_relaxed), 128);
     }
 
     TEST(local_queue_submit_invalid_worker_index_throws)
     {
         Utility::ThreadPool pool(2u);
-        bool submit_threw = false;
-        bool detached_threw = false;
-
-        try
-        {
-            (void)pool.SubmitToWorker(99u, MultiplyTwo, 1, 2);
-        }
-        catch (const std::out_of_range&)
-        {
-            submit_threw = true;
-        }
-
-        try
-        {
-            pool.SubmitDetachedToWorker(99u, IncrementGlobalDetachedCounter);
-        }
-        catch (const std::out_of_range&)
-        {
-            detached_threw = true;
-        }
-
-        REQUIRE(submit_threw);
-        REQUIRE(detached_threw);
+        REQUIRE_THROWS_AS(
+            pool.SubmitToWorker(99u, MultiplyTwo, 1, 2),
+            std::out_of_range);
+        REQUIRE_THROWS_AS(
+            pool.SubmitDetachedToWorker(99u, IncrementGlobalDetachedCounter),
+            std::out_of_range);
     }
 
     TEST(set_worker_topology_hint_valid_and_invalid_index)
@@ -549,7 +454,7 @@ namespace
         invalid_hint.preferred_cpu = 1'000'000u;
         REQUIRE(pool.SetWorkerTopologyHint(1u, invalid_hint));
         auto future = pool.Submit([] { return 7; });
-        REQUIRE_EQ(future.get(), 7);
+        REQUIRE_EQUAL(future.get(), 7);
     }
 
     TEST(set_worker_topology_hint_valid_cpu_executes_on_single_worker)
@@ -559,7 +464,7 @@ namespace
         hint.preferred_cpu = 0u;
         REQUIRE(pool.SetWorkerTopologyHint(0u, hint));
         auto future = pool.Submit([] { return 11; });
-        REQUIRE_EQ(future.get(), 11);
+        REQUIRE_EQUAL(future.get(), 11);
     }
 
     TEST(set_worker_topology_hint_invalid_cpu_executes_on_single_worker)
@@ -569,7 +474,7 @@ namespace
         hint.preferred_cpu = 1'000'000u;
         REQUIRE(pool.SetWorkerTopologyHint(0u, hint));
         auto future = pool.Submit([] { return 12; });
-        REQUIRE_EQ(future.get(), 12);
+        REQUIRE_EQUAL(future.get(), 12);
     }
 
     TEST(wait_idle_timeout_then_success)
@@ -616,19 +521,19 @@ namespace
         }
 
         auto queued = pool.Submit([] { return 2; });
-        REQUIRE_EQ(pool.ActiveWorkers(), 1u);
-        REQUIRE_EQ(pool.ExecutingTasks(), 1u);
-        REQUIRE_EQ(pool.PendingTasks(), 2u);
-        REQUIRE_EQ(pool.QueuedTasks(), 1u);
+        REQUIRE_EQUAL(pool.ActiveWorkers(), 1u);
+        REQUIRE_EQUAL(pool.ExecutingTasks(), 1u);
+        REQUIRE_EQUAL(pool.PendingTasks(), 2u);
+        REQUIRE_EQUAL(pool.QueuedTasks(), 1u);
 
         release_running_task.set_value();
-        REQUIRE_EQ(running.get(), 1);
-        REQUIRE_EQ(queued.get(), 2);
+        REQUIRE_EQUAL(running.get(), 1);
+        REQUIRE_EQUAL(queued.get(), 2);
         REQUIRE(pool.WaitIdle(1s));
-        REQUIRE_EQ(pool.PendingTasks(), 0u);
-        REQUIRE_EQ(pool.QueuedTasks(), 0u);
-        REQUIRE_EQ(pool.ExecutingTasks(), 0u);
-        REQUIRE_EQ(pool.ActiveWorkers(), 0u);
+        REQUIRE_EQUAL(pool.PendingTasks(), 0u);
+        REQUIRE_EQUAL(pool.QueuedTasks(), 0u);
+        REQUIRE_EQUAL(pool.ExecutingTasks(), 0u);
+        REQUIRE_EQUAL(pool.ActiveWorkers(), 0u);
     }
 
     TEST(all_concurrent_idle_waiters_are_released_on_last_completion)
@@ -666,8 +571,8 @@ namespace
             waiter.join();
         }
 
-        REQUIRE_EQ(returned_while_busy, 0);
-        REQUIRE_EQ(returned.load(std::memory_order_acquire), 12);
+        REQUIRE_EQUAL(returned_while_busy, 0);
+        REQUIRE_EQUAL(returned.load(std::memory_order_acquire), 12);
     }
 
     TEST(direct_worker_submissions_wake_sleeping_target_workers)
@@ -690,16 +595,16 @@ namespace
         }
 
         REQUIRE(pool.WaitIdle(2s));
-        REQUIRE_EQ(completed.load(std::memory_order_relaxed), 400);
+        REQUIRE_EQUAL(completed.load(std::memory_order_relaxed), 400);
     }
 
     TEST(resize_grow_and_shrink_preserves_work)
     {
         Utility::ThreadPool pool(2u);
-        REQUIRE_EQ(pool.Size(), 2u);
+        REQUIRE_EQUAL(pool.Size(), 2u);
 
         pool.Resize(8u);
-        REQUIRE_EQ(pool.Size(), 8u);
+        REQUIRE_EQUAL(pool.Size(), 8u);
 
         std::atomic<int> counter = 0;
         for (int i = 0; i < 2000; ++i)
@@ -712,23 +617,23 @@ namespace
         }
 
         pool.Resize(3u);
-        REQUIRE_EQ(pool.Size(), 3u);
+        REQUIRE_EQUAL(pool.Size(), 3u);
         pool.WaitIdle();
-        REQUIRE_EQ(counter.load(std::memory_order_relaxed), 2000);
+        REQUIRE_EQUAL(counter.load(std::memory_order_relaxed), 2000);
     }
 
     TEST(resize_to_zero_normalizes_to_one)
     {
         Utility::ThreadPool pool(4u);
         pool.Resize(0u);
-        REQUIRE_EQ(pool.Size(), 1u);
+        REQUIRE_EQUAL(pool.Size(), 1u);
     }
 
     TEST(resize_to_same_size_is_noop)
     {
         Utility::ThreadPool pool(3u);
         pool.Resize(3u);
-        REQUIRE_EQ(pool.Size(), 3u);
+        REQUIRE_EQUAL(pool.Size(), 3u);
         REQUIRE(pool.WaitIdle(100ms));
     }
 
@@ -749,54 +654,16 @@ namespace
         pool.Shutdown();
         REQUIRE(pool.IsStopping());
         REQUIRE(!pool.IsAcceptingSubmissions());
-        REQUIRE_EQ(counter.load(std::memory_order_relaxed), 100);
+        REQUIRE_EQUAL(counter.load(std::memory_order_relaxed), 100);
 
-        bool rejected = false;
-        try
-        {
-            (void)pool.Submit(ReturnOne);
-        }
-        catch (const std::runtime_error&)
-        {
-            rejected = true;
-        }
-
-        REQUIRE(rejected);
-
-        bool detached_rejected = false;
-        try
-        {
-            pool.SubmitDetached(NoopTask);
-        }
-        catch (const std::runtime_error&)
-        {
-            detached_rejected = true;
-        }
-
-        REQUIRE(detached_rejected);
-
-        bool local_rejected = false;
-        bool local_detached_rejected = false;
-        try
-        {
-            (void)pool.SubmitToWorker(0u, MultiplyTwo, 2, 2);
-        }
-        catch (const std::runtime_error&)
-        {
-            local_rejected = true;
-        }
-
-        try
-        {
-            pool.SubmitDetachedToWorker(0u, IncrementGlobalDetachedCounter);
-        }
-        catch (const std::runtime_error&)
-        {
-            local_detached_rejected = true;
-        }
-
-        REQUIRE(local_rejected);
-        REQUIRE(local_detached_rejected);
+        REQUIRE_THROWS_AS(pool.Submit(ReturnOne), std::runtime_error);
+        REQUIRE_THROWS_AS(pool.SubmitDetached(NoopTask), std::runtime_error);
+        REQUIRE_THROWS_AS(
+            pool.SubmitToWorker(0u, MultiplyTwo, 2, 2),
+            std::runtime_error);
+        REQUIRE_THROWS_AS(
+            pool.SubmitDetachedToWorker(0u, IncrementGlobalDetachedCounter),
+            std::runtime_error);
         pool.Shutdown();
     }
 
@@ -887,8 +754,8 @@ namespace
         first.join();
         second.join();
 
-        REQUIRE_EQ(returned_before_release, 0);
-        REQUIRE_EQ(shutdown_returns.load(std::memory_order_acquire), 2);
+        REQUIRE_EQUAL(returned_before_release, 0);
+        REQUIRE_EQUAL(shutdown_returns.load(std::memory_order_acquire), 2);
     }
 
     TEST(graceful_and_immediate_shutdown_are_serialized)
@@ -927,8 +794,8 @@ namespace
         graceful.join();
         immediate.join();
 
-        REQUIRE_EQ(returned_before_release, 0);
-        REQUIRE_EQ(shutdown_returns.load(std::memory_order_acquire), 2);
+        REQUIRE_EQUAL(returned_before_release, 0);
+        REQUIRE_EQUAL(shutdown_returns.load(std::memory_order_acquire), 2);
         REQUIRE(!pool.IsAcceptingSubmissions());
     }
 
@@ -937,17 +804,7 @@ namespace
         Utility::ThreadPool pool(2u);
         pool.Shutdown();
 
-        bool threw = false;
-        try
-        {
-            pool.Resize(3u);
-        }
-        catch (const std::runtime_error&)
-        {
-            threw = true;
-        }
-
-        REQUIRE(threw);
+        REQUIRE_THROWS_AS(pool.Resize(3u), std::runtime_error);
     }
 
     TEST(worker_initiated_lifecycle_operations_are_rejected)
@@ -989,9 +846,9 @@ namespace
                 return rejected;
             });
 
-        REQUIRE_EQ(rejected_operations.get(), 3);
-        REQUIRE_EQ(pool.Size(), 1u);
-        REQUIRE_EQ(pool.Submit(ReturnOne).get(), 1);
+        REQUIRE_EQUAL(rejected_operations.get(), 3);
+        REQUIRE_EQUAL(pool.Size(), 1u);
+        REQUIRE_EQUAL(pool.Submit(ReturnOne).get(), 1);
     }
 
     TEST(concurrent_submit_under_load_stress)
@@ -1024,7 +881,7 @@ namespace
 
         pool.WaitIdle();
         REQUIRE(sum.load(std::memory_order_relaxed) > 0);
-        REQUIRE_EQ(pool.PendingTasks(), 0u);
+        REQUIRE_EQUAL(pool.PendingTasks(), 0u);
     }
 
     TEST(concurrent_resize_and_submit_stress)
@@ -1069,8 +926,8 @@ namespace
         stop.store(true, std::memory_order_release);
         resizer.join();
         pool.WaitIdle();
-        REQUIRE_EQ(pool.PendingTasks(), 0u);
-        REQUIRE_EQ(executed.load(std::memory_order_relaxed), 12'000);
+        REQUIRE_EQUAL(pool.PendingTasks(), 0u);
+        REQUIRE_EQUAL(executed.load(std::memory_order_relaxed), 12'000);
     }
 
     TEST(concurrent_submit_and_shutdown_race_stress)
@@ -1137,8 +994,8 @@ namespace
 
         root.get();
         pool.WaitIdle();
-        REQUIRE_EQ(completed.load(std::memory_order_relaxed), fanout);
-        REQUIRE_EQ(pool.ActiveWorkers(), 0u);
+        REQUIRE_EQUAL(completed.load(std::memory_order_relaxed), fanout);
+        REQUIRE_EQUAL(pool.ActiveWorkers(), 0u);
     }
 
     TEST(resize_shrink_migrates_local_queue_to_global_queue)
@@ -1163,7 +1020,7 @@ namespace
         producer.get();
         pool.Resize(1u);
         REQUIRE(pool.WaitIdle(5000ms));
-        REQUIRE_EQ(count.load(std::memory_order_relaxed), 256);
+        REQUIRE_EQUAL(count.load(std::memory_order_relaxed), 256);
     }
 
     TEST(nested_submission_to_a_different_pool_uses_the_destination_pool)
@@ -1220,7 +1077,7 @@ namespace
         updater.join();
         REQUIRE(pool.WaitIdle(5s));
         REQUIRE(updates.load(std::memory_order_relaxed) > 0);
-        REQUIRE_EQ(executed.load(std::memory_order_relaxed), 80);
+        REQUIRE_EQUAL(executed.load(std::memory_order_relaxed), 80);
     }
 
     TEST(wait_idle_and_shutdown_now_agree_after_queue_cancellation)
@@ -1283,9 +1140,9 @@ namespace
         }
 
         REQUIRE(!returned_while_task_active);
-        REQUIRE_EQ(broken_promises, canceled.size());
-        REQUIRE_EQ(pool.PendingTasks(), 0u);
-        REQUIRE_EQ(pool.ActiveWorkers(), 0u);
+        REQUIRE_EQUAL(broken_promises, canceled.size());
+        REQUIRE_EQUAL(pool.PendingTasks(), 0u);
+        REQUIRE_EQUAL(pool.ActiveWorkers(), 0u);
     }
 
     TEST(active_worker_submission_is_rejected_once_shutdown_begins)
@@ -1324,7 +1181,7 @@ namespace
         stopper.join();
 
         REQUIRE(rejected.load(std::memory_order_acquire));
-        REQUIRE_EQ(pool.PendingTasks(), 0u);
+        REQUIRE_EQUAL(pool.PendingTasks(), 0u);
     }
 
     TEST(repeated_create_destroy_stress)
@@ -1344,40 +1201,12 @@ namespace
             }
 
             pool.WaitIdle();
-            REQUIRE_EQ(count.load(std::memory_order_relaxed), 100);
+            REQUIRE_EQUAL(count.load(std::memory_order_relaxed), 100);
         }
     }
 }
 
-int main()
+int main(int argc, char** argv)
 {
-    int failures = 0;
-
-    for (const TestCase& test : Registry())
-    {
-        try
-        {
-            test.function();
-            std::cout << "[PASS] " << test.name << '\n';
-        }
-        catch (const std::exception& exception)
-        {
-            ++failures;
-            std::cerr << "[FAIL] " << test.name << " :: " << exception.what() << '\n';
-        }
-        catch (...)
-        {
-            ++failures;
-            std::cerr << "[FAIL] " << test.name << " :: unknown exception\n";
-        }
-    }
-
-    if (failures != 0)
-    {
-        std::cerr << failures << " test(s) failed\n";
-        return 1;
-    }
-
-    std::cout << "All tests passed: " << Registry().size() << '\n';
-    return 0;
+    return Test::RunAllTests(argc, argv);
 }
