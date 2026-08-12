@@ -2,7 +2,8 @@
 
 set -eu
 
-harness_root=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+harness_test_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+harness_root=$(CDPATH= cd -- "$harness_test_dir/.." && pwd)
 harness_work=$(mktemp -d)
 trap 'rm -rf -- "$harness_work"' EXIT HUP INT TERM
 
@@ -29,7 +30,8 @@ fi
     -Wall \
     -Wextra \
     -pedantic \
-    "$harness_root/test_harness_test.cpp" \
+    -I"$harness_root" \
+    "$harness_test_dir/test_harness_test.cpp" \
     -o "$harness_work/test_harness_test"
 
 LLVM_PROFILE_FILE="$harness_work/test_harness.profraw" \
