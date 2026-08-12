@@ -31,10 +31,24 @@ Do not fix or modify baseline repository files. The only permitted audit outputs
 
 ## Scope and Immutable Baseline
 
-Establish the audit baseline before creating or changing any audit artifact.
+Establish the requested audit scope and immutable baseline before creating or changing any audit artifact.
 
-1. Recursively enumerate all filesystem files, including hidden files, before applying the exclusions below.
-2. Exclude only:
+### Requested Scope
+
+- Auditing all repository files is the default only when the user has not specified a narrower scope.
+- If the user names particular files, directories, path patterns, components, packages, services, or other boundaries, audit only those included paths and their included descendants.
+- Apply every explicit user exclusion, including excluded files, directories, path patterns, generated areas, components, or file types.
+- Resolve inclusion and exclusion patterns relative to the repository root unless the user states otherwise.
+- When inclusion and exclusion rules overlap, explicit exclusions take precedence unless the user explicitly defines a different precedence.
+- Do not silently expand a scoped audit into a full-repository audit.
+- Minimal read-only inspection outside the requested scope is permitted only when necessary to understand a scoped file's imports, callers, contracts, generated interfaces, or configuration. Do not count those context files as audited, include them in the baseline manifest, or report unrelated findings from them.
+- State the effective inclusions and exclusions in the report. Never claim full-repository coverage when the audit was scoped.
+
+### Baseline Construction
+
+1. Determine the effective user-requested scope using the rules above. If no narrower scope was provided, use the entire repository.
+2. Recursively enumerate all filesystem files within that effective scope, including hidden files, before applying exclusions.
+3. Apply every user-provided exclusion, followed by these standard exclusions:
    - `.git/`
    - `report.md`
    - `bug_findings/`
@@ -42,8 +56,8 @@ Establish the audit baseline before creating or changing any audit artifact.
    - Any file named `.env`, at any directory depth
    - Every file or directory matched by an applicable `.gitignore` rule
    - Temporary build and runtime artifacts created during this audit
-3. Save a sorted baseline manifest and a SHA-256 hash for every baseline file in temporary storage outside the repository.
-4. Use this immutable baseline for all coverage counts, manifests, line references, and integrity checks.
+4. Save a sorted baseline manifest and a SHA-256 hash for every included baseline file in temporary storage outside the repository.
+5. Use this immutable scoped baseline for all coverage counts, manifests, line references, and integrity checks.
 
 Apply all repository `.gitignore` files using normal Git scoping, negation, and directory rules. Keep each `.gitignore` file itself in scope unless an applicable higher-level rule excludes it. Ignored paths and `.env` files must not appear in inventory counts, hashes, coverage claims, findings, or the final manifest.
 
@@ -53,7 +67,7 @@ Do not rely on file searches that silently omit hidden or binary files beyond th
 
 Third-party, vendored, or generated dependency code is outside the source-audit scope and does not have to be audited line by line or algorithmically.
 
-It must still be:
+If it remains inside the effective scope after all inclusions and exclusions are applied, it must still be:
 
 - Included in the repository inventory and baseline manifest
 - Identified as third-party, vendored, or generated
@@ -70,7 +84,7 @@ Do not report defects in untouched third-party internals as repository findings 
 - Binaries, images, archives, circuit files, and datasets: identify their type and purpose, validate structure and metadata where practical, and assess reproducibility and repository risk.
 - Large generated sources or data: inspect their generator and representative content; disclose any limits instead of claiming an exhaustive semantic review.
 
-Every baseline file must appear exactly once in the final manifest, including files for which no defect is found.
+Every included baseline file must appear exactly once in the final manifest, including files for which no defect is found. Explicitly excluded and out-of-scope files must not appear in the manifest or coverage totals.
 
 ---
 
@@ -342,7 +356,7 @@ Generate `report.md` with this exact section order and heading structure:
 ```md
 # Executive Summary
 
-[Baseline file count, total findings, highest risks, evidence summary, and limitations]
+[Effective audit scope and exclusions, baseline file count, total findings, highest risks, evidence summary, and limitations]
 
 [Severity count table]
 
@@ -352,7 +366,7 @@ Generate `report.md` with this exact section order and heading structure:
 
 ## Inventory
 
-[Directory/file counts, languages, build systems, projects, tests, APIs, assets, and third-party scope]
+[Effective scope, directory/file counts, languages, build systems, projects, tests, APIs, assets, and third-party scope]
 
 ## Architecture
 
@@ -390,7 +404,7 @@ Generate `report.md` with this exact section order and heading structure:
 
 ## Per-file assessment rubric
 
-[Review depth, third-party exclusions, asset handling, and limitations]
+[Requested inclusions and exclusions, review depth, third-party exclusions, asset handling, and limitations]
 
 ## Reviewed original-file manifest (N/N)
 
@@ -445,7 +459,7 @@ If a consistency or integrity check fails, correct the audit artifacts before de
 
 Provide a concise completion summary containing:
 
-1. Baseline files reviewed
+1. Effective audit scope and baseline files reviewed
 2. Total findings and severity breakdown
 3. Highest-severity findings
 4. Validation limitations
