@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-set -eu
+set -u
 set -o pipefail
 
 test_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
@@ -49,6 +49,14 @@ coverage_flags=(
     -fcoverage-mcdc
 )
 
+coverage_failures=0
+
+record_failure()
+{
+    echo "[FAIL] $*" >&2
+    ((coverage_failures += 1))
+}
+
 gate_report()
 {
     local executable=$1
@@ -56,25 +64,41 @@ gate_report()
     local header=$3
     local report
 
-    report=$("$coverage_cov" report \
+    if ! report=$("$coverage_cov" report \
         "$executable" \
         -instr-profile="$profile" \
         --show-region-summary=false \
         --show-branch-summary \
         --show-mcdc-summary \
-        --sources "$header") || return 1
+        --sources "$header"); then
+        return 1
+    fi
     printf '%s\n' "$report"
     printf '%s\n' "$report" | awk '
         $1 == "TOTAL" {
             found = 1
+            if ($11 == 0)
+                print "MC/DC: not applicable (no formal conditions)"
             if ($3 != 0 || $6 != 0 || $9 != 0 || $12 != 0)
-                exit 1
+                failed = 1
         }
         END {
-            if (!found)
+            if (!found || failed)
                 exit 1
         }
     '
+}
+
+header_for_suite()
+{
+    case "$1" in
+        array_test) printf '%s\n' array.h ;;
+        stack_test) printf '%s\n' stack.h ;;
+        string_test) printf '%s\n' String.h ;;
+        vector_test) printf '%s\n' Vector.h ;;
+        stack_vector_test) printf '%s\n' stack_vector.h ;;
+        result_test) printf '%s\n' Result.h ;;
+    esac
 }
 
 for source in "${coverage_sources[@]}"; do
@@ -85,39 +109,59 @@ for source in "${coverage_sources[@]}"; do
     executable="$coverage_work/$suite"
     raw_profile="$coverage_work/$suite.profraw"
     indexed_profile="$coverage_work/$suite.profdata"
+    run_log="$coverage_work/$suite.run.log"
     link_flags=()
     if [[ $suite_file == result_test ]]; then
         link_flags=(-Wl,--wrap=snprintf)
     fi
 
     echo "[coverage build] $suite"
-    "$coverage_cxx" \
+    if ! "$coverage_cxx" \
         "${coverage_flags[@]}" \
         "$source" \
         "${link_flags[@]}" \
-        -o "$executable"
-    echo "[coverage run]   $suite"
-    LLVM_PROFILE_FILE="$raw_profile" "$executable"
-    "$coverage_profdata" merge -sparse "$raw_profile" -o "$indexed_profile"
+        -o "$executable"; then
+        record_failure "coverage build failed for $suite"
+        continue
+    fi
 
-    case "$suite_file" in
-        stack_vector_test)
-            echo '[coverage gate] stack_vector.h'
-            gate_report "$executable" "$indexed_profile" "$repo_root/stack_vector.h"
-            ;;
-        result_test)
-            echo '[coverage gate] Result.h'
-            gate_report "$executable" "$indexed_profile" "$repo_root/Result.h"
-            ;;
-    esac
+    echo "[coverage run]   $suite"
+    LLVM_PROFILE_FILE="$raw_profile" "$executable" >"$run_log" 2>&1
+    run_status=$?
+    cat "$run_log"
+    if [[ $run_status -ne 0 ]]; then
+        record_failure "coverage test failed for $suite (exit $run_status)"
+    fi
+    if [[ ! -f $raw_profile ]]; then
+        record_failure "coverage profile was not produced for $suite"
+        continue
+    fi
+    if ! "$coverage_profdata" merge -sparse "$raw_profile" -o "$indexed_profile"; then
+        record_failure "coverage profile merge failed for $suite"
+        continue
+    fi
+
+    header=$(header_for_suite "$suite_file")
+    if [[ -n $header ]]; then
+        echo "[coverage gate] $header"
+        if ! gate_report "$executable" "$indexed_profile" "$repo_root/$header"; then
+            record_failure "$header did not reach zero missed functions, lines, branches, and MC/DC conditions"
+        fi
+    fi
 done
 
 if [[ ! -x $test_dir/core/core_matrix.sh ]]; then
-    echo "error: required Core.h scenario matrix is missing or not executable: $test_dir/core/core_matrix.sh" >&2
-    exit 2
+    record_failure "required Core.h scenario matrix is missing or not executable: $test_dir/core/core_matrix.sh"
+else
+    echo '[Core matrix] native and synthetic preprocessor scenarios'
+    if ! "$test_dir/core/core_matrix.sh"; then
+        record_failure 'Core.h scenario matrix failed'
+    fi
 fi
 
-echo '[Core matrix] native and synthetic preprocessor scenarios'
-"$test_dir/core/core_matrix.sh"
+if ((coverage_failures != 0)); then
+    echo "Coverage/Core matrix completed with $coverage_failures failure(s)." >&2
+    exit 1
+fi
 
 echo 'Coverage thresholds and Core.h scenario matrix passed.'
