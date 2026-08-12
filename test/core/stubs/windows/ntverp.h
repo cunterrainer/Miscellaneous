@@ -1,0 +1,4 @@
+#ifndef CORE_TEST_NTVERP_H
+#define CORE_TEST_NTVERP_H
+#define VER_PRODUCTBUILD 22621
+#endif

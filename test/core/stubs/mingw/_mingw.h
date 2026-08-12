@@ -1,0 +1,5 @@
+#ifndef CORE_TEST_MINGW_H
+#define CORE_TEST_MINGW_H
+#define __MINGW32_MAJOR_VERSION 11
+#define __MINGW32_MINOR_VERSION 2
+#endif
