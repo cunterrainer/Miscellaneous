@@ -317,21 +317,25 @@ public:
 
     constexpr reference front()
     {
+        assert(!empty() && "stack_vector::front(): Container is empty");
         return m_Elems[0];
     }
 
     constexpr const_reference front() const
     {
+        assert(!empty() && "stack_vector::front(): Container is empty");
         return m_Elems[0];
     }
 
     constexpr reference back()
     {
+        assert(!empty() && "stack_vector::back(): Container is empty");
         return m_Elems[m_Size - 1];
     }
 
     constexpr const_reference back() const
     {
+        assert(!empty() && "stack_vector::back(): Container is empty");
         return m_Elems[m_Size - 1];
     }
 
@@ -475,13 +479,21 @@ public:
 
     constexpr void pop_back() noexcept
     {
-        assert(!empty() && "stack_vector::pop_back(): Container is empty");
+        if (empty())
+        {
+            assert(false && "stack_vector::pop_back(): Container is empty");
+            return;
+        }
         --m_Size;
     }
 
     constexpr void resize(size_type count, const value_type& value) noexcept(std::is_nothrow_copy_assignable_v<T>)
     {
-        assert(count <= N && "stack_vector::resize(size_type count, const value_type& value): parameter count has to be less than max_size()!");
+        if (count > N)
+        {
+            assert(false && "stack_vector::resize(size_type count, const value_type& value): parameter count has to be less than or equal to max_size()!");
+            return;
+        }
         if (count > m_Size)
         {
             std::fill_n(begin() + m_Size, count - m_Size, value);
@@ -491,7 +503,11 @@ public:
 
     constexpr void resize(size_type count) noexcept(std::is_nothrow_default_constructible_v<T>&& std::is_nothrow_copy_assignable_v<T>)
     {
-        assert(count <= N && "stack_vector::resize(size_type count): parameter count has to be less than max_size()!");
+        if (count > N)
+        {
+            assert(false && "stack_vector::resize(size_type count): parameter count has to be less than or equal to max_size()!");
+            return;
+        }
         resize(count, T{});
     }
 
