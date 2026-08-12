@@ -479,21 +479,13 @@ public:
 
     constexpr void pop_back() noexcept
     {
-        if (empty())
-        {
-            assert(false && "stack_vector::pop_back(): Container is empty");
-            return;
-        }
+        assert(!empty() && "stack_vector::pop_back(): Container is empty");
         --m_Size;
     }
 
     constexpr void resize(size_type count, const value_type& value) noexcept(std::is_nothrow_copy_assignable_v<T>)
     {
-        if (count > N)
-        {
-            assert(false && "stack_vector::resize(size_type count, const value_type& value): parameter count has to be less than or equal to max_size()!");
-            return;
-        }
+        assert(count <= N && "stack_vector::resize(size_type count, const value_type& value): parameter count has to be less than max_size()!");
         if (count > m_Size)
         {
             std::fill_n(begin() + m_Size, count - m_Size, value);
@@ -503,11 +495,7 @@ public:
 
     constexpr void resize(size_type count) noexcept(std::is_nothrow_default_constructible_v<T>&& std::is_nothrow_copy_assignable_v<T>)
     {
-        if (count > N)
-        {
-            assert(false && "stack_vector::resize(size_type count): parameter count has to be less than or equal to max_size()!");
-            return;
-        }
+        assert(count <= N && "stack_vector::resize(size_type count): parameter count has to be less than max_size()!");
         resize(count, T{});
     }
 
