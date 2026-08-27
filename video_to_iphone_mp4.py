@@ -9,9 +9,10 @@ The script recursively scans FOLDER and probes regular files with ffprobe instea
 of trusting filename extensions. A file containing a video stream is input even
 when it has an unusual or misleading extension such as .json. Real JSON, text,
 images, archives, and other non-video files are ignored. Sources are never
-modified or deleted. Outputs mirror source subdirectories beneath
-FOLDER/converted/TARGET/, and the entire converted/ tree is excluded from input
-discovery. Deterministic suffixes prevent same-stem inputs from colliding.
+modified or deleted. Normal and audio-only outputs mirror source directories
+beneath FOLDER/converted/TARGET/; --container uses the isolated namespace
+FOLDER/converted/container/TARGET/. The entire converted/ tree is excluded from
+input discovery. Deterministic suffixes prevent same-stem inputs from colliding.
 
 Playback targets
 ----------------
@@ -40,20 +41,21 @@ possible compression/quantization efficiency at the mapped quality target.
 
 Audio and silent-video policy
 -----------------------------
-Audio safety is a target policy shared by normal conversion and --audio-only;
-the two modes never use different iPhone rules. For iphone, only AAC-LC mono or
+Audio safety is a target policy shared by normal conversion, --audio-only, and
+--container; the modes never use different iPhone rules. For iphone, only AAC-LC mono or
 stereo with an explicit standard mono/stereo layout at 44.1 or 48 kHz is copied.
 AAC 5.1/5.1(side), PCE-like or unknown layouts, AC-3/E-AC-3, Opus, Vorbis, DTS,
 TrueHD, PCM, MP3, non-LC AAC, and every other unproven stream are converted to
 AAC-LC stereo at 48 kHz and 192 kbps. This conservative rule applies whether
-normal mode encodes the video, normal mode remuxes it, or --audio-only copies it.
+normal mode encodes/remuxes video or either copy-only mode preserves it.
 Other targets retain the existing AAC-LC policy: safe streams through 5.1 may be
 copied, conversion preserves up to 5.1, and more channels are downmixed.
 
 By default, videos with no audio stream are skipped before encoding and reported
 in a dedicated no-audio summary, not as failures. --convert-no-audio converts
 them normally and produces an MP4 with no audio stream. With --audio-only it
-allows a silent, target-safe video stream to be remuxed without adding audio.
+allows a silent, target-safe video stream to be remuxed without adding audio;
+with --container it allows any silent video that MP4 can mux to be remuxed.
 
 Audio-only video-copy mode
 --------------------------
@@ -73,11 +75,31 @@ samples, 8/10-bit selection, and hardware/software video encoders are completely
 bypassed. --gpu, --crf, and --preset are accepted but do not affect video in this
 mode. With no --convert-no-audio, silent input keeps the usual no-audio skip.
 
+Container-only MP4 mode
+-----------------------
+--container is distinct from --audio-only and the two flags are mutually
+exclusive. It ignores the selected target's video codec, profile, pixel format,
+resolution, frame-rate, and level rules. Instead it attempts to place the
+original primary video bitstream into MP4 with -c:v copy. The selected --target
+controls audio safety only. HEVC receives hvc1 and H.264 receives avc1; FFmpeg
+selects the MP4 sample entry for other codecs. This mode does not guarantee that
+the preserved video plays on the selected device.
+
+Only existing mov_text subtitles are copied in --container mode. Other subtitle
+codecs are dropped, never transcoded; --no-subs strips all subtitles. Outputs are
+written under FOLDER/converted/container/TARGET/ through a tracked temporary
+file. An already-ready MP4 with target-safe audio and no requested subtitle
+change is skipped. If FFmpeg cannot mux the unchanged video into MP4, the input
+is reported under "Skipped — video cannot be copied into MP4" and no encoder is
+started. A completed mux must still validate; validation failure is a real
+failure. --gpu, --crf, and --preset have no effect in this mode.
+
 Subtitle policy
 ---------------
 Unless --no-subs is used, compatible text subtitles are transcoded to mov_text.
 Styled, image-based, and other incompatible subtitle formats are skipped instead
-of failing the video conversion.
+of failing normal/audio-only conversion. Container mode instead copies only
+already-mov_text subtitles and drops the rest without conversion.
 
 Size, remux, and validation policy
 ----------------------------------
@@ -157,6 +179,9 @@ properties promised here but cannot emulate every physical playback device.
 For iPhone, validation accepts matched encoded or retained combinations—
 Main/yuv420p or Main 10/yuv420p10le—not an independent profile/pixel-format
 cross-product. Both still require hvc1 and the same 4K/60/level envelope.
+Container-mode validation deliberately replaces those target video checks with
+an exact source/output codec-name comparison, MP4 container checks, hvc1/avc1
+where applicable, the normal target audio policy, and mov_text-only subtitles.
 The final summary groups successful outputs by video method first. Actual video
 re-encodes are then split by exact final byte count into size reduced, size
 increased, or size unchanged. Direct and fallback remux results share a separate
@@ -165,7 +190,9 @@ subtitles, container, and tags may still change. Existing-output skips, no-audio
 skips, failures, and interruptions remain separate; aggregate successful totals
 include every completed re-encode and remux but exclude those other categories.
 Audio-only successes appear in the copied/remuxed section; incompatible-video
-and already-target-compatible skips have their own sections.
+and already-target-compatible skips have their own sections. Container successes
+also appear as copied/remuxed; unmuxable and already-ready inputs are separate
+skip categories.
 
 GPU behavior
 ------------
@@ -180,10 +207,11 @@ omitted when an actual backend sample cannot produce and validate it; the other
 candidates continue. --crf and --preset are translated approximately for each
 backend because their quality scales and speed controls are not numerically
 equivalent, and 8-bit/10-bit quality mappings are explicitly distinct.
+No hardware encoder is detected or initialized for --audio-only or --container.
 
 Safe interruption behavior
 --------------------------
-Long encodes, direct remuxes, fallback remuxes, audio-only repairs, and both
+Long encodes, direct remuxes, fallback remuxes, audio/container-only repairs, and both
 bit-depths' uniquely named preflight samples write to tracked temporary paths.
 Ctrl-C stops and waits
 for the active FFmpeg child, removes every incomplete/unvalidated artifact—
@@ -203,13 +231,16 @@ default-player codec choice, not a promise that every PC smoothly decodes any
 resolution or frame rate. LG support varies by model and model year. The Linux
 target assumes capable software playback such as VLC. Hardware acceleration
 depends on the OS, drivers, FFmpeg build, and installed hardware.
+Container mode is additionally limited to unchanged video codecs that the
+installed FFmpeg build can mux into MP4; a successful remux is not a playback
+compatibility promise for the selected target.
 
 External requirements
 ---------------------
 - ffmpeg on PATH
 - ffprobe on PATH
 - hardware acceleration is optional; normal --gpu mode has a CPU fallback and
-  --audio-only initializes no video encoder
+  --audio-only/--container initialize no video encoder
 
 How to use
 ----------
@@ -236,14 +267,22 @@ How to use
    Unsafe source video is skipped. Add --convert-no-audio if silent, safely
    copyable video should be remuxed. --gpu/--crf/--preset do not affect video in
    this mode.
-6. Find successful MP4 files under FOLDER/converted/TARGET/. Source directory
-   structure is mirrored there. Re-running the same target skips an output path
-   that already exists; selecting another target uses its own output namespace.
-7. Review the final summary for re-encoded size-reduced, size-increased, and
+6. To copy any video stream that FFmpeg can mux into MP4, regardless of target
+   video compatibility, use:
+
+       python video_to_iphone_mp4.py ~/Videos --target iphone --container
+
+   The target still controls audio safety. Subtitles are copied only when already
+   mov_text; other subtitles are dropped. --container and --audio-only cannot be
+   combined, and --gpu/--crf/--preset do not affect this mode.
+7. Find normal/audio-only MP4 files under FOLDER/converted/TARGET/ and container
+   outputs under FOLDER/converted/container/TARGET/. Source structure is mirrored
+   in either namespace. Existing output paths are skipped.
+8. Review the final summary for re-encoded size-reduced, size-increased, and
    size-unchanged groups; copied/remuxed video; existing-output and no-audio
    skips; failures; and any interrupted input.
-8. For --target iphone, automatic bit-depth selection compares HEVC Main 8-bit
-   and Main10 10-bit samples; safe source video also includes direct remux as a
+9. For normal --target iphone operation, automatic bit-depth selection compares
+   HEVC Main 8-bit and Main10 10-bit samples; safe source video also includes direct remux as a
    candidate. Bit-depth auto-selection needs no separate bit-depth flag. Pressing
    Ctrl-C safely cleans every current candidate sample/operation, preserves
    completed outputs, and prints the summary before exiting.
@@ -255,7 +294,9 @@ python video_to_iphone_mp4.py FOLDER [options]
 Options
 -------
 FOLDER
-    Folder to probe recursively. Outputs go under FOLDER/converted/TARGET/.
+    Folder to probe recursively. Normal/audio-only outputs go under
+    FOLDER/converted/TARGET/; container outputs use
+    FOLDER/converted/container/TARGET/.
 
 -h, --help
     Show argparse help and exit.
@@ -267,20 +308,21 @@ FOLDER
     User-facing quality target from 0 to 51. Lower means better quality and
     usually larger files. Hardware backends and iPhone bit depths use explicit,
     approximate mappings rather than assuming equal numeric quality.
-    Default: 22. Accepted but unused for video with --audio-only.
+    Default: 22. Accepted but unused with --audio-only or --container.
 
 --preset PRESET
     Encoder speed/compression-efficiency setting. Choices: ultrafast,
     superfast, veryfast, faster, fast, medium, slow, slower, veryslow.
-    Default: medium. Accepted but unused for video with --audio-only.
+    Default: medium. Accepted but unused with --audio-only or --container.
 
 --gpu
     Auto-detect suitable H.264 or HEVC hardware backends, validate each result,
     and fall back to libx264 or libx265 when necessary. No video backend is
-    initialized by --audio-only, where this option has no effect.
+    initialized by --audio-only or --container, where this option has no effect.
 
 --no-subs
-    Strip subtitles instead of preserving compatible text subtitles.
+    Strip subtitles. Otherwise normal/audio-only modes convert compatible text
+    subtitles to mov_text; container mode copies only existing mov_text.
 
 --convert-no-audio
     Convert silent videos. Without it, they are skipped and reported separately.
@@ -289,6 +331,12 @@ FOLDER
     Produce a normal target MP4 while forbidding video encoding. Target-safe
     source video is copied; safe audio is copied and unsafe audio is repaired.
     Video requiring conversion is skipped. This is not audio extraction.
+
+--container
+    Copy any video bitstream that FFmpeg can mux into MP4, ignoring target video
+    compatibility while retaining target-aware audio repair. Existing mov_text
+    subtitles may be copied; other subtitle codecs are dropped. No video encoder
+    or fallback is allowed. Mutually exclusive with --audio-only.
 
 Examples
 --------
@@ -300,8 +348,10 @@ python video_to_iphone_mp4.py ~/Videos --target lg-tv
 python video_to_iphone_mp4.py ~/Videos --target linux --gpu
 python video_to_iphone_mp4.py ~/Videos --target iphone --audio-only
 python video_to_iphone_mp4.py ~/Videos --target windows --audio-only
+python video_to_iphone_mp4.py ~/Videos --target iphone --container
+python video_to_iphone_mp4.py ~/Videos --target windows --container
 python video_to_iphone_mp4.py ~/Videos --crf 24 --no-subs
-python video_to_iphone_mp4.py ~/Videos --audio-only --convert-no-audio
+python video_to_iphone_mp4.py ~/Videos --container --convert-no-audio
 
 The module header and argparse help describe the same CLI. Update both whenever
 the command-line interface or conversion policy changes.
@@ -804,6 +854,33 @@ def build_subtitle_args(input_path: Path, keep_subs: bool):
     return args
 
 
+def build_container_subtitle_args(input_path: Path, keep_subs: bool):
+    """Copy existing MP4 text subtitles; never transcode in container mode."""
+    if not keep_subs:
+        return []
+    subtitle_streams = probe_streams(input_path, "s")
+    compatible_indices = [
+        index for index, stream in enumerate(subtitle_streams)
+        if stream.get("codec_name") == "mov_text"
+    ]
+    skipped = sorted({
+        stream.get("codec_name") or "unknown"
+        for stream in subtitle_streams
+        if stream.get("codec_name") != "mov_text"
+    })
+    if skipped:
+        print(
+            f"  Note: dropping subtitle codec(s) {skipped} in --container "
+            "because subtitle conversion is disabled."
+        )
+    args = []
+    for subtitle_index in compatible_indices:
+        args += ["-map", f"0:s:{subtitle_index}"]
+    if compatible_indices:
+        args += ["-c:s", "copy"]
+    return args
+
+
 def positive_int(value):
     try:
         parsed = int(value)
@@ -1279,6 +1356,64 @@ def try_remux(input_path: Path, out_path: Path, target_profile: TargetProfile,
     )
 
 
+def copied_video_tag_args(video_stream):
+    """Return conservative MP4 sample-entry arguments for known video codecs."""
+    codec_policy = CODECS.get(video_stream.get("codec_name", ""))
+    return ["-tag:v", codec_policy.output_tag] if codec_policy else []
+
+
+def try_container_remux(input_path: Path, out_path: Path,
+                        target_profile: TargetProfile, keep_subs: bool,
+                        duration, active_paths: ActivePaths):
+    """Attempt an MP4 remux without applying target video compatibility rules."""
+    video_streams = probe_streams(input_path, "v:0")
+    if not video_streams:
+        return False
+    audio_args, audio_note = build_audio_args(input_path, target_profile)
+    if audio_note:
+        print(f"  Note: {audio_note}")
+    cmd = [
+        "ffmpeg", "-y", "-i", str(input_path),
+        "-loglevel", "warning", "-progress", "pipe:1", "-nostats",
+        "-map", "0:v:0", *audio_args, "-c:v", "copy",
+        *copied_video_tag_args(video_streams[0]),
+        *build_container_subtitle_args(input_path, keep_subs),
+        "-max_muxing_queue_size", "4096", "-avoid_negative_ts", "make_zero",
+        "-movflags", "+faststart", str(out_path),
+    ]
+    print("  Trying MP4 container remux (video bitstream copied unchanged)...")
+    return run_ffmpeg_with_progress(
+        cmd, duration, "container-remux", active_path=out_path,
+        active_paths=active_paths,
+    )
+
+
+def audio_validation_reasons(audio_streams, target_profile: TargetProfile):
+    reasons = []
+    for stream in audio_streams:
+        if not audio_is_safe_for_target(stream, target_profile):
+            if target_profile.name == "iphone":
+                expected_audio = (
+                    "AAC-LC mono/stereo with mono/stereo layout at 44.1/48 kHz"
+                )
+            else:
+                expected_audio = "AAC-LC with no more than 5.1 channels"
+            reasons.append(
+                f"audio stream {stream.get('index', '?')} is not target-safe "
+                f"({audio_stream_description(stream)}; expected {expected_audio})"
+            )
+    return reasons
+
+
+def subtitle_validation_reasons(subtitle_streams):
+    return [
+        f"subtitle stream {stream.get('index', '?')} is "
+        f"{stream.get('codec_name', 'unknown')}, expected mov_text"
+        for stream in subtitle_streams
+        if stream.get("codec_name") != "mov_text"
+    ]
+
+
 def validate_output(path: Path, target_profile: TargetProfile):
     """Return (valid, reasons) for the promises made by a target profile."""
     data = run_probe(path, show_format=True)
@@ -1296,24 +1431,48 @@ def validate_output(path: Path, target_profile: TargetProfile):
         reasons.append("no video stream")
     else:
         reasons.extend(video_compatibility_reasons(video_streams[0], target_profile, remux=False))
-    for stream in audio_streams:
-        if not audio_is_safe_for_target(stream, target_profile):
-            if target_profile.name == "iphone":
-                expected_audio = (
-                    "AAC-LC mono/stereo with mono/stereo layout at 44.1/48 kHz"
+    reasons.extend(audio_validation_reasons(audio_streams, target_profile))
+    reasons.extend(subtitle_validation_reasons(subtitle_streams))
+    return not reasons, reasons
+
+
+def validate_container_output(path: Path, input_path: Path,
+                              target_profile: TargetProfile):
+    """Validate MP4 muxing, unchanged video codec, target audio, and subtitles."""
+    source_video = probe_streams(input_path, "v:0")
+    data = run_probe(path, show_format=True)
+    if not data:
+        return False, ["ffprobe could not read the output"]
+    reasons = []
+    format_name = (data.get("format") or {}).get("format_name", "")
+    if "mp4" not in format_name and "mov" not in format_name:
+        reasons.append(f"unexpected container '{format_name or 'unknown'}'")
+    streams = data.get("streams", [])
+    video_streams = [stream for stream in streams if stream.get("codec_type") == "video"]
+    audio_streams = [stream for stream in streams if stream.get("codec_type") == "audio"]
+    subtitle_streams = [stream for stream in streams if stream.get("codec_type") == "subtitle"]
+    if not source_video:
+        reasons.append("source has no video stream")
+    if not video_streams:
+        reasons.append("output has no video stream")
+    elif source_video:
+        source_codec = source_video[0].get("codec_name", "")
+        output_codec = video_streams[0].get("codec_name", "")
+        if output_codec != source_codec:
+            reasons.append(
+                f"video codec changed from {source_codec or 'unknown'} to "
+                f"{output_codec or 'unknown'}"
+            )
+        expected_tag = CODECS.get(source_codec)
+        if expected_tag:
+            actual_tag = (video_streams[0].get("codec_tag_string") or "").lower()
+            if actual_tag != expected_tag.output_tag:
+                reasons.append(
+                    f"sample entry is {actual_tag or 'unknown'}, expected "
+                    f"{expected_tag.output_tag}"
                 )
-            else:
-                expected_audio = "AAC-LC with no more than 5.1 channels"
-            reasons.append(
-                f"audio stream {stream.get('index', '?')} is not target-safe "
-                f"({audio_stream_description(stream)}; expected {expected_audio})"
-            )
-    for stream in subtitle_streams:
-        if stream.get("codec_name") != "mov_text":
-            reasons.append(
-                f"subtitle stream {stream.get('index', '?')} is "
-                f"{stream.get('codec_name', 'unknown')}, expected mov_text"
-            )
+    reasons.extend(audio_validation_reasons(audio_streams, target_profile))
+    reasons.extend(subtitle_validation_reasons(subtitle_streams))
     return not reasons, reasons
 
 
@@ -1330,6 +1489,20 @@ def validated_candidate(path: Path, label: str, target_profile: TargetProfile):
     return True
 
 
+def validated_container_candidate(path: Path, input_path: Path, label: str,
+                                  target_profile: TargetProfile):
+    if not path.exists() or path.stat().st_size <= 0:
+        print(f"  {label} candidate is missing or empty.")
+        return False
+    valid, reasons = validate_container_output(path, input_path, target_profile)
+    if not valid:
+        print(f"  {label} candidate failed container validation:")
+        for reason in reasons:
+            print(f"    - {reason}")
+        return False
+    return True
+
+
 def temp_remux_path(out_path: Path):
     return out_path.with_name(f".{out_path.stem}.remux-tmp.mp4")
 
@@ -1340,6 +1513,10 @@ def temp_direct_remux_path(out_path: Path):
 
 def temp_audio_only_path(out_path: Path):
     return out_path.with_name(f".{out_path.stem}.audio-only-tmp.mp4")
+
+
+def temp_container_path(out_path: Path):
+    return out_path.with_name(f".{out_path.stem}.container-tmp.mp4")
 
 
 def temp_encode_path(out_path: Path):
@@ -2025,6 +2202,73 @@ def input_is_already_target_compatible(input_path: Path,
     return keep_subs or not probe_streams(input_path, "s")
 
 
+def input_is_container_ready(input_path: Path, target_profile: TargetProfile,
+                             keep_subs: bool):
+    """Return whether an MP4 already satisfies container-mode promises."""
+    if input_path.suffix.lower() != ".mp4":
+        return False
+    valid, _ = validate_container_output(
+        input_path, input_path, target_profile,
+    )
+    if not valid:
+        return False
+    return keep_subs or not probe_streams(input_path, "s")
+
+
+def convert_container_file(input_path: Path, out_path: Path,
+                           target_profile: TargetProfile, keep_subs: bool,
+                           duration, original_bytes: int,
+                           active_paths: ActivePaths):
+    """Remux video unchanged into MP4 and apply only target audio policy."""
+    if input_is_container_ready(input_path, target_profile, keep_subs):
+        print("  Skipping: source is already MP4 with target-safe audio.")
+        return {"status": "skipped_container_ready", "name": input_path.name}
+
+    audio_streams = probe_streams(input_path, "a")
+    repairs_audio = any(
+        not audio_is_safe_for_target(stream, target_profile)
+        for stream in audio_streams
+    )
+    candidate = temp_container_path(out_path)
+    active_paths.discard(candidate)
+    print("  Container mode: copying the original video bitstream into MP4.")
+    completed = try_container_remux(
+        input_path, candidate, target_profile, keep_subs,
+        duration, active_paths,
+    )
+    if not completed:
+        active_paths.discard(candidate)
+        reason = "FFmpeg could not mux the unchanged video stream into MP4"
+        print(f"  Skipping: {reason}.")
+        return {
+            "status": "skipped_container_mux", "name": input_path.name,
+            "reason": reason,
+        }
+    if not validated_container_candidate(
+            candidate, input_path, "Container remux", target_profile):
+        active_paths.discard(candidate)
+        print(f"  Container remux failed validation: {input_path.name}")
+        return {"status": "failed", "name": input_path.name}
+
+    promote_valid_candidate(candidate, out_path, active_paths)
+    if not validated_container_candidate(
+            out_path, input_path, "Final output", target_profile):
+        safe_unlink(out_path)
+        print(f"  Failed final validation: {input_path.name}")
+        return {"status": "failed", "name": input_path.name}
+    method = (
+        "container remux, audio repaired"
+        if repairs_audio else "container remux"
+    )
+    operation_method = (
+        "container_audio_repair" if repairs_audio else "container_remux"
+    )
+    return successful_result(
+        input_path, out_path, original_bytes, method, "container mode",
+        VIDEO_METHOD_COPIED_REMUXED, operation_method,
+    )
+
+
 def convert_audio_only_file(input_path: Path, out_path: Path,
                             target_profile: TargetProfile, keep_subs: bool,
                             duration, original_bytes: int,
@@ -2091,7 +2335,8 @@ def convert_audio_only_file(input_path: Path, out_path: Path,
 def convert_file(input_path: Path, out_path: Path, target_profile: TargetProfile,
                  crf: int, preset: str, gpu: bool, hardware_candidates,
                  keep_subs: bool, convert_no_audio: bool,
-                 active_paths: ActivePaths, audio_only: bool = False):
+                 active_paths: ActivePaths, audio_only: bool = False,
+                 container_mode: bool = False):
     """Convert one file and return a result with a distinct summary status."""
     if not convert_no_audio and not probe_streams(input_path, "a"):
         print(f"Skipping (no audio stream): {input_path}")
@@ -2103,6 +2348,11 @@ def convert_file(input_path: Path, out_path: Path, target_profile: TargetProfile
     out_path.parent.mkdir(parents=True, exist_ok=True)
     duration = get_duration_seconds(input_path)
     original_bytes = input_path.stat().st_size
+    if container_mode:
+        return convert_container_file(
+            input_path, out_path, target_profile, keep_subs,
+            duration, original_bytes, active_paths,
+        )
     if audio_only:
         return convert_audio_only_file(
             input_path, out_path, target_profile, keep_subs,
@@ -2279,14 +2529,24 @@ def output_paths_for(video_files, folder: Path, target_root: Path):
     return mapping
 
 
+def target_output_root(converted_root: Path, target_profile: TargetProfile,
+                       container_mode: bool):
+    if container_mode:
+        return converted_root / "container" / target_profile.name
+    return converted_root / target_profile.name
+
+
 def print_startup_summary(target_profile: TargetProfile, target_root: Path,
                           gpu: bool, hardware_candidates, crf: int,
                           preset: str, keep_subs: bool,
-                          audio_only: bool = False):
+                          audio_only: bool = False,
+                          container_mode: bool = False):
     codec = target_profile.codec
     print(f"Target: {target_profile.name}")
     print("Container: MP4 (+faststart)")
-    if target_profile.name == "iphone":
+    if container_mode:
+        print("Video policy: copy any stream FFmpeg can mux into MP4; target video rules ignored")
+    elif target_profile.name == "iphone":
         print(
             "Safe retained video: HEVC Main/yuv420p, HEVC Main 10/yuv420p10le, "
             "or conservatively compatible H.264/yuv420p"
@@ -2309,15 +2569,22 @@ def print_startup_summary(target_profile: TargetProfile, target_root: Path,
         print("Audio target: AAC-LC mono/stereo; unsafe audio -> stereo 192k/48kHz")
     else:
         print("Audio target: AAC-LC")
-    if target_profile.max_width and target_profile.max_height:
-        print(f"Maximum resolution: {target_profile.max_width}x{target_profile.max_height}")
+    if container_mode:
+        print("Resolution/frame-rate policy: preserve source unchanged")
     else:
-        print("Resolution limit: none (source dimensions preserved, adjusted to even values if needed)")
-    if target_profile.max_fps is not None:
-        print(f"Maximum frame rate: {target_profile.max_fps:g} fps")
-    else:
-        print("Frame-rate limit: none (source frame rate preserved)")
-    if audio_only:
+        if target_profile.max_width and target_profile.max_height:
+            print(f"Maximum resolution: {target_profile.max_width}x{target_profile.max_height}")
+        else:
+            print("Resolution limit: none (source dimensions preserved, adjusted to even values if needed)")
+        if target_profile.max_fps is not None:
+            print(f"Maximum frame rate: {target_profile.max_fps:g} fps")
+        else:
+            print("Frame-rate limit: none (source frame rate preserved)")
+    if container_mode:
+        print("Processing mode: container-only; video bitstream is copied or the file is skipped")
+        print("Video encoding/preflight: disabled")
+        print("Note: --gpu, --crf, and --preset do not affect video in --container mode")
+    elif audio_only:
         print("Processing mode: audio-only; source video is stream-copied or the file is skipped")
         print("Video encoding/preflight: disabled")
         print("Note: --gpu, --crf, and --preset do not affect video in --audio-only mode")
@@ -2329,11 +2596,20 @@ def print_startup_summary(target_profile: TargetProfile, target_root: Path,
         )
     else:
         print(f"Hardware encoding: disabled; CPU/{codec.software_encoder}")
-    if not audio_only:
+    if not audio_only and not container_mode:
         print(f"Quality: {crf}; encoder preset: {preset}")
-    print(f"Subtitles: {'compatible text retained as mov_text' if keep_subs else 'stripped'}")
+    if container_mode:
+        subtitle_text = "existing mov_text copied; other subtitle codecs dropped"
+        print(f"Subtitles: {subtitle_text if keep_subs else 'stripped'}")
+    else:
+        print(f"Subtitles: {'compatible text retained as mov_text' if keep_subs else 'stripped'}")
     print(f"Output folder: {target_root}")
-    if audio_only:
+    if container_mode:
+        print(
+            "Container policy: validate a temporary MP4 before promotion; "
+            "never fall back to video encoding.\n"
+        )
+    elif audio_only:
         print(
             "Audio-only policy: validate a temporary video-copy MP4 before "
             "promotion; never fall back to video encoding.\n"
@@ -2364,10 +2640,14 @@ def print_batch_summary(folder: Path, target_profile: TargetProfile,
                         converted, failed, skipped_existing, skipped_no_audio,
                         interrupted=False, interrupted_file=None,
                         skipped_audio_only_video=None,
-                        skipped_target_compatible=None):
+                        skipped_target_compatible=None,
+                        skipped_container_mux=None,
+                        skipped_container_ready=None):
     """Print accumulated results after normal completion or interruption."""
     skipped_audio_only_video = skipped_audio_only_video or []
     skipped_target_compatible = skipped_target_compatible or []
+    skipped_container_mux = skipped_container_mux or []
+    skipped_container_ready = skipped_container_ready or []
     print("\n" + "=" * 64)
     print(f"Summary — target: {target_profile.name}")
     print("=" * 64)
@@ -2428,6 +2708,21 @@ def print_batch_summary(folder: Path, target_profile: TargetProfile,
         )
         for path in skipped_target_compatible:
             print(f"  {path.relative_to(folder)}")
+    if skipped_container_mux:
+        print(
+            "\nSkipped — video cannot be copied into MP4 "
+            f"({len(skipped_container_mux)} file(s)):"
+        )
+        for result in skipped_container_mux:
+            print(f"  {result['path'].relative_to(folder)}")
+            print(f"    {result['reason']}")
+    if skipped_container_ready:
+        print(
+            "\nSkipped — already MP4 with target-safe audio "
+            f"({len(skipped_container_ready)} file(s)):"
+        )
+        for path in skipped_container_ready:
+            print(f"  {path.relative_to(folder)}")
     if failed:
         print(f"\nFailed ({len(failed)} file(s)):")
         for path in failed:
@@ -2459,7 +2754,8 @@ def build_parser():
             "validated MP4 output for a selected playback target. Input filename "
             "extensions do not matter. Normal iphone mode compares safe remux, "
             "HEVC Main 8-bit, and Main10 10-bit candidates; --audio-only instead "
-            "guarantees video stream-copy or a documented skip."
+            "requires target-safe video copy, while --container copies any video "
+            "stream FFmpeg can mux into MP4."
         ),
         epilog=(
             "Examples:\n"
@@ -2470,52 +2766,73 @@ def build_parser():
             "  python video_to_iphone_mp4.py ~/Videos --target lg-tv\n"
             "  python video_to_iphone_mp4.py ~/Videos --target linux --gpu\n"
             "  python video_to_iphone_mp4.py ~/Videos --target iphone --audio-only\n"
-            "\nAll outputs are MP4 under FOLDER/converted/TARGET/."
+            "  python video_to_iphone_mp4.py ~/Videos --target iphone --container\n"
+            "\nNormal outputs use FOLDER/converted/TARGET/; container outputs "
+            "use FOLDER/converted/container/TARGET/."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
-        "folder", help="Folder to probe recursively; outputs go under folder/converted/TARGET/.",
+        "folder", help=(
+            "Folder to probe recursively; normal outputs use "
+            "folder/converted/TARGET/, container outputs use "
+            "folder/converted/container/TARGET/."
+        ),
     )
     parser.add_argument(
         "--target", choices=tuple(TARGETS), default="iphone",
-        help="Playback compatibility target (default: iphone).",
+        help=(
+            "Playback compatibility target; in --container it controls audio "
+            "only (default: iphone)."
+        ),
     )
     parser.add_argument(
         "--crf", type=int, default=22,
         help=(
             "Quality target, 0-51; lower is better/larger. Hardware mappings "
             "and iPhone 8/10-bit mappings are approximate; ignored for video "
-            "with --audio-only (default: 22)."
+            "with --audio-only/--container (default: 22)."
         ),
     )
     parser.add_argument(
         "--preset", choices=PRESET_CHOICES, default="medium",
         help=(
             "Encoder speed/compression-efficiency tradeoff; ignored for video "
-            "with --audio-only (default: medium)."
+            "with --audio-only/--container (default: medium)."
         ),
     )
     parser.add_argument(
         "--gpu", action="store_true",
         help=(
             "Auto-detect suitable target-codec hardware encoders and validate "
-            "attempts; fall back to CPU libx264/libx265. Ignored by --audio-only."
+            "attempts; fall back to CPU libx264/libx265. Ignored by "
+            "--audio-only/--container."
         ),
     )
     parser.add_argument(
         "--no-subs", action="store_true",
-        help="Strip subtitles instead of retaining compatible text as mov_text.",
+        help=(
+            "Strip subtitles; otherwise normal modes convert compatible text, "
+            "while --container copies only existing mov_text."
+        ),
     )
     parser.add_argument(
         "--convert-no-audio", action="store_true",
         help="Convert silent videos; otherwise list them as a distinct skipped category.",
     )
-    parser.add_argument(
+    processing_mode = parser.add_mutually_exclusive_group()
+    processing_mode.add_argument(
         "--audio-only", action="store_true",
         help=(
             "Never encode video: copy target-safe source video and repair/copy "
             "audio; skip video that requires encoding."
+        ),
+    )
+    processing_mode.add_argument(
+        "--container", action="store_true",
+        help=(
+            "Copy any MP4-muxable video bitstream unchanged, repair/copy target "
+            "audio, and never run a video encoder."
         ),
     )
     return parser
@@ -2524,7 +2841,7 @@ def build_parser():
 def main():
     parser = build_parser()
     args = parser.parse_args()
-    if not 0 <= args.crf <= 51:
+    if not args.audio_only and not args.container and not 0 <= args.crf <= 51:
         parser.error("--crf must be between 0 and 51")
     for tool in ("ffmpeg", "ffprobe"):
         if shutil.which(tool) is None:
@@ -2535,10 +2852,12 @@ def main():
         sys.exit(f"Error: '{folder}' is not a valid directory.")
     target_profile = TARGETS[args.target]
     converted_root = folder / "converted"
-    target_root = converted_root / target_profile.name
+    target_root = target_output_root(
+        converted_root, target_profile, args.container,
+    )
     hardware_candidates = (
         hardware_encoder_candidates(target_profile)
-        if args.gpu and not args.audio_only else []
+        if args.gpu and not args.audio_only and not args.container else []
     )
 
     video_files = discover_video_files(folder, converted_root)
@@ -2550,6 +2869,7 @@ def main():
     print_startup_summary(
         target_profile, target_root, args.gpu, hardware_candidates,
         args.crf, args.preset, not args.no_subs, args.audio_only,
+        args.container,
     )
 
     converted = []
@@ -2558,6 +2878,8 @@ def main():
     skipped_no_audio = []
     skipped_audio_only_video = []
     skipped_target_compatible = []
+    skipped_container_mux = []
+    skipped_container_ready = []
     active_paths = ActivePaths()
     interrupted = False
     interrupted_file = None
@@ -2572,6 +2894,7 @@ def main():
                 convert_no_audio=args.convert_no_audio,
                 active_paths=active_paths,
                 audio_only=args.audio_only,
+                container_mode=args.container,
             )
             if result["status"] == "converted":
                 converted.append(result)
@@ -2586,6 +2909,11 @@ def main():
                 skipped_audio_only_video.append(result)
             elif result["status"] == "skipped_target_compatible":
                 skipped_target_compatible.append(input_file)
+            elif result["status"] == "skipped_container_mux":
+                result["path"] = input_file
+                skipped_container_mux.append(result)
+            elif result["status"] == "skipped_container_ready":
+                skipped_container_ready.append(input_file)
             interrupted_file = None
     except KeyboardInterrupt:
         interrupted = True
@@ -2597,6 +2925,8 @@ def main():
             interrupted=interrupted, interrupted_file=interrupted_file,
             skipped_audio_only_video=skipped_audio_only_video,
             skipped_target_compatible=skipped_target_compatible,
+            skipped_container_mux=skipped_container_mux,
+            skipped_container_ready=skipped_container_ready,
         )
     if interrupted:
         sys.exit(130)
