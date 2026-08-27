@@ -40,15 +40,38 @@ possible compression/quantization efficiency at the mapped quality target.
 
 Audio and silent-video policy
 -----------------------------
-AAC-LC streams with at most 5.1 channels may be copied. Other audio—including
-Opus, Vorbis, AC-3/E-AC-3, DTS, TrueHD, PCM, MP3, non-LC AAC, and unusual channel
-layouts—is converted to AAC-LC. Surround up to 5.1 is retained; more than six
-channels is downmixed to stereo. Audio incompatibility does not invalidate an
-otherwise convertible video.
+Audio safety is a target policy shared by normal conversion and --audio-only;
+the two modes never use different iPhone rules. For iphone, only AAC-LC mono or
+stereo with an explicit standard mono/stereo layout at 44.1 or 48 kHz is copied.
+AAC 5.1/5.1(side), PCE-like or unknown layouts, AC-3/E-AC-3, Opus, Vorbis, DTS,
+TrueHD, PCM, MP3, non-LC AAC, and every other unproven stream are converted to
+AAC-LC stereo at 48 kHz and 192 kbps. This conservative rule applies whether
+normal mode encodes the video, normal mode remuxes it, or --audio-only copies it.
+Other targets retain the existing AAC-LC policy: safe streams through 5.1 may be
+copied, conversion preserves up to 5.1, and more channels are downmixed.
 
 By default, videos with no audio stream are skipped before encoding and reported
 in a dedicated no-audio summary, not as failures. --convert-no-audio converts
-them normally and produces an MP4 with no audio stream.
+them normally and produces an MP4 with no audio stream. With --audio-only it
+allows a silent, target-safe video stream to be remuxed without adding audio.
+
+Audio-only video-copy mode
+--------------------------
+--audio-only is not audio extraction: its result is still a normal MP4 made from
+the original discovered source. It forbids video encoding. The source video must
+pass the selected target's conservative stream-copy checks; otherwise the file
+is listed under "Skipped — video incompatible with --audio-only" instead of
+being encoded. A successful command always uses -c:v copy, applies hvc1/avc1 as
+required, copies each target-safe audio stream, and repairs each unsafe stream
+with the same shared target audio policy used by normal conversion.
+
+Subtitle conversion/removal, +faststart, target output paths, collision handling,
+existing-output skips, temporary-file promotion, and final validation still
+apply. An already target-compatible source MP4 that needs no subtitle removal is
+listed as already compatible rather than duplicated. Video preflight, adaptive
+samples, 8/10-bit selection, and hardware/software video encoders are completely
+bypassed. --gpu, --crf, and --preset are accepted but do not affect video in this
+mode. With no --convert-no-audio, silent input keeps the usual no-audio skip.
 
 Subtitle policy
 ---------------
@@ -126,7 +149,10 @@ is never copied merely because it is smaller.
 
 Target-aware validation checks an MP4/MOV-family container, a permitted video
 codec/profile/pixel format/sample entry, target resolution/frame-rate/level
-limits, AAC-LC audio, and mov_text retained subtitles. Validation checks the
+limits, target-safe AAC-LC audio, and mov_text retained subtitles. iPhone output
+audio must satisfy the same conservative mono/stereo layout and sample-rate rule
+used before deciding to copy audio; questionable multichannel AAC is rejected.
+Validation checks the
 properties promised here but cannot emulate every physical playback device.
 For iPhone, validation accepts matched encoded or retained combinations—
 Main/yuv420p or Main 10/yuv420p10le—not an independent profile/pixel-format
@@ -138,6 +164,8 @@ increased, or size unchanged. Direct and fallback remux results share a separate
 subtitles, container, and tags may still change. Existing-output skips, no-audio
 skips, failures, and interruptions remain separate; aggregate successful totals
 include every completed re-encode and remux but exclude those other categories.
+Audio-only successes appear in the copied/remuxed section; incompatible-video
+and already-target-compatible skips have their own sections.
 
 GPU behavior
 ------------
@@ -155,8 +183,9 @@ equivalent, and 8-bit/10-bit quality mappings are explicitly distinct.
 
 Safe interruption behavior
 --------------------------
-Long encodes, direct remuxes, fallback remuxes, and both bit-depths' uniquely
-named preflight samples write to tracked temporary paths. Ctrl-C stops and waits
+Long encodes, direct remuxes, fallback remuxes, audio-only repairs, and both
+bit-depths' uniquely named preflight samples write to tracked temporary paths.
+Ctrl-C stops and waits
 for the active FFmpeg child, removes every incomplete/unvalidated artifact—
 including initial or extra sample
 files—for the current input, preserves previously validated outputs, and does
@@ -179,7 +208,8 @@ External requirements
 ---------------------
 - ffmpeg on PATH
 - ffprobe on PATH
-- hardware acceleration is optional; --gpu always has a CPU fallback
+- hardware acceleration is optional; normal --gpu mode has a CPU fallback and
+  --audio-only initializes no video encoder
 
 How to use
 ----------
@@ -199,6 +229,13 @@ How to use
 5. Add --gpu to try suitable hardware encoders. This is not a GPU-only mode: if
    no advertised hardware backend completes and validates, the script falls back
    to CPU libx264 or libx265 as documented above.
+   To repair audio without ever encoding video, use:
+
+       python video_to_iphone_mp4.py ~/Videos --target iphone --audio-only
+
+   Unsafe source video is skipped. Add --convert-no-audio if silent, safely
+   copyable video should be remuxed. --gpu/--crf/--preset do not affect video in
+   this mode.
 6. Find successful MP4 files under FOLDER/converted/TARGET/. Source directory
    structure is mirrored there. Re-running the same target skips an output path
    that already exists; selecting another target uses its own output namespace.
@@ -207,9 +244,9 @@ How to use
    skips; failures; and any interrupted input.
 8. For --target iphone, automatic bit-depth selection compares HEVC Main 8-bit
    and Main10 10-bit samples; safe source video also includes direct remux as a
-   candidate. No new CLI flag is needed. Pressing Ctrl-C safely cleans every
-   current candidate sample/operation, preserves completed outputs, and prints
-   the summary before exiting.
+   candidate. Bit-depth auto-selection needs no separate bit-depth flag. Pressing
+   Ctrl-C safely cleans every current candidate sample/operation, preserves
+   completed outputs, and prints the summary before exiting.
 
 Command-line usage
 ------------------
@@ -230,22 +267,28 @@ FOLDER
     User-facing quality target from 0 to 51. Lower means better quality and
     usually larger files. Hardware backends and iPhone bit depths use explicit,
     approximate mappings rather than assuming equal numeric quality.
-    Default: 22.
+    Default: 22. Accepted but unused for video with --audio-only.
 
 --preset PRESET
     Encoder speed/compression-efficiency setting. Choices: ultrafast,
     superfast, veryfast, faster, fast, medium, slow, slower, veryslow.
-    Default: medium.
+    Default: medium. Accepted but unused for video with --audio-only.
 
 --gpu
     Auto-detect suitable H.264 or HEVC hardware backends, validate each result,
-    and fall back to libx264 or libx265 when necessary.
+    and fall back to libx264 or libx265 when necessary. No video backend is
+    initialized by --audio-only, where this option has no effect.
 
 --no-subs
     Strip subtitles instead of preserving compatible text subtitles.
 
 --convert-no-audio
     Convert silent videos. Without it, they are skipped and reported separately.
+
+--audio-only
+    Produce a normal target MP4 while forbidding video encoding. Target-safe
+    source video is copied; safe audio is copied and unsafe audio is repaired.
+    Video requiring conversion is skipped. This is not audio extraction.
 
 Examples
 --------
@@ -255,8 +298,10 @@ python video_to_iphone_mp4.py ~/Videos --target windows --preset slow
 python video_to_iphone_mp4.py ~/Videos --target mac --gpu
 python video_to_iphone_mp4.py ~/Videos --target lg-tv
 python video_to_iphone_mp4.py ~/Videos --target linux --gpu
+python video_to_iphone_mp4.py ~/Videos --target iphone --audio-only
+python video_to_iphone_mp4.py ~/Videos --target windows --audio-only
 python video_to_iphone_mp4.py ~/Videos --crf 24 --no-subs
-python video_to_iphone_mp4.py ~/Videos --convert-no-audio
+python video_to_iphone_mp4.py ~/Videos --audio-only --convert-no-audio
 
 The module header and argparse help describe the same CLI. Update both whenever
 the command-line interface or conversion policy changes.
@@ -294,6 +339,10 @@ PREFLIGHT_CONTAINER_OVERHEAD_MIN_BYTES = 256 * 1024
 PREFLIGHT_SUBTITLE_ESTIMATE_MARGIN = 1.25
 VIDEO_METHOD_REENCODED = "reencoded"
 VIDEO_METHOD_COPIED_REMUXED = "copied_remuxed"
+IPHONE_SAFE_AUDIO_SAMPLE_RATES = frozenset({44_100, 48_000})
+IPHONE_SAFE_AUDIO_LAYOUTS = {1: "mono", 2: "stereo"}
+IPHONE_REPAIR_AUDIO_BITRATE = 192_000
+IPHONE_REPAIR_AUDIO_SAMPLE_RATE = 48_000
 # Ten-bit candidates receive a small quality bias rather than reusing an equal
 # numeric CRF/CQ blindly. Lower is better for CRF/CQ/QP-style backends; higher
 # is better for VideoToolbox's percentage-like q:v scale. This conservative
@@ -755,42 +804,106 @@ def build_subtitle_args(input_path: Path, keep_subs: bool):
     return args
 
 
-def is_safe_aac_lc(stream):
+def positive_int(value):
+    try:
+        parsed = int(value)
+        return parsed if parsed > 0 else None
+    except (TypeError, ValueError):
+        return None
+
+
+def audio_is_safe_for_target(stream, target_profile: TargetProfile):
+    """Return whether one source/output audio stream satisfies target policy."""
     profile = (stream.get("profile") or "").upper()
-    channels = int(stream.get("channels") or 0)
-    return stream.get("codec_name") == "aac" and profile == "LC" and 0 < channels <= 6
+    channels = positive_int(stream.get("channels"))
+    if stream.get("codec_name") != target_profile.audio_codec:
+        return False
+    if profile != target_profile.audio_profile.upper():
+        return False
+    if target_profile.name != "iphone":
+        return channels is not None and channels <= 6
+
+    expected_layout = IPHONE_SAFE_AUDIO_LAYOUTS.get(channels)
+    channel_layout = (stream.get("channel_layout") or "").lower()
+    sample_rate = positive_int(stream.get("sample_rate"))
+    return (
+        expected_layout is not None
+        and channel_layout == expected_layout
+        and sample_rate in IPHONE_SAFE_AUDIO_SAMPLE_RATES
+    )
+
+
+def audio_transcode_settings(stream, target_profile: TargetProfile):
+    """Return bitrate/channels/sample-rate for one unsafe target audio stream."""
+    channels = positive_int(stream.get("channels")) or 2
+    if target_profile.name == "iphone":
+        return IPHONE_REPAIR_AUDIO_BITRATE, 2, IPHONE_REPAIR_AUDIO_SAMPLE_RATE
+    if channels > 6:
+        return 192_000, 2, 48_000
+    return (384_000 if channels > 2 else 192_000), None, 48_000
+
+
+def audio_stream_description(stream):
+    return (
+        f"{stream.get('codec_name', 'unknown')}/"
+        f"{stream.get('profile') or 'unknown profile'}/"
+        f"{stream.get('channel_layout') or 'unknown layout'}"
+    )
 
 
 def build_audio_args(input_path: Path, target_profile: TargetProfile):
-    """Return MP4-safe audio mapping/codec arguments and an optional note."""
+    """Map every audio stream and apply the shared target compatibility policy."""
     audio_streams = probe_streams(input_path, "a")
     if not audio_streams:
         return ["-map", "0:a?"], None
-    channels = max(int(stream.get("channels") or 2) for stream in audio_streams)
-    if all(is_safe_aac_lc(stream) for stream in audio_streams):
-        return ["-map", "0:a?", "-c:a", "copy"], None
+    if len(audio_streams) == 1:
+        stream = audio_streams[0]
+        if audio_is_safe_for_target(stream, target_profile):
+            return ["-map", "0:a:0", "-c:a", "copy"], None
+        bitrate, channels, sample_rate = audio_transcode_settings(
+            stream, target_profile,
+        )
+        args = [
+            "-map", "0:a:0", "-c:a", "aac", "-profile:a", "aac_low",
+            "-b:a", f"{bitrate // 1000}k", "-ar:a", str(sample_rate),
+        ]
+        if channels is not None:
+            args += ["-ac:a", str(channels)]
+        repair = "AAC-LC"
+        if target_profile.name == "iphone":
+            repair += " stereo 192k/48kHz"
+        note = f"audio {[audio_stream_description(stream)]} -> {repair}"
+        return args, note
 
-    if channels > 6:
-        channel_args = ["-ac:a", "2"]
-        bitrate = "192k"
-        channel_note = ", downmixed to stereo"
-    elif channels > 2:
-        channel_args = []
-        bitrate = "384k"
-        channel_note = ""
-    else:
-        channel_args = []
-        bitrate = "192k"
-        channel_note = ""
-    descriptions = sorted({
-        f"{stream.get('codec_name', 'unknown')}/{stream.get('profile') or 'unknown profile'}"
-        for stream in audio_streams if not is_safe_aac_lc(stream)
-    })
-    note = f"audio {descriptions} -> {target_profile.audio_codec.upper()}-LC {bitrate}{channel_note}"
-    return [
-        "-map", "0:a?", "-c:a", "aac", "-profile:a", "aac_low",
-        "-b:a", bitrate, "-ar:a", "48000", *channel_args,
-    ], note
+    args = []
+    unsafe_descriptions = []
+    for audio_index, stream in enumerate(audio_streams):
+        args += ["-map", f"0:a:{audio_index}"]
+        output_selector = f":{audio_index}"
+        if audio_is_safe_for_target(stream, target_profile):
+            args += [f"-c:a{output_selector}", "copy"]
+            continue
+
+        bitrate, channels, sample_rate = audio_transcode_settings(
+            stream, target_profile,
+        )
+        args += [
+            f"-c:a{output_selector}", "aac",
+            f"-profile:a{output_selector}", "aac_low",
+            f"-b:a{output_selector}", f"{bitrate // 1000}k",
+            f"-ar:a{output_selector}", str(sample_rate),
+        ]
+        if channels is not None:
+            args += [f"-ac:a{output_selector}", str(channels)]
+        unsafe_descriptions.append(audio_stream_description(stream))
+
+    if not unsafe_descriptions:
+        return args, None
+    repair = "AAC-LC"
+    if target_profile.name == "iphone":
+        repair += " stereo 192k/48kHz"
+    note = f"audio {sorted(set(unsafe_descriptions))} -> {repair}"
+    return args, note
 
 
 def default_encode_variant(target_profile: TargetProfile):
@@ -1184,18 +1297,17 @@ def validate_output(path: Path, target_profile: TargetProfile):
     else:
         reasons.extend(video_compatibility_reasons(video_streams[0], target_profile, remux=False))
     for stream in audio_streams:
-        if stream.get("codec_name") != target_profile.audio_codec:
+        if not audio_is_safe_for_target(stream, target_profile):
+            if target_profile.name == "iphone":
+                expected_audio = (
+                    "AAC-LC mono/stereo with mono/stereo layout at 44.1/48 kHz"
+                )
+            else:
+                expected_audio = "AAC-LC with no more than 5.1 channels"
             reasons.append(
-                f"audio stream {stream.get('index', '?')} is "
-                f"{stream.get('codec_name', 'unknown')}, expected AAC"
+                f"audio stream {stream.get('index', '?')} is not target-safe "
+                f"({audio_stream_description(stream)}; expected {expected_audio})"
             )
-        elif (stream.get("profile") or "").upper() != target_profile.audio_profile.upper():
-            reasons.append(
-                f"audio stream {stream.get('index', '?')} profile is "
-                f"{stream.get('profile') or 'unknown'}, expected AAC-LC"
-            )
-        if int(stream.get("channels") or 0) > 6:
-            reasons.append(f"audio stream {stream.get('index', '?')} exceeds 5.1 channels")
     for stream in subtitle_streams:
         if stream.get("codec_name") != "mov_text":
             reasons.append(
@@ -1224,6 +1336,10 @@ def temp_remux_path(out_path: Path):
 
 def temp_direct_remux_path(out_path: Path):
     return out_path.with_name(f".{out_path.stem}.direct-remux-tmp.mp4")
+
+
+def temp_audio_only_path(out_path: Path):
+    return out_path.with_name(f".{out_path.stem}.audio-only-tmp.mp4")
 
 
 def temp_encode_path(out_path: Path):
@@ -1299,34 +1415,48 @@ def packet_payload_bytes(path: Path, stream_selector: str):
     return total if found else None
 
 
-def target_audio_bitrate(audio_streams):
-    """Return the actual aggregate AAC target bitrate, or None for stream-copy."""
-    if not audio_streams or all(is_safe_aac_lc(stream) for stream in audio_streams):
+def target_audio_bitrate(audio_streams, target_profile: TargetProfile):
+    """Return aggregate bitrate for transcoded streams, or None when all copy."""
+    if not audio_streams or all(
+            audio_is_safe_for_target(stream, target_profile)
+            for stream in audio_streams):
         return None
-    channels = max(int(stream.get("channels") or 2) for stream in audio_streams)
-    per_stream_bitrate = 192_000 if channels > 6 or channels <= 2 else 384_000
-    return per_stream_bitrate * len(audio_streams)
+    return sum(
+        audio_transcode_settings(stream, target_profile)[0]
+        for stream in audio_streams
+        if not audio_is_safe_for_target(stream, target_profile)
+    )
 
 
-def estimate_target_audio_bytes(input_path: Path, duration, source_video_bytes):
-    """Estimate audio bytes produced by the converter's existing audio policy."""
+def estimate_target_audio_bytes(input_path: Path, target_profile: TargetProfile,
+                                duration, source_video_bytes):
+    """Estimate audio bytes produced by the shared target audio policy."""
     audio_streams = probe_streams(input_path, "a")
     if not audio_streams:
         return 0.0
-    encoded_bitrate = target_audio_bitrate(audio_streams)
-    if encoded_bitrate is not None:
-        return encoded_bitrate * duration / 8
-
-    copied_payload = packet_payload_bytes(input_path, "a")
-    if copied_payload is not None:
-        return float(copied_payload)
-    reported_bitrates = [reported_stream_bitrate(stream) for stream in audio_streams]
-    if all(bitrate is not None for bitrate in reported_bitrates):
-        return sum(reported_bitrates) * duration / 8
+    estimated_bytes = 0.0
+    unresolved_copy = False
+    for audio_index, stream in enumerate(audio_streams):
+        if not audio_is_safe_for_target(stream, target_profile):
+            bitrate, _, _ = audio_transcode_settings(stream, target_profile)
+            estimated_bytes += bitrate * duration / 8
+            continue
+        copied_payload = packet_payload_bytes(input_path, f"a:{audio_index}")
+        if copied_payload is not None:
+            estimated_bytes += copied_payload
+            continue
+        reported_bitrate = reported_stream_bitrate(stream)
+        if reported_bitrate is not None:
+            estimated_bytes += reported_bitrate * duration / 8
+        else:
+            unresolved_copy = True
+    if not unresolved_copy:
+        return estimated_bytes
     # This deliberately overestimates copied audio by assigning every remaining
     # source byte to it; shared audio in both candidates then makes the predicted
     # percentage saving more conservative rather than more optimistic.
-    return float(max(0, input_path.stat().st_size - source_video_bytes))
+    residual = max(0, input_path.stat().st_size - source_video_bytes)
+    return max(estimated_bytes, float(residual))
 
 
 def estimate_subtitle_bytes(input_path: Path, keep_subs: bool):
@@ -1563,7 +1693,7 @@ def estimate_reencode_savings(input_path: Path, out_path: Path,
         if source_video_bitrate is not None else 0.0
     )
     audio_bytes = estimate_target_audio_bytes(
-        input_path, duration, source_video_bytes,
+        input_path, target_profile, duration, source_video_bytes,
     )
     subtitle_bytes = estimate_subtitle_bytes(input_path, keep_subs)
     predicted_direct_bytes = (
@@ -1818,7 +1948,8 @@ def format_size_change(original_bytes: int, new_bytes: int):
 
 
 def successful_result(input_path: Path, out_path: Path, original_bytes: int,
-                      method: str, implementation: str, video_method: str):
+                      method: str, implementation: str, video_method: str,
+                      operation_method: str | None = None):
     """Build and print the common successful-conversion result."""
     original_mb = original_bytes / (1024 * 1024)
     new_bytes = out_path.stat().st_size
@@ -1835,6 +1966,7 @@ def successful_result(input_path: Path, out_path: Path, original_bytes: int,
         "new_mb": new_mb, "orig_bytes": original_bytes,
         "new_bytes": new_bytes, "pct": percent, "method": method,
         "video_method": video_method,
+        "operation_method": operation_method or video_method,
     }
 
 
@@ -1881,10 +2013,85 @@ def encoded_method_for(target_profile: TargetProfile,
     return "re-encoded HEVC Main 8-bit"
 
 
+def input_is_already_target_compatible(input_path: Path,
+                                       target_profile: TargetProfile,
+                                       keep_subs: bool):
+    """Return whether audio-only mode can avoid creating a duplicate output."""
+    if input_path.suffix.lower() != ".mp4":
+        return False
+    valid, _ = validate_output(input_path, target_profile)
+    if not valid:
+        return False
+    return keep_subs or not probe_streams(input_path, "s")
+
+
+def convert_audio_only_file(input_path: Path, out_path: Path,
+                            target_profile: TargetProfile, keep_subs: bool,
+                            duration, original_bytes: int,
+                            active_paths: ActivePaths):
+    """Copy target-safe video, repair audio if needed, and never encode video."""
+    safe_video, reason = can_safely_remux_for_target(input_path, target_profile)
+    if not safe_video:
+        print(
+            "  Skipping: video requires re-encoding, but --audio-only forbids "
+            f"it ({reason})."
+        )
+        return {
+            "status": "skipped_audio_only_video", "name": input_path.name,
+            "reason": (
+                f"{reason}; requires video re-encoding for "
+                f"{target_profile.name}"
+            ),
+        }
+
+    if input_is_already_target_compatible(
+            input_path, target_profile, keep_subs):
+        print("  Skipping: source is already target-compatible.")
+        return {
+            "status": "skipped_target_compatible", "name": input_path.name,
+        }
+
+    audio_streams = probe_streams(input_path, "a")
+    repairs_audio = any(
+        not audio_is_safe_for_target(stream, target_profile)
+        for stream in audio_streams
+    )
+    candidate = temp_audio_only_path(out_path)
+    active_paths.discard(candidate)
+    print("  Audio-only mode: copying the original video stream without encoding.")
+    completed = try_remux(
+        input_path, candidate, target_profile, keep_subs,
+        duration, active_paths, direct=True,
+    )
+    if not completed or not validated_candidate(
+            candidate, "Audio-only", target_profile):
+        active_paths.discard(candidate)
+        print(f"  Audio-only remux failed: {input_path.name}")
+        return {"status": "failed", "name": input_path.name}
+
+    promote_valid_candidate(candidate, out_path, active_paths)
+    if not validated_candidate(out_path, "Final output", target_profile):
+        safe_unlink(out_path)
+        print(f"  Failed final validation: {input_path.name}")
+        return {"status": "failed", "name": input_path.name}
+    method = (
+        "video copied, audio repaired"
+        if repairs_audio else
+        ("video/audio copied, remuxed" if audio_streams else "video copied, remuxed")
+    )
+    operation_method = (
+        "audio_only_repair" if repairs_audio else "audio_only_remux"
+    )
+    return successful_result(
+        input_path, out_path, original_bytes, method, "audio-only",
+        VIDEO_METHOD_COPIED_REMUXED, operation_method,
+    )
+
+
 def convert_file(input_path: Path, out_path: Path, target_profile: TargetProfile,
                  crf: int, preset: str, gpu: bool, hardware_candidates,
                  keep_subs: bool, convert_no_audio: bool,
-                 active_paths: ActivePaths):
+                 active_paths: ActivePaths, audio_only: bool = False):
     """Convert one file and return a result with a distinct summary status."""
     if not convert_no_audio and not probe_streams(input_path, "a"):
         print(f"Skipping (no audio stream): {input_path}")
@@ -1896,6 +2103,11 @@ def convert_file(input_path: Path, out_path: Path, target_profile: TargetProfile
     out_path.parent.mkdir(parents=True, exist_ok=True)
     duration = get_duration_seconds(input_path)
     original_bytes = input_path.stat().st_size
+    if audio_only:
+        return convert_audio_only_file(
+            input_path, out_path, target_profile, keep_subs,
+            duration, original_bytes, active_paths,
+        )
     encode_tmp = temp_encode_path(out_path)
     remux_tmp = temp_remux_path(out_path)
     direct_tmp = temp_direct_remux_path(out_path)
@@ -2069,29 +2281,34 @@ def output_paths_for(video_files, folder: Path, target_root: Path):
 
 def print_startup_summary(target_profile: TargetProfile, target_root: Path,
                           gpu: bool, hardware_candidates, crf: int,
-                          preset: str, keep_subs: bool):
+                          preset: str, keep_subs: bool,
+                          audio_only: bool = False):
     codec = target_profile.codec
     print(f"Target: {target_profile.name}")
     print("Container: MP4 (+faststart)")
     if target_profile.name == "iphone":
         print(
-            "Video encode candidates: HEVC Main / yuv420p 8-bit; "
-            "HEVC Main10 / yuv420p10le 10-bit; hvc1"
-        )
-        print(
             "Safe retained video: HEVC Main/yuv420p, HEVC Main 10/yuv420p10le, "
             "or conservatively compatible H.264/yuv420p"
         )
-        print(
-            "Bit-depth preflight: adaptive 5→9 positions per supported variant, "
-            f"CV-based {PREFLIGHT_MARGIN_LOW:.2f}x–{PREFLIGHT_MARGIN_HIGH:.2f}x margin; encode at "
-            f">={MIN_PREDICTED_REENCODE_SAVINGS * 100:.0f}% predicted final saving"
-        )
+        if not audio_only:
+            print(
+                "Video encode candidates: HEVC Main / yuv420p 8-bit; "
+                "HEVC Main10 / yuv420p10le 10-bit; hvc1"
+            )
+            print(
+                "Bit-depth preflight: adaptive 5→9 positions per supported variant, "
+                f"CV-based {PREFLIGHT_MARGIN_LOW:.2f}x–{PREFLIGHT_MARGIN_HIGH:.2f}x margin; encode at "
+                f">={MIN_PREDICTED_REENCODE_SAVINGS * 100:.0f}% predicted final saving"
+            )
     else:
         print(
             f"Video target: {codec.display_name} / yuv420p / {codec.output_tag}"
         )
-    print("Audio target: AAC-LC")
+    if target_profile.name == "iphone":
+        print("Audio target: AAC-LC mono/stereo; unsafe audio -> stereo 192k/48kHz")
+    else:
+        print("Audio target: AAC-LC")
     if target_profile.max_width and target_profile.max_height:
         print(f"Maximum resolution: {target_profile.max_width}x{target_profile.max_height}")
     else:
@@ -2100,7 +2317,11 @@ def print_startup_summary(target_profile: TargetProfile, target_root: Path,
         print(f"Maximum frame rate: {target_profile.max_fps:g} fps")
     else:
         print("Frame-rate limit: none (source frame rate preserved)")
-    if gpu:
+    if audio_only:
+        print("Processing mode: audio-only; source video is stream-copied or the file is skipped")
+        print("Video encoding/preflight: disabled")
+        print("Note: --gpu, --crf, and --preset do not affect video in --audio-only mode")
+    elif gpu:
         names = ", ".join(candidate.name for candidate in hardware_candidates) or "none detected"
         print(
             f"Hardware encoding: enabled; ordered {codec.name.upper()} candidates: {names}; "
@@ -2108,13 +2329,20 @@ def print_startup_summary(target_profile: TargetProfile, target_root: Path,
         )
     else:
         print(f"Hardware encoding: disabled; CPU/{codec.software_encoder}")
-    print(f"Quality: {crf}; encoder preset: {preset}")
+    if not audio_only:
+        print(f"Quality: {crf}; encoder preset: {preset}")
     print(f"Subtitles: {'compatible text retained as mov_text' if keep_subs else 'stripped'}")
     print(f"Output folder: {target_root}")
-    print(
-        "Size policy: keep the smallest validated target-compatible candidate; "
-        "never remove a good re-encode before a replacement validates.\n"
-    )
+    if audio_only:
+        print(
+            "Audio-only policy: validate a temporary video-copy MP4 before "
+            "promotion; never fall back to video encoding.\n"
+        )
+    else:
+        print(
+            "Size policy: keep the smallest validated target-compatible candidate; "
+            "never remove a good re-encode before a replacement validates.\n"
+        )
 
 
 def print_converted_group(title, results):
@@ -2134,8 +2362,12 @@ def print_converted_group(title, results):
 
 def print_batch_summary(folder: Path, target_profile: TargetProfile,
                         converted, failed, skipped_existing, skipped_no_audio,
-                        interrupted=False, interrupted_file=None):
+                        interrupted=False, interrupted_file=None,
+                        skipped_audio_only_video=None,
+                        skipped_target_compatible=None):
     """Print accumulated results after normal completion or interruption."""
+    skipped_audio_only_video = skipped_audio_only_video or []
+    skipped_target_compatible = skipped_target_compatible or []
     print("\n" + "=" * 64)
     print(f"Summary — target: {target_profile.name}")
     print("=" * 64)
@@ -2181,6 +2413,21 @@ def print_batch_summary(folder: Path, target_profile: TargetProfile,
         for path in skipped_no_audio:
             print(f"  {path.relative_to(folder)}")
         print("\nRe-run with --convert-no-audio if you want these converted too.")
+    if skipped_audio_only_video:
+        print(
+            "\nSkipped — video incompatible with --audio-only "
+            f"({len(skipped_audio_only_video)} file(s)):"
+        )
+        for result in skipped_audio_only_video:
+            print(f"  {result['path'].relative_to(folder)}")
+            print(f"    {result['reason']}")
+    if skipped_target_compatible:
+        print(
+            "\nSkipped — already target-compatible "
+            f"({len(skipped_target_compatible)} file(s)):"
+        )
+        for path in skipped_target_compatible:
+            print(f"  {path.relative_to(folder)}")
     if failed:
         print(f"\nFailed ({len(failed)} file(s)):")
         for path in failed:
@@ -2210,9 +2457,9 @@ def build_parser():
         description=(
             "Recursively find files containing FFmpeg-decodable video and make "
             "validated MP4 output for a selected playback target. Input filename "
-            "extensions do not matter; iphone remains the default target and "
-            "automatically compares safe remux, HEVC Main 8-bit, and Main10 "
-            "10-bit candidates."
+            "extensions do not matter. Normal iphone mode compares safe remux, "
+            "HEVC Main 8-bit, and Main10 10-bit candidates; --audio-only instead "
+            "guarantees video stream-copy or a documented skip."
         ),
         epilog=(
             "Examples:\n"
@@ -2222,6 +2469,7 @@ def build_parser():
             "  python video_to_iphone_mp4.py ~/Videos --target mac --gpu\n"
             "  python video_to_iphone_mp4.py ~/Videos --target lg-tv\n"
             "  python video_to_iphone_mp4.py ~/Videos --target linux --gpu\n"
+            "  python video_to_iphone_mp4.py ~/Videos --target iphone --audio-only\n"
             "\nAll outputs are MP4 under FOLDER/converted/TARGET/."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -2237,18 +2485,22 @@ def build_parser():
         "--crf", type=int, default=22,
         help=(
             "Quality target, 0-51; lower is better/larger. Hardware mappings "
-            "and iPhone 8/10-bit mappings are approximate (default: 22)."
+            "and iPhone 8/10-bit mappings are approximate; ignored for video "
+            "with --audio-only (default: 22)."
         ),
     )
     parser.add_argument(
         "--preset", choices=PRESET_CHOICES, default="medium",
-        help="Encoder speed/compression-efficiency tradeoff (default: medium).",
+        help=(
+            "Encoder speed/compression-efficiency tradeoff; ignored for video "
+            "with --audio-only (default: medium)."
+        ),
     )
     parser.add_argument(
         "--gpu", action="store_true",
         help=(
             "Auto-detect suitable target-codec hardware encoders and validate "
-            "attempts; fall back to CPU libx264/libx265."
+            "attempts; fall back to CPU libx264/libx265. Ignored by --audio-only."
         ),
     )
     parser.add_argument(
@@ -2258,6 +2510,13 @@ def build_parser():
     parser.add_argument(
         "--convert-no-audio", action="store_true",
         help="Convert silent videos; otherwise list them as a distinct skipped category.",
+    )
+    parser.add_argument(
+        "--audio-only", action="store_true",
+        help=(
+            "Never encode video: copy target-safe source video and repair/copy "
+            "audio; skip video that requires encoding."
+        ),
     )
     return parser
 
@@ -2277,7 +2536,10 @@ def main():
     target_profile = TARGETS[args.target]
     converted_root = folder / "converted"
     target_root = converted_root / target_profile.name
-    hardware_candidates = hardware_encoder_candidates(target_profile) if args.gpu else []
+    hardware_candidates = (
+        hardware_encoder_candidates(target_profile)
+        if args.gpu and not args.audio_only else []
+    )
 
     video_files = discover_video_files(folder, converted_root)
     if not video_files:
@@ -2287,13 +2549,15 @@ def main():
     print(f"Found {len(video_files)} video file(s) in {folder}.")
     print_startup_summary(
         target_profile, target_root, args.gpu, hardware_candidates,
-        args.crf, args.preset, not args.no_subs,
+        args.crf, args.preset, not args.no_subs, args.audio_only,
     )
 
     converted = []
     failed = []
     skipped_existing = []
     skipped_no_audio = []
+    skipped_audio_only_video = []
+    skipped_target_compatible = []
     active_paths = ActivePaths()
     interrupted = False
     interrupted_file = None
@@ -2307,6 +2571,7 @@ def main():
                 keep_subs=not args.no_subs,
                 convert_no_audio=args.convert_no_audio,
                 active_paths=active_paths,
+                audio_only=args.audio_only,
             )
             if result["status"] == "converted":
                 converted.append(result)
@@ -2316,6 +2581,11 @@ def main():
                 skipped_existing.append(input_file)
             elif result["status"] == "skipped_no_audio":
                 skipped_no_audio.append(input_file)
+            elif result["status"] == "skipped_audio_only_video":
+                result["path"] = input_file
+                skipped_audio_only_video.append(result)
+            elif result["status"] == "skipped_target_compatible":
+                skipped_target_compatible.append(input_file)
             interrupted_file = None
     except KeyboardInterrupt:
         interrupted = True
@@ -2325,6 +2595,8 @@ def main():
             folder, target_profile, converted, failed,
             skipped_existing, skipped_no_audio,
             interrupted=interrupted, interrupted_file=interrupted_file,
+            skipped_audio_only_video=skipped_audio_only_video,
+            skipped_target_compatible=skipped_target_compatible,
         )
     if interrupted:
         sys.exit(130)
