@@ -86,7 +86,7 @@ parser.add_argument(
 parser.add_argument(
     "--skip-tried",
     action="store_true",
-    help="Skip PINs already submitted in the log"
+    help="Exclude logged PINs before running, without printing individual skips"
 )
 
 parser.add_argument(
@@ -361,7 +361,6 @@ remaining_keys = sum(
 
 completed_keys = 0
 completed_attempts = 0
-completed_skips = 0
 total_input_seconds = 0.0
 
 last_submitted = None
@@ -439,18 +438,7 @@ try:
             )
             with log_context as log:
 
-                for range_progress, number in enumerate(all_pins, start=1):
-
-                    if number in tried_pins:
-                        completed_skips += 1
-                        percentage = range_progress / selected_count * 100
-                        print(
-                            f"SKIPPED: {number:05d} (already in log) | "
-                            f"Range: {range_progress:,}/{selected_count:,} "
-                            f"({percentage:.2f}%)",
-                            flush=True
-                        )
-                        continue
+                for number in pins_to_try:
 
                     current_pin = f"{number:05d}"
                     phase = "entering"
@@ -568,13 +556,13 @@ finally:
         print("No PINs in this range match the distinct-digit filter.")
         print("Nothing was sent to the TV.")
         print()
-    elif completed_skips == selected_count:
+    elif not total_attempts:
         print("No PINs left to test in this range.")
         print("All selected PINs are already logged.")
         print("Nothing was sent to the TV.")
         print()
 
-    print(f"PINs skipped: {completed_skips:,}")
+    print(f"PINs skipped: {skipped_attempts:,}")
     print(
         f"PINs submitted this run: "
         f"{completed_attempts:,}/{total_attempts:,}"
