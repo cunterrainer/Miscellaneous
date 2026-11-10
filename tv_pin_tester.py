@@ -1,4 +1,15 @@
 #!/usr/bin/env python3
+# USB setup (Linux):
+# - Use hardware with a USB device/OTG port and gadget support, such as a
+#   compatible Raspberry Pi. A normal USB host-only port cannot act as a keyboard.
+# - Enable USB peripheral mode and the Linux USB gadget/configfs drivers for
+#   your board. Exact boot settings depend on the hardware and distribution.
+# - Configure a HID keyboard gadget with a report descriptor for standard
+#   8-byte keyboard reports. Add it to a USB configuration and bind it to the
+#   USB device controller (UDC). This creates /dev/hidg0; grant write access.
+# - Connect the device/OTG port to the TV's USB port with a data-capable cable.
+#   If the HID node has a different name, update DEVICE below.
+# The script sends keyboard reports; it does not configure the USB gadget.
 
 import argparse
 import math
