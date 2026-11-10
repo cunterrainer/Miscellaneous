@@ -321,16 +321,6 @@ print("TV must start at 00000, leftmost digit selected.")
 print("=" * 55, flush=True)
 
 # ==========================================
-# HANDLE EMPTY RANGE
-# ==========================================
-
-if not pins_to_try:
-    print()
-    print("No PINs left to test in this range.")
-    print("All requested PINs are already logged.")
-    print("Nothing was sent to the TV.")
-
-# ==========================================
 # MAIN LOOP
 # ==========================================
 
@@ -483,6 +473,12 @@ finally:
     print(f"Last submitted PIN: {last_submitted}")
 
     print()
+    if completed_skips == total_range:
+        print("No PINs left to test in this range.")
+        print("All requested PINs are already logged.")
+        print("Nothing was sent to the TV.")
+        print()
+
     print(f"PINs skipped: {completed_skips:,}")
     print(
         f"PINs submitted this run: "
