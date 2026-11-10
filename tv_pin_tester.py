@@ -106,14 +106,28 @@ distinct_limits.add_argument(
     "--min-distinct",
     type=int,
     choices=range(0, 6),
-    help="Minimum distinct digits to include; requires --distinct-first (0 or 1 includes all)"
+    help=(
+        "Only try PINs in the input range with at least this many different "
+        "digit values. For example, 3 tries groups with 5, then 4, then 3 "
+        "distinct digits; 5 only tries PINs with no repeated digits. "
+        "Values 0 and 1 include all groups. Leading zeros count: 00123 has "
+        "4 distinct digits. Requires --distinct-first; cannot be combined "
+        "with --max-distinct."
+    )
 )
 
 distinct_limits.add_argument(
     "--max-distinct",
     type=int,
     choices=range(0, 6),
-    help="Maximum distinct digits to include; requires --distinct-first (0 means 1)"
+    help=(
+        "Only try PINs in the input range with at most this many different "
+        "digit values. For example, 3 tries groups with 3, then 2, then 1 "
+        "distinct digits. Values 0 and 1 only try PINs whose digits are all "
+        "the same (such as 00000 or 11111); 5 includes all groups. Leading "
+        "zeros count: 00123 has 4 distinct digits. Requires --distinct-first; "
+        "cannot be combined with --min-distinct."
+    )
 )
 
 args = parser.parse_args()
