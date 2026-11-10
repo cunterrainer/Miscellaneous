@@ -66,27 +66,26 @@ parser.add_argument(
     "--hold",
     type=float,
     default=DEFAULT_HOLD,
-    help="Key hold duration in seconds (default: 0.12)"
+    help=f"Key hold duration in seconds (default: {DEFAULT_HOLD})"
 )
 
 parser.add_argument(
     "--key-delay",
     type=float,
     default=DEFAULT_KEY_DELAY,
-    help="Delay after each key in seconds (default: 0.15)"
+    help=f"Delay after each key in seconds (default: {DEFAULT_KEY_DELAY})"
 )
 
 parser.add_argument(
     "--pause",
     type=float,
     default=DEFAULT_PAUSE,
-    help="Pause after submitting a PIN (default: 3.0)"
+    help=f"Pause after submitting a PIN (default: {DEFAULT_PAUSE})"
 )
 
 parser.add_argument(
     "--skip-tried",
     action="store_true",
-    default=False,
     help="Skip PINs already submitted in the log"
 )
 
