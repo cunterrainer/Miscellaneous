@@ -129,23 +129,24 @@ def load_tried_pins():
     """
     tried = set()
 
-    if not LOG_FILE.exists():
-        return tried
-
     pattern = re.compile(
         r"\bSUBMITTED\s+(\d{5})(?!\d)"
     )
 
-    with LOG_FILE.open("r", encoding="utf-8") as log:
-        for line in log:
-            match = pattern.search(line)
+    try:
+        with LOG_FILE.open("r", encoding="utf-8") as log:
+            for line in log:
+                match = pattern.search(line)
 
-            if match:
-                number = int(match.group(1))
+                if match:
+                    number = int(match.group(1))
 
-                # Keep only relevant PINs.
-                if args.start <= number <= args.end:
-                    tried.add(number)
+                    # Keep only relevant PINs.
+                    if args.start <= number <= args.end:
+                        tried.add(number)
+    except FileNotFoundError:
+        # No history yet; there is nothing to skip.
+        return set()
 
     return tried
 
@@ -153,7 +154,10 @@ def load_tried_pins():
 tried_pins = set()
 
 if args.skip_tried:
-    tried_pins = load_tried_pins()
+    try:
+        tried_pins = load_tried_pins()
+    except (OSError, UnicodeError) as error:
+        parser.exit(1, f"Cannot read PIN log {LOG_FILE}: {error}\n")
 
 # ==========================================
 # BUILD ATTEMPT LIST
