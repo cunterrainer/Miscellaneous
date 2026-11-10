@@ -5,6 +5,7 @@ import math
 import re
 import time
 from collections import deque
+from contextlib import nullcontext
 from datetime import datetime
 from pathlib import Path
 
@@ -76,6 +77,12 @@ parser.add_argument(
     action="store_true",
     default=False,
     help="Skip PINs already submitted in the log"
+)
+
+parser.add_argument(
+    "--no-log",
+    action="store_true",
+    help="Do not create or write the log (still read it with --skip-tried)"
 )
 
 args = parser.parse_args()
@@ -259,6 +266,7 @@ remaining_keys = sum(
 
 completed_keys = 0
 completed_attempts = 0
+completed_skips = 0
 total_input_seconds = 0.0
 
 last_submitted = None
@@ -294,6 +302,7 @@ print(f"PIN pause: {args.pause}s")
 print()
 print(f"Planned key presses: {remaining_keys:,}")
 print(f"Log file: {LOG_FILE}")
+print(f"Log writing: {'DISABLED' if args.no_log else 'ENABLED'}")
 
 print()
 print("Press CTRL+C to stop.")
@@ -309,7 +318,6 @@ if not pins_to_try:
     print("No PINs left to test in this range.")
     print("All requested PINs are already logged.")
     print("Nothing was sent to the TV.")
-    raise SystemExit(0)
 
 # ==========================================
 # MAIN LOOP
@@ -318,18 +326,39 @@ if not pins_to_try:
 program_start = time.monotonic()
 
 try:
-    with open(DEVICE, "wb", buffering=0) as keyboard:
+    # A fully logged range needs no device access.
+    keyboard_context = (
+        open(DEVICE, "wb", buffering=0)
+        if total_attempts else nullcontext()
+    )
+    with keyboard_context as keyboard:
 
         try:
-            # Append mode preserves all existing entries.
-            with open(
-                LOG_FILE,
-                "a",
-                encoding="utf-8",
-                buffering=1
-            ) as log:
+            # Do not open the log at all when writing is disabled.
+            # Append mode preserves all existing entries otherwise.
+            log_context = (
+                nullcontext() if args.no_log or not total_attempts else open(
+                    LOG_FILE,
+                    "a",
+                    encoding="utf-8",
+                    buffering=1
+                )
+            )
+            with log_context as log:
 
-                for number in pins_to_try:
+                for number in all_pins:
+
+                    if number in tried_pins:
+                        completed_skips += 1
+                        range_progress = number - args.start + 1
+                        percentage = range_progress / total_range * 100
+                        print(
+                            f"SKIPPED: {number:05d} (already in log) | "
+                            f"Range: {range_progress:,}/{total_range:,} "
+                            f"({percentage:.2f}%)",
+                            flush=True
+                        )
+                        continue
 
                     current_pin = f"{number:05d}"
                     phase = "entering"
@@ -378,15 +407,16 @@ try:
                         + remaining_attempts * args.pause
                     )
 
-                    timestamp = datetime.now().isoformat(
-                        timespec="seconds"
-                    )
+                    if log is not None:
+                        timestamp = datetime.now().isoformat(
+                            timespec="seconds"
+                        )
 
-                    # Always append; never overwrite.
-                    log.write(
-                        f"{timestamp} SUBMITTED "
-                        f"{current_pin}\n"
-                    )
+                        # Always append; never overwrite.
+                        log.write(
+                            f"{timestamp} SUBMITTED "
+                            f"{current_pin}\n"
+                        )
 
                     percentage = (
                         completed_attempts
@@ -411,10 +441,11 @@ try:
 
         finally:
             # Release any held keyboard key.
-            try:
-                keyboard.write(bytes(8))
-            except OSError:
-                pass
+            if keyboard is not None:
+                try:
+                    keyboard.write(bytes(8))
+                except OSError:
+                    pass
 
 except KeyboardInterrupt:
     print(
@@ -441,7 +472,7 @@ finally:
     print(f"Last submitted PIN: {last_submitted}")
 
     print()
-    print(f"PINs skipped: {skipped_attempts:,}")
+    print(f"PINs skipped: {completed_skips:,}")
     print(
         f"PINs submitted this run: "
         f"{completed_attempts:,}/{total_attempts:,}"
@@ -472,6 +503,9 @@ finally:
         )
 
     print()
-    print(f"Full history: {LOG_FILE}")
+    if args.no_log:
+        print("Log writing disabled; this run was not saved.")
+    else:
+        print(f"Full history: {LOG_FILE}")
     print("=" * 55)
 
