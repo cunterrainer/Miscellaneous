@@ -234,7 +234,7 @@ Interpret Brainfuck
 Little utility for easier usage of command line arguments
 
 ## tv_pin_tester.py
-Test five-digit Philips TV PINs via a USB HID keyboard gadget (`/dev/hidg0`). Requires a Linux device configured to act as a USB keyboard and connected to the TV. Shows progress and ETA, and logs submitted PINs. Use `--skip-tried` to silently filter logged PINs before running and `--no-log` to disable log writes. Use `--distinct-first` to try PINs with more distinct digits first. With `--distinct-first`, add either `--min-distinct N` for at least N distinct digits or `--max-distinct N` for at most N (0-5, mutually exclusive). For the minimum, 0 or 1 includes all; for the maximum, 0 means 1. See `--help` for timing options.
+Test five-digit Philips TV PINs via a USB HID keyboard gadget (`/dev/hidg0`). Requires a Linux device configured to act as a USB keyboard and connected to the TV. Enters PINs with five top-row digit key presses; the final digit submits automatically. Shows progress and ETA, and logs submitted PINs. Use `--skip-tried` to silently filter logged PINs before running and `--no-log` to disable log writes. Use `--distinct-first` to try PINs with more distinct digits first. With `--distinct-first`, add either `--min-distinct N` for at least N distinct digits or `--max-distinct N` for at most N (0-5, mutually exclusive). For the minimum, 0 or 1 includes all; for the maximum, 0 means 1. See `--help` for timing options.
 ``` bash
 python3 tv_pin_tester.py 0 999 --skip-tried --no-log
 ```

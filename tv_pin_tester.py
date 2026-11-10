@@ -26,9 +26,11 @@ from pathlib import Path
 
 DEVICE = "/dev/hidg0"
 
-UP = 0x52
-DOWN = 0x51
-RIGHT = 0x4F
+PIN_LENGTH = 5
+
+# USB HID top-row digits (not numpad): 1-9 are 0x1E-0x26; 0 is 0x27.
+DIGIT_KEYS = {str(digit): 0x1D + digit for digit in range(1, 10)}
+DIGIT_KEYS["0"] = 0x27
 
 # Config works on tested TV
 # PAUSE = 0
@@ -279,25 +281,6 @@ def format_duration(seconds):
     return f"{secs}s"
 
 
-def key_count(number):
-    """
-    Calculate how many keyboard presses
-    are required to enter this PIN from 00000.
-    """
-    pin = f"{number:05d}"
-
-    # Five RIGHT presses, including submission.
-    count = 5
-
-    for char in pin:
-        digit = int(char)
-
-        # Shortest circular distance from zero.
-        count += min(digit, 10 - digit)
-
-    return count
-
-
 def press(keyboard, key):
     """Send a USB HID key press and release."""
 
@@ -324,40 +307,24 @@ def enter_pin(keyboard, pin):
     Assumptions:
     - Screen starts at 00000.
     - Leftmost digit selected.
-    - UP increases a digit.
-    - DOWN decreases a digit.
-    - RIGHT advances.
-    - RIGHT on digit five submits.
+    - Top-row digit keys set the digit and automatically advance.
+    - The fifth digit automatically submits the PIN.
+    - Rejection resets to 00000 with the leftmost digit selected.
     """
     global phase
 
     for index, char in enumerate(pin):
-        digit = int(char)
-
-        if digit <= 5:
-            direction = UP
-            presses = digit
-        else:
-            direction = DOWN
-            presses = 10 - digit
-
-        for _ in range(presses):
-            press(keyboard, direction)
-
-        if index == 4:
+        if index == PIN_LENGTH - 1:
             phase = "submitting"
 
-        press(keyboard, RIGHT)
+        press(keyboard, DIGIT_KEYS[char])
 
 
 # ==========================================
 # PREPARE ESTIMATION
 # ==========================================
 
-remaining_keys = sum(
-    key_count(number)
-    for number in pins_to_try
-)
+remaining_keys = total_attempts * PIN_LENGTH
 
 completed_keys = 0
 completed_attempts = 0
@@ -457,17 +424,15 @@ try:
                         time.monotonic() - start_time
                     )
 
-                    # The submission key was sent.
+                    # The fifth digit was sent, submitting the PIN.
                     last_submitted = current_pin
                     recent.append(current_pin)
                     phase = "waiting"
 
                     completed_attempts += 1
 
-                    keys_used = key_count(number)
-
-                    completed_keys += keys_used
-                    remaining_keys -= keys_used
+                    completed_keys += PIN_LENGTH
+                    remaining_keys -= PIN_LENGTH
 
                     total_input_seconds += input_duration
 
