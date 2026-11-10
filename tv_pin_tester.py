@@ -95,6 +95,12 @@ parser.add_argument(
     help="Do not create or write the log (still read it with --skip-tried)"
 )
 
+parser.add_argument(
+    "--distinct-first",
+    action="store_true",
+    help="Try PINs with more distinct digits first (including leading zeros)"
+)
+
 args = parser.parse_args()
 
 # ==========================================
@@ -164,6 +170,42 @@ if args.skip_tried:
 # ==========================================
 
 all_pins = range(args.start, args.end + 1)
+total_range = len(all_pins)
+
+if args.distinct_first:
+    print(
+        f"Building distinct-first order for {total_range:,} PINs "
+        f"({args.start:05d} - {args.end:05d})...",
+        flush=True
+    )
+    buckets = {distinct: [] for distinct in range(1, 6)}
+    progress_interval = max(1, (total_range + 9) // 10)
+
+    for processed, number in enumerate(all_pins, start=1):
+        distinct = len(set(f"{number:05d}"))
+        buckets[distinct].append(number)
+
+        if processed % progress_interval == 0 or processed == total_range:
+            print(
+                f"Classified: {processed:,}/{total_range:,} "
+                f"({processed / total_range * 100:.2f}%)",
+                flush=True
+            )
+
+    for distinct in range(5, 0, -1):
+        print(
+            f"  {distinct} distinct digits: {len(buckets[distinct]):,} PINs",
+            flush=True
+        )
+
+    print("Combining PIN groups...", flush=True)
+    all_pins = [
+        number
+        for distinct in range(5, 0, -1)
+        for number in buckets[distinct]
+    ]
+    del buckets
+    print("Distinct-first order ready.", flush=True)
 
 pins_to_try = [
     number
@@ -171,7 +213,6 @@ pins_to_try = [
     if number not in tried_pins
 ]
 
-total_range = args.end - args.start + 1
 total_attempts = len(pins_to_try)
 skipped_attempts = total_range - total_attempts
 
@@ -299,6 +340,7 @@ print("=" * 55)
 
 print(f"Range: {args.start:05d} - {args.end:05d}")
 print(f"PINs in range: {total_range:,}")
+print(f"PIN order: {'DISTINCT FIRST' if args.distinct_first else 'ASCENDING'}")
 
 print(
     f"Skip previously tried: "
@@ -350,11 +392,10 @@ try:
             )
             with log_context as log:
 
-                for number in all_pins:
+                for range_progress, number in enumerate(all_pins, start=1):
 
                     if number in tried_pins:
                         completed_skips += 1
-                        range_progress = number - args.start + 1
                         percentage = range_progress / total_range * 100
                         print(
                             f"SKIPPED: {number:05d} (already in log) | "
