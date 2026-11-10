@@ -101,11 +101,21 @@ parser.add_argument(
     help="Try PINs with more distinct digits first (including leading zeros)"
 )
 
+parser.add_argument(
+    "--min-distinct",
+    type=int,
+    choices=range(0, 6),
+    help="Minimum distinct digits to include; requires --distinct-first (0 or 1 includes all)"
+)
+
 args = parser.parse_args()
 
 # ==========================================
 # VALIDATION
 # ==========================================
+
+if args.min_distinct is not None and not args.distinct_first:
+    parser.error("--min-distinct requires --distinct-first")
 
 if not (0 <= args.start <= args.end <= 99999):
     parser.error(
@@ -173,6 +183,7 @@ all_pins = range(args.start, args.end + 1)
 total_range = len(all_pins)
 
 if args.distinct_first:
+    minimum_distinct = max(1, args.min_distinct or 1)
     print(
         f"Building distinct-first order for {total_range:,} PINs "
         f"({args.start:05d} - {args.end:05d})...",
@@ -194,14 +205,15 @@ if args.distinct_first:
 
     for distinct in range(5, 0, -1):
         print(
-            f"  {distinct} distinct digits: {len(buckets[distinct]):,} PINs",
+            f"  {distinct} distinct digits: {len(buckets[distinct]):,} PINs"
+            f"{' (excluded)' if distinct < minimum_distinct else ''}",
             flush=True
         )
 
     print("Combining PIN groups...", flush=True)
     all_pins = [
         number
-        for distinct in range(5, 0, -1)
+        for distinct in range(5, minimum_distinct - 1, -1)
         for number in buckets[distinct]
     ]
     del buckets
@@ -213,8 +225,10 @@ pins_to_try = [
     if number not in tried_pins
 ]
 
+selected_count = len(all_pins)
+excluded_attempts = total_range - selected_count
 total_attempts = len(pins_to_try)
-skipped_attempts = total_range - total_attempts
+skipped_attempts = selected_count - total_attempts
 
 # ==========================================
 # HELPERS
@@ -341,6 +355,10 @@ print("=" * 55)
 print(f"Range: {args.start:05d} - {args.end:05d}")
 print(f"PINs in range: {total_range:,}")
 print(f"PIN order: {'DISTINCT FIRST' if args.distinct_first else 'ASCENDING'}")
+if args.min_distinct is not None:
+    print(f"Minimum distinct digits: {args.min_distinct}")
+    print(f"PINs selected: {selected_count:,}")
+    print(f"PINs excluded by distinct-digit minimum: {excluded_attempts:,}")
 
 print(
     f"Skip previously tried: "
@@ -396,10 +414,10 @@ try:
 
                     if number in tried_pins:
                         completed_skips += 1
-                        percentage = range_progress / total_range * 100
+                        percentage = range_progress / selected_count * 100
                         print(
                             f"SKIPPED: {number:05d} (already in log) | "
-                            f"Range: {range_progress:,}/{total_range:,} "
+                            f"Range: {range_progress:,}/{selected_count:,} "
                             f"({percentage:.2f}%)",
                             flush=True
                         )
@@ -517,9 +535,13 @@ finally:
     print(f"Last submitted PIN: {last_submitted}")
 
     print()
-    if completed_skips == total_range:
+    if not selected_count:
+        print("No PINs in this range match the distinct-digit minimum.")
+        print("Nothing was sent to the TV.")
+        print()
+    elif completed_skips == selected_count:
         print("No PINs left to test in this range.")
-        print("All requested PINs are already logged.")
+        print("All selected PINs are already logged.")
         print("Nothing was sent to the TV.")
         print()
 
